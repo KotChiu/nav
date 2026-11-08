@@ -107,6 +107,7 @@ int stockCount = 0;
 uint32_t stockRevision = 0;
 uint32_t stockPaintedRevision = UINT32_MAX;
 bool stockDirty = false;
+char stockChartPeriod = 'D';
 unsigned long stockUpdatedAt = 0;
 
 int qspiMHz = 0;                  // retained for protocol compatibility; RGB panel has no QSPI

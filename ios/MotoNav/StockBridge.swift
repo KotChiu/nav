@@ -8,6 +8,22 @@ import CoreFoundation
 final class StockBridge: ObservableObject {
     static let shared = StockBridge()
 
+    enum ChartPeriod: String, CaseIterable {
+        case day
+        case minute
+
+        var title: String {
+            switch self {
+            case .day: return "日 K"
+            case .minute: return "1 分 K"
+            }
+        }
+
+        var protocolCode: String {
+            self == .day ? "D" : "M"
+        }
+    }
+
     struct Quote: Identifiable {
         var id: String { code }
         let code: String
@@ -18,17 +34,20 @@ final class StockBridge: ObservableObject {
 
     struct Candle { let open: Double; let close: Double; let high: Double; let low: Double }
     @Published private(set) var candles: [String: [Candle]] = [:]
+    @Published private(set) var period: ChartPeriod
     @Published private(set) var watchlist: [String]
     @Published private(set) var quotes: [Quote] = []
     @Published private(set) var status = "等待刷新"
     @Published private(set) var lastUpdated: Date?
 
     private let defaultsKey = "stock_watchlist_v1"
+    private let periodKey = "stock_chart_period_v1"
     private var timer: Timer?
     private var fetching = false
     private var candleTasks: [String: URLSessionDataTask] = [:]
 
     private init() {
+        period = ChartPeriod(rawValue: UserDefaults.standard.string(forKey: periodKey) ?? "") ?? .day
         let saved = UserDefaults.standard.stringArray(forKey: defaultsKey) ?? []
         if UserDefaults.standard.object(forKey: defaultsKey) == nil {
             watchlist = ["sh000001", "sz399001", "usAAPL"]
@@ -112,7 +131,8 @@ final class StockBridge: ObservableObject {
         watchlist.removeAll { $0.lowercased() == key }
         quotes.removeAll { $0.code.lowercased() == key }
         candles.removeValue(forKey: key.uppercased())
-        candleTasks.removeValue(forKey: key)?.cancel()
+        candleTasks.filter { $0.key.hasSuffix(":" + key) }.forEach { $0.value.cancel() }
+        candleTasks = candleTasks.filter { !$0.key.hasSuffix(":" + key) }
         status = watchlist.isEmpty ? "自选列表为空" : "已删除 \(key.uppercased())"
         save()
         sendLatest()
@@ -136,18 +156,37 @@ final class StockBridge: ObservableObject {
         }
     }
 
+    func select(_ period: ChartPeriod) {
+        guard self.period != period else { return }
+        self.period = period
+        UserDefaults.standard.set(period.rawValue, forKey: periodKey)
+        candleTasks.values.forEach { $0.cancel() }
+        candleTasks.removeAll()
+        candles.removeAll()
+        status = period == .day ? "正在更新日 K…" : "正在更新 1 分 K…"
+        sendLatest()
+        if !quotes.isEmpty { fetchCandles() }
+    }
+
     private func fetchCandles() {
-        let codes = quotes.map { $0.code.lowercased() }
-        for code in codes {
-            guard let url = URL(string: "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=\(code),day,,,12,qfq") else { continue }
-            candleTasks.removeValue(forKey: code)?.cancel()
+        let period = self.period
+        for quote in quotes {
+            let code = quote.code.lowercased()
+            let taskKey = "\(period.rawValue):\(code)"
+            if period == .minute && !Self.supportsMinuteK(code) {
+                fetchMinuteFallback(quote, taskKey: taskKey)
+                continue
+            }
+            let chartCode = Self.chartCode(code, period: period)
+            guard let url = Self.chartURL(chartCode, period: period) else { continue }
+            candleTasks.removeValue(forKey: taskKey)?.cancel()
             let task = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
                 var values: [Candle] = []
                 if let data = data,
                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let all = json["data"] as? [String: Any], let item = all[code] as? [String: Any],
-                   let rows = (item["qfqday"] ?? item["day"]) as? [[Any]] {
-                    values = rows.suffix(12).compactMap { row in
+                   let all = json["data"] as? [String: Any], let item = all[chartCode] as? [String: Any],
+                   let rows = (period == .day ? (item["qfqday"] ?? item["day"]) : item["m1"]) as? [[Any]] {
+                    values = rows.suffix(24).compactMap { row in
                         guard row.count >= 5,
                               let o = Double(String(describing: row[1])),
                               let c = Double(String(describing: row[2])),
@@ -158,21 +197,57 @@ final class StockBridge: ObservableObject {
                     }
                 }
                 DispatchQueue.main.async {
-                    guard let self = self, self.watchlist.contains(code) else { return }
-                    self.candleTasks.removeValue(forKey: code)
-                    self.candles[code.uppercased()] = values
-                    self.sendCandles(code.uppercased())
+                    guard let self = self,
+                          self.watchlist.contains(where: { $0.lowercased() == code }) else { return }
+                    self.candleTasks.removeValue(forKey: taskKey)
+                    self.candles[quote.code] = values
+                    self.sendCandles(quote.code)
                 }
             }
-            candleTasks[code] = task
+            candleTasks[taskKey] = task
             task.resume()
         }
     }
 
+    private func fetchMinuteFallback(_ quote: Quote, taskKey: String) {
+        let code = quote.code.lowercased()
+        let queryCode = String(code.prefix(2)) + quote.code.dropFirst(2)
+        guard let url = URL(string: "https://ifzq.gtimg.cn/appstock/app/minute/query?code=\(queryCode)") else { return }
+        candleTasks.removeValue(forKey: taskKey)?.cancel()
+        let task = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            var values: [Candle] = []
+            if let data = data,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let all = json["data"] as? [String: Any],
+               let item = all[queryCode] as? [String: Any],
+               let container = item["data"] as? [String: Any],
+               let rows = container["data"] as? [String] {
+                let points = rows.compactMap { row -> Double? in
+                    row.split(separator: " ").dropFirst().first.flatMap { Double($0) }
+                }.filter { $0.isFinite && $0 > 0 }
+                var previous = points.first ?? quote.price
+                for price in points.suffix(24) {
+                    values.append(Candle(open: previous, close: price,
+                                         high: max(previous, price), low: min(previous, price)))
+                    previous = price
+                }
+            }
+            DispatchQueue.main.async {
+                guard let self = self,
+                      self.watchlist.contains(where: { $0.lowercased() == code }) else { return }
+                self.candleTasks.removeValue(forKey: taskKey)
+                self.candles[quote.code] = values
+                self.sendCandles(quote.code)
+            }
+        }
+        candleTasks[taskKey] = task
+        task.resume()
+    }
+
     private func sendCandles(_ code: String) {
         guard BleLink.shared.isReady else { return }
-        let values = candles[code] ?? []
-        var parts = ["#SK", code, String(values.count)]
+        let values = Array((candles[code] ?? []).suffix(12))
+        var parts = ["#SK", code, period.protocolCode, String(values.count)]
         let low = values.map(\.low).min() ?? 0
         let high = values.map(\.high).max() ?? 1
         let span = max(high - low, 0.000001)
@@ -180,6 +255,28 @@ final class StockBridge: ObservableObject {
             parts += [c.open,c.close,c.high,c.low].map { String(Int((($0-low)/span*100).rounded())) }
         }
         BleLink.shared.send(parts.joined(separator: ","))
+    }
+
+    private static func supportsMinuteK(_ code: String) -> Bool {
+        code.hasPrefix("sh") || code.hasPrefix("sz") || code.hasPrefix("bj")
+    }
+
+    private static func chartCode(_ code: String, period: ChartPeriod) -> String {
+        if period == .day && code.hasPrefix("us") && !code.contains(".") {
+            return code + ".OQ"
+        }
+        return code
+    }
+
+    private static func chartURL(_ code: String, period: ChartPeriod) -> URL? {
+        let path: String
+        switch period {
+        case .day:
+            path = "https://ifzq.gtimg.cn/appstock/app/fqkline/get?param=\(code),day,,,24,qfq"
+        case .minute:
+            path = "https://ifzq.gtimg.cn/appstock/app/kline/mkline?param=\(code),m1,,24"
+        }
+        return URL(string: path)
     }
 
     private func save() {

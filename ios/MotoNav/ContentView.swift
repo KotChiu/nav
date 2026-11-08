@@ -5,7 +5,7 @@ import AVFoundation
 /// 版本：跟随 App 版本（见 Config.swift）
 ///
 /// 主界面：圆屏连接状态、搜索目的地 / 导入高德分享路线、选路线、开始导航、巡航、圆屏设置、Key 设置、调试信息
-/// （罪恶都市风深色界面）
+/// （黑色主视觉界面）
 struct ContentView: View {
     @ObservedObject var ble = BleLink.shared
     @ObservedObject var navi = NaviBridge.shared
@@ -37,12 +37,14 @@ struct ContentView: View {
     @State private var addingVia = false               // 正在搜途经点
     @State private var stockInput = ""
 
-    static let bg = Color(red: 0.015, green: 0.015, blue: 0.015)
+    static let bg = Color.black
     static let card = Color(red: 0.055, green: 0.055, blue: 0.055)
-    static let stroke = Color(red: 0.16, green: 0.16, blue: 0.16)
-    static let pink = Color(red: 1.0, green: 0.31, blue: 0.71)
-    static let cyan = Color(red: 0.26, green: 0.88, blue: 0.94)
-    static let sub = Color(red: 0.62, green: 0.58, blue: 0.67)
+    static let stroke = Color(red: 0.15, green: 0.15, blue: 0.15)
+    static let pink = Color(red: 0.92, green: 0.92, blue: 0.92)
+    static let cyan = Color(red: 0.72, green: 0.72, blue: 0.72)
+    static let sub = Color(red: 0.60, green: 0.60, blue: 0.60)
+    static let up = Color(red: 0.95, green: 0.29, blue: 0.39)
+    static let down = Color(red: 0.18, green: 0.73, blue: 0.56)
 
     var body: some View {
         VStack(spacing: 0) {
@@ -83,6 +85,7 @@ struct ContentView: View {
             }.background(Self.card)
         }
         .background(ContentView.bg.ignoresSafeArea())
+        .preferredColorScheme(.dark)
         .fullScreenCover(isPresented: $showWebMotor) { WebMotorView(mode:independentMode) }
         .sheet(isPresented: $showRides) { NavigationView { RideHistoryView() } }
         .fullScreenCover(isPresented: $showNavi) { NaviScreen() }
@@ -125,7 +128,7 @@ struct ContentView: View {
             Text("MotoNav")
                 .font(.system(size: 34, weight: .heavy, design: .rounded))
                 .italic()
-                .foregroundStyle(LinearGradient(colors: [ContentView.pink, ContentView.cyan], startPoint: .leading, endPoint: .trailing))
+                .foregroundStyle(LinearGradient(colors: [.white, ContentView.sub], startPoint: .leading, endPoint: .trailing))
             Text("圆屏导航 · \(APP_VERSION)").font(.caption).foregroundColor(ContentView.sub)
         }
         .padding(.top, 8)
@@ -527,7 +530,20 @@ struct ContentView: View {
             if !settings.nightDesc.isEmpty { Text(settings.nightDesc).font(.caption2).foregroundColor(ContentView.sub) }
             Toggle("弯道急缓上色", isOn: $settings.curve).foregroundColor(.white).tint(ContentView.pink)
             Divider().background(ContentView.stroke).padding(.vertical, 2)
-            Text("圆屏股票").foregroundColor(.white).bold()
+            HStack {
+                Text("圆屏股票").foregroundColor(.white).bold()
+                Spacer()
+                Picker("K 线周期", selection: Binding(
+                    get: { stocks.period },
+                    set: { stocks.select($0) }
+                )) {
+                    Text("日 K").tag(StockBridge.ChartPeriod.day)
+                    Text("1 分").tag(StockBridge.ChartPeriod.minute)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 148)
+                .tint(.white)
+            }
             HStack(spacing: 8) {
                 TextField("代码，如 600519 / AAPL / 00700", text: $stockInput)
                     .textInputAutocapitalization(.characters)
@@ -589,9 +605,13 @@ struct ContentView: View {
                             .contentShape(RoundedRectangle(cornerRadius: 8))
                             .accessibilityLabel("删除 \(quote?.name ?? code)")
                         }
-                        MiniKLineView(candles: stocks.candles[code.uppercased()] ?? [])
-                            .frame(height: 42)
-                            .background(ContentView.bg, in: RoundedRectangle(cornerRadius: 6))
+                        KLineChartView(
+                            candles: stocks.candles[code.uppercased()] ?? [],
+                            period: stocks.period
+                        )
+                            .frame(height: 86)
+                            .background(Color.black, in: RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(ContentView.stroke, lineWidth: 1))
                     }
                     .padding(10)
                     .background(ContentView.bg, in: RoundedRectangle(cornerRadius: 8))
@@ -691,14 +711,15 @@ struct ContentView: View {
 
 // MARK: - 小组件
 
-struct MiniKLineView: View {
+struct KLineChartView: View {
     let candles: [StockBridge.Candle]
+    let period: StockBridge.ChartPeriod
 
     var body: some View {
         Canvas { context, size in
             guard !candles.isEmpty else {
                 context.draw(
-                    Text("暂无 K 线")
+                    Text(period == .minute ? "暂无 1 分 K" : "暂无日 K")
                         .font(.caption2)
                         .foregroundColor(ContentView.sub),
                     at: CGPoint(x: size.width / 2, y: size.height / 2)
@@ -709,22 +730,33 @@ struct MiniKLineView: View {
             let low = candles.map(\.low).min() ?? 0
             let high = candles.map(\.high).max() ?? 1
             let span = max(high - low, 0.000001)
-            let plot = CGRect(x: 5, y: 5, width: max(1, size.width - 10), height: max(1, size.height - 10))
+            let plot = CGRect(x: 10, y: 10, width: max(1, size.width - 20), height: max(1, size.height - 20))
             let slot = plot.width / CGFloat(candles.count)
-            let bodyWidth = max(2, min(6, slot * 0.55))
+            let bodyWidth = max(3, min(8, slot * 0.58))
 
-            var baseline = Path()
-            baseline.move(to: CGPoint(x: plot.minX, y: plot.maxY))
-            baseline.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY))
-            context.stroke(baseline, with: .color(ContentView.stroke), lineWidth: 0.5)
+            for row in [0.25, 0.5, 0.75] {
+                var grid = Path()
+                let y = plot.minY + plot.height * row
+                grid.move(to: CGPoint(x: plot.minX, y: y))
+                grid.addLine(to: CGPoint(x: plot.maxX, y: y))
+                context.stroke(grid, with: .color(Color.white.opacity(0.06)), lineWidth: 1)
+            }
 
             func y(_ value: Double) -> CGFloat {
                 plot.maxY - CGFloat((value - low) / span) * plot.height
             }
 
+            if let last = candles.last {
+                var closeLine = Path()
+                closeLine.move(to: CGPoint(x: plot.minX, y: y(last.close)))
+                closeLine.addLine(to: CGPoint(x: plot.maxX, y: y(last.close)))
+                context.stroke(closeLine, with: .color(Color.white.opacity(0.16)),
+                               style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            }
+
             for (index, candle) in candles.enumerated() {
                 let centerX = plot.minX + slot * (CGFloat(index) + 0.5)
-                let color = candle.close >= candle.open ? Color.red : Color.green
+                let color = candle.close >= candle.open ? ContentView.up : ContentView.down
                 var wick = Path()
                 wick.move(to: CGPoint(x: centerX, y: y(candle.high)))
                 wick.addLine(to: CGPoint(x: centerX, y: y(candle.low)))
@@ -740,8 +772,15 @@ struct MiniKLineView: View {
                 )
                 context.fill(Path(body), with: .color(color))
             }
+
+            var frame = Path()
+            frame.addRoundedRect(
+                in: CGRect(origin: .zero, size: size),
+                cornerSize: CGSize(width: 8, height: 8)
+            )
+            context.stroke(frame, with: .color(ContentView.stroke), lineWidth: 1)
         }
-        .accessibilityLabel("K 线")
+        .accessibilityLabel("\(period.title)图")
     }
 }
 
@@ -751,8 +790,8 @@ struct CardView<Content: View>: View {
         VStack(alignment: .leading, spacing: 10) { content }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 18).fill(ContentView.card))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(ContentView.stroke, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 8).fill(ContentView.card))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(ContentView.stroke, lineWidth: 1))
     }
 }
 

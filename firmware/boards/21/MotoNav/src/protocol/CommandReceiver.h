@@ -408,8 +408,15 @@ void handleText(const String &m) {
     String code = m.substring(4, codeEnd);
     code.trim();
     code.toUpperCase();
-    int countEnd = m.indexOf(',', codeEnd + 1);
-    int incoming = constrain((countEnd < 0 ? m.substring(codeEnd + 1) : m.substring(codeEnd + 1, countEnd)).toInt(), 0, 12);
+    int periodEnd = m.indexOf(',', codeEnd + 1);
+    if (periodEnd < 0) return;
+    String periodText = m.substring(codeEnd + 1, periodEnd);
+    periodText.trim();
+    periodText.toUpperCase();
+    if (periodText != "D" && periodText != "M") return;
+    stockChartPeriod = periodText[0];
+    int countEnd = m.indexOf(',', periodEnd + 1);
+    int incoming = constrain((countEnd < 0 ? m.substring(periodEnd + 1) : m.substring(periodEnd + 1, countEnd)).toInt(), 0, 12);
     if (countEnd < 0 && incoming > 0) return;
 
     int index = -1;
@@ -422,7 +429,7 @@ void handleText(const String &m) {
     int parsed = 0;
     int pos = countEnd < 0 ? m.length() : countEnd + 1;
     for (; parsed < incoming; parsed++) {
-      int values[4];
+      int values[4] = {};
       for (int field = 0; field < 4; field++) {
         int end = m.indexOf(',', pos);
         String part = end < 0 ? m.substring(pos) : m.substring(pos, end);

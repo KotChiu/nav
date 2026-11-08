@@ -229,15 +229,21 @@ static void configureOpaqueLabel(lv_obj_t *label, int width, int height) {
 
 #define STOCK_NAME_W 180
 #define STOCK_NAME_H 28
-#define STOCK_CHART_W 154
-#define STOCK_CHART_H 42
-#define STOCK_PANEL_COLOR 0x080808
+#define STOCK_CHART_W 306
+#define STOCK_CHART_H 52
+#define STOCK_ROW_H 124
+#define STOCK_PANEL_COLOR 0x000000
 
 static void stockCanvasRect(lv_color_t *buffer, int width, int x, int y,
                             int w, int h, lv_color_t color) {
   for (int yy = max(0, y); yy < min(STOCK_CHART_H, y + h); yy++)
     for (int xx = max(0, x); xx < min(width, x + w); xx++)
       buffer[yy * width + xx] = color;
+}
+
+static void stockCanvasHLine(lv_color_t *buffer, int y, lv_color_t color) {
+  if (y < 0 || y >= STOCK_CHART_H) return;
+  for (int x = 0; x < STOCK_CHART_W; x++) buffer[y * STOCK_CHART_W + x] = color;
 }
 
 static void updateStockNameCanvas(int index) {
@@ -286,13 +292,22 @@ static void updateStockChartCanvas(int index) {
     high = max(high, (int)q.candles[i][2]);
   }
   const int span = max(1, high - low);
-  const int slot = max(6, (STOCK_CHART_W - 4) / n);
-  const int bodyWidth = max(3, min(6, slot - 3));
+  const int slot = max(10, (STOCK_CHART_W - 8) / n);
+  const int bodyWidth = max(5, min(10, slot - 6));
   auto py = [&](int value) {
-    return 3 + (100 - value) * (STOCK_CHART_H - 6) / 100;
+    return 4 + (100 - value) * (STOCK_CHART_H - 8) / 100;
   };
+  const lv_color_t grid = lvglColor565(0x2104);
+  stockCanvasHLine(stockChartBuffers[index], 13, grid);
+  stockCanvasHLine(stockChartBuffers[index], 25, grid);
+  stockCanvasHLine(stockChartBuffers[index], 37, grid);
+  if (n) {
+    int close = q.candles[n - 1][1];
+    int closeY = py((close - low) * 100 / span);
+    stockCanvasHLine(stockChartBuffers[index], closeY, lvglColor565(0x630C));
+  }
   for (int i = 0; i < n; i++) {
-    int centerX = 2 + i * slot + slot / 2;
+    int centerX = 4 + i * slot + slot / 2;
     int open = constrain(q.candles[i][0], low, high);
     int close = constrain(q.candles[i][1], low, high);
     int candleHigh = constrain(q.candles[i][2], low, high);
@@ -546,7 +561,7 @@ static void createLvglOverlay() {
   stockTitleLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(stockTitleLabel, lv_color_white(), 0);
   lv_obj_set_style_text_font(stockTitleLabel, &lv_font_montserrat_28, 0);
-  lv_label_set_text(stockTitleLabel, "MARKET");
+  lv_label_set_text(stockTitleLabel, "MARKET | DAY");
   lv_obj_align(stockTitleLabel, LV_ALIGN_TOP_MID, 0, 52);
   lv_obj_add_flag(stockTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
@@ -570,10 +585,10 @@ static void createLvglOverlay() {
   lv_obj_add_flag(stockList, LV_OBJ_FLAG_HIDDEN);
   for (int i = 0; i < STOCK_MAX; i++) {
     lv_obj_t *row = lv_obj_create(stockList);
-    lv_obj_set_size(row, 332, 96);
-    lv_obj_set_pos(row, 0, i * 106);
+    lv_obj_set_size(row, 332, STOCK_ROW_H);
+    lv_obj_set_pos(row, 0, i * (STOCK_ROW_H + 8));
     lv_obj_set_style_pad_all(row, 0, 0);
-    lv_obj_set_style_radius(row, 12, 0);
+    lv_obj_set_style_radius(row, 8, 0);
     lv_obj_set_style_border_width(row, 1, 0);
     lv_obj_set_style_border_color(row, lv_color_hex(0x242424), 0);
     lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
@@ -612,7 +627,7 @@ static void createLvglOverlay() {
       stockChartCanvases[i] = lv_canvas_create(row);
       lv_canvas_set_buffer(stockChartCanvases[i], stockChartBuffers[i],
                            STOCK_CHART_W, STOCK_CHART_H, LV_IMG_CF_TRUE_COLOR);
-      lv_obj_set_pos(stockChartCanvases[i], 10, 43);
+      lv_obj_set_pos(stockChartCanvases[i], 13, 42);
       lv_obj_clear_flag(stockChartCanvases[i], LV_OBJ_FLAG_SCROLLABLE);
       lv_obj_clear_flag(stockChartCanvases[i], LV_OBJ_FLAG_CLICKABLE);
       updateStockChartCanvas(i);
@@ -625,7 +640,7 @@ static void createLvglOverlay() {
     lv_obj_set_style_text_color(stockChangeLabels[i], lv_color_hex(0x7F8A93), 0);
     lv_obj_set_style_text_font(stockChangeLabels[i], &lv_font_montserrat_16, 0);
     lv_label_set_text(stockChangeLabels[i], "--");
-    lv_obj_align(stockChangeLabels[i], LV_ALIGN_BOTTOM_RIGHT, -12, -12);
+    lv_obj_align(stockChangeLabels[i], LV_ALIGN_BOTTOM_RIGHT, -12, -4);
   }
 
 }
@@ -842,6 +857,8 @@ static void lvglHybridTick() {
   setLvglHidden(stockTitleLabel, !showStock);
   setLvglHidden(stockStatusLabel, !showStock);
   if (showStock) {
+    setLvglLabelText(stockTitleLabel,
+      stockChartPeriod == 'M' ? "MARKET | 1M" : "MARKET | DAY");
     bool refresh = stockRevision != stockLastRevision || stockDirty;
     if (refresh) {
       stockLastRevision = stockRevision;
