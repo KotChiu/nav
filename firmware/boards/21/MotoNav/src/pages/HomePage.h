@@ -65,7 +65,7 @@ void drawRider(int f, int zph) {
   }
   if (zph >= 0) {                           // 三个 z 从她头顶往右上方飘
     for (int k = 0; k <= zph; k++)
-      printCentered("z", CX + 4 + k * 13, RIDER_Y0 + 2 - k * 13, 2 + (k > 0 ? 1 : 0), k == zph ? C_CYAN : C_GREY);
+      printCentered("z", CX + 4 + k * 13, RIDER_Y0 + 2 - k * 13, 2 + (k > 0 ? 1 : 0), k == zph ? C_UI_ACCENT : C_UI_SUB);
   }
 }
 
@@ -85,13 +85,13 @@ void drawPageDots() {
   if (page == 0 && inNav) return;
   if (page >= 3 && page <= 5) {
     for (int i = 0; i < 3; i++) {
-      aaDisc(CX - 20 + i * 20, 444, 4, page == 3 + i ? C_WHITE : 0x4208);
+      aaDisc(CX - 20 + i * 20, 444, 4, page == 3 + i ? C_UI_TEXT : C_UI_DIM);
     }
     return;
   }
   const int pageOrder[] = {1, 0, 2};
   for (int i = 0; i < 3; i++) {
-    aaDisc(CX + (i - 1) * 20, 444, 4, page == pageOrder[i] ? C_WHITE : 0x4208);
+    aaDisc(CX + (i - 1) * 20, 444, 4, page == pageOrder[i] ? C_UI_TEXT : C_UI_DIM);
   }
 }
 
@@ -101,21 +101,21 @@ void drawWaiting(int st) {
   if (page == 2) { onWaitScreen = false; musicDirty = true; return; }
   if (page == 1) { onWaitScreen = false; wxDirty = true; return; }   // v5.3 正在看天气：先不画首页，滑回来时再画
   if (page >= 3 && page <= 5) { onWaitScreen = false; needFlush = true; return; }
-  gfx->fillScreen(C_BLACK);
+  gfx->fillScreen(C_UI_BG);
   for (int quadrant = 0; quadrant < 4; quadrant++) {
     float start = 18 + quadrant * 90;
-    gfx->fillArc(CX, CX, 211, 208, start, start + 54, 0x632C);
+    gfx->fillArc(CX, CX, 211, 208, start, start + 54, C_UI_ACCENT);
   }
-  aaDisc(CX, 27, 5, 0xD946);
+  aaDisc(CX, 27, 5, C_UI_ACCENT2);
   onWaitScreen = true;
   if (st == WAIT_LOST) drawRedRing();
   if (!lvglUiReady) {
-    printCentered("MotoNav", CX, 200, 6, C_GREY);
+    printCentered("MotoNav", CX, 200, 6, C_UI_TEXT);
     printCentered(st == WAIT_READY ? "ready" : st == WAIT_LOST ? "LINK LOST" : "no link",
-                  CX, 275, 3, st == WAIT_READY ? C_GREEN : st == WAIT_LOST ? C_RED : C_GREY);
-    printCentered(bleName, CX, 332, 2, C_GREY);
-    printCentered(String("fw ") + FW_VERSION, CX, 360, 2, C_GREY);
-    printCentered(String("rst ") + String((int)esp_reset_reason()), CX, 388, 1, C_GREY);
+                  CX, 275, 3, st == WAIT_READY ? C_UI_TEXT : st == WAIT_LOST ? C_UI_ACCENT2 : C_UI_SUB);
+    printCentered(bleName, CX, 332, 2, C_UI_SUB);
+    printCentered(String("fw ") + FW_VERSION, CX, 360, 2, C_UI_SUB);
+    printCentered(String("rst ") + String((int)esp_reset_reason()), CX, 388, 1, C_UI_DIM);
     drawStatus();
     drawPageDots();
   }

@@ -36,7 +36,7 @@ void drawNavFrame() {
     if (over) fillRingBand(0, 1, 228, 233, C_RED);
     drawStatus();
     drawSpeedBlock(over);
-    printCentered("CRUISE", CX, 300, 4, C_CYAN);
+    printCentered("CRUISE", CX, 300, 4, C_UI_ACCENT);
     needFlush = true;
     return;
   }

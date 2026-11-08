@@ -8,7 +8,7 @@ void drawPairScreen() {
   onWaitScreen = false;
   frameIsMap = false;
   gfx->fillScreen(C_BLACK);
-  printCentered("PAIRING", CX, 120, 3, C_CYAN);
+  printCentered("PAIRING", CX, 120, 3, C_UI_ACCENT);
   if (pairLocked) {
     printCentered("LOCKED", CX, 205, 5, C_RED);
     printCentered("restart this screen,", CX, 290, 2, C_GREY);
@@ -20,7 +20,7 @@ void drawPairScreen() {
     printCentered("enter this code", CX, 295, 2, C_GREY);
     printCentered("on your phone", CX, 320, 2, C_GREY);
   }
-  printCentered(bleName, CX, 372, 2, C_CYAN);                            // v7.0 确认连的是这块
+  printCentered(bleName, CX, 372, 2, C_UI_ACCENT);                       // v7.0 确认连的是这块
 
   needFlush = true;
 }

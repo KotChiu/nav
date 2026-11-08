@@ -34,12 +34,12 @@ void slideBuffersInit() {
 // v7.12.10-cover 收到封面（bulk type 5）时改为封面圆盘布局：圆盘 r=64 居上，歌名/歌手/按钮下移，不放歌词。
 void drawMusic() {
   forceFullFlush = true;
-  gfx->fillScreen(C_BLACK);
+  gfx->fillScreen(C_UI_BG);
   onWaitScreen = false;
   frameIsMap = false;
   bool coverShow = coverValid && coverImg;
   if (coverShow) {
-    aaDisc(CX, 110, 67, 0x1082);                       // 封面底环（半径 67，贴图半径 64，留 3px 环）
+    aaDisc(CX, 110, 67, C_UI_PANEL_2);                 // 封面底环（半径 67，贴图半径 64，留 3px 环）
     uint16_t *fb = gfx->getFramebuffer();
     int cy = 110, cx0 = CX - 64, cy0 = cy - 64;
     for (int dy = -64; dy < 64; dy++) {
@@ -62,15 +62,15 @@ void drawMusic() {
         dst[i] = src[u];
       }
     }
-  } else printCentered("MUSIC", CX, 65, 4, C_CYAN);
+  } else printCentered("MUSIC", CX, 65, 4, C_UI_ACCENT);
   bool linked = bleConnected && bleAuthed;
   if (hidMusicMode && linked && !appleMedia.available) {
     printCentered("PHONE MEDIA KEYS", CX, coverShow ? 194 : 158, 2, C_WHITE);
-    printCentered("OPEN MUSIC APP ON PHONE", CX, coverShow ? 220 : 210, 2, C_GREY);
+    printCentered("OPEN MUSIC APP ON PHONE", CX, coverShow ? 220 : 210, 2, C_UI_SUB);
   } else if (linked) {
     drawTextImg(5, coverShow ? 194 : 158, 0xFF);
     drawTextImg(6, coverShow ? 240 : 210, 0xBB);
-  } else printCentered("PHONE OFFLINE", CX, coverShow ? 205 : 170, 3, C_GREY);
+  } else printCentered("PHONE OFFLINE", CX, coverShow ? 205 : 170, 3, C_UI_SUB);
   bool showLyrics = linked && hidMusicMode && musicLyrics && appleMedia.available && imgs[12].showW > 0 && !coverShow;
   if (showLyrics) drawTextImg(12, 242, 0xDD);
   const char *feedback[] = {"", "SENT", "PHONE RECEIVED", "DONE", "NO RESPONSE", "NO PLAYER", "HID SENT", "HID NOT READY", "HID SEND FAILED", "AMS SENT", "AMS SEND FAILED", "AMS QUEUED"};
@@ -80,12 +80,13 @@ void drawMusic() {
       : !appleMedia.playback.known ? "STATE UNKNOWN" : appleMedia.playback.state == 1 ? "PLAYING" : appleMedia.playback.state == 0 ? "PAUSED" : "SEEKING";
   }
   if (musicAck > 0 && musicAck <= 11) state = feedback[musicAck];
-  printCentered(state, CX, showLyrics ? 272 : coverShow ? 276 : 257, 2, musicAck == 4 ? C_ORANGE : C_GREY);
+  printCentered(state, CX, showLyrics ? 272 : coverShow ? 276 : 257, 2, musicAck == 4 ? C_UI_ACCENT2 : C_UI_SUB);
   for (int i = 0; !lvglUiReady && i < 3; i++) {
     int x = CX + (i - 1) * 100, y = coverShow ? 360 : 335;
     bool enabled = hidMusicMode ? (hidMediaReady() || appleMedia.controlReady(i)) : linked && musicHave;
-    uint16_t c = enabled ? C_WHITE : C_GREY;
-    aaDisc(x, y, 43, musicPressed == i ? (enabled ? 0x0470 : 0x2104) : (enabled ? 0x19A7 : 0x1082));
+    uint16_t c = enabled ? C_UI_TEXT : C_UI_SUB;
+    aaDisc(x, y, 43, musicPressed == i ? (enabled ? C_UI_ACCENT : C_UI_PANEL)
+      : (enabled ? C_UI_PANEL_2 : C_UI_PANEL));
     if (i == 1) {
       if (hidMusicMode && !appleMedia.playback.known) {
         gfx->fillTriangle(x - 19, y - 15, x - 19, y + 15, x + 1, y, c);
@@ -106,9 +107,9 @@ void drawMusic() {
       double elapsed = appleMedia.playback.elapsed + appleMedia.playback.rate * (millis() - appleMedia.playbackAt) / 1000.0;
       int sec = (int)constrain(elapsed, 0.0, duration), total = (int)duration;
       char time[32]; snprintf(time, sizeof(time), "%d:%02d / %d:%02d", sec/60, sec%60, total/60, total%60);
-      printCentered(time, CX, coverShow ? 410 : 392, 2, C_GREY);
+      printCentered(time, CX, coverShow ? 410 : 392, 2, C_UI_SUB);
     }
-  } else printCentered("SWIPE LEFT TO RETURN", CX, coverShow ? 410 : 402, 2, C_GREY);
+  } else printCentered("SWIPE LEFT TO RETURN", CX, coverShow ? 410 : 402, 2, C_UI_SUB);
   drawPageDots();
   needFlush = true;
 }
@@ -195,12 +196,12 @@ void slideCompose(int p) {
         int split = constrain(p, xa, xb);
         if (split > xa) memcpy(row + xa, n + (W - p) + xa, (split - xa) * 2);
         if (xb > split) memcpy(row + split, o + (split - p), (xb - split) * 2);
-        if (p > xa && p < xb) row[p - 1] = 0x4208;
+        if (p > xa && p < xb) row[p - 1] = C_UI_DIM;
       } else {                                          // 新页面从右边进来
         int split = constrain(W - p, xa, xb);
         if (split > xa) memcpy(row + xa, o + (xa + p), (split - xa) * 2);
         if (xb > split) memcpy(row + split, n + (split - (W - p)), (xb - split) * 2);
-        if (W - p > xa && W - p < xb) row[W - p] = 0x4208;
+        if (W - p > xa && W - p < xb) row[W - p] = C_UI_DIM;
       }
     }
   } else {
@@ -216,7 +217,7 @@ void slideCompose(int p) {
       const uint16_t *src = (newPage ? slideNew : slideOld) + (size_t)sy * W;
       memcpy(row + xa, src + xa, (xb - xa) * 2);
       if (p > 0 && p < H && (y == p - 1 || y == H - p)) {
-        for (int x = xa; x < xb; x++) row[x] = 0x4208;
+        for (int x = xa; x < xb; x++) row[x] = C_UI_DIM;
       }
     }
   }

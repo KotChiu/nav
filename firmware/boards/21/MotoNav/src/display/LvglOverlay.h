@@ -203,9 +203,10 @@ static lv_obj_t *makeMusicButton(int index) {
   lv_obj_t *button = lv_obj_create(lv_scr_act());
   lv_obj_set_size(button, 86, 86);
   lv_obj_set_style_radius(button, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_border_width(button, 0, 0);
-  lv_obj_set_style_bg_color(button, lvglColor565(0x19A7), 0);
-  lv_obj_set_style_bg_color(button, lvglColor565(0x0470), LV_STATE_PRESSED);
+  lv_obj_set_style_border_width(button, 1, 0);
+  lv_obj_set_style_border_color(button, lvglColor565(C_UI_ACCENT), 0);
+  lv_obj_set_style_bg_color(button, lvglColor565(C_UI_PANEL_2), 0);
+  lv_obj_set_style_bg_color(button, lvglColor565(C_UI_ACCENT), LV_STATE_PRESSED);
   lv_obj_set_style_shadow_width(button, 0, 0);
   lv_obj_clear_flag(button, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_event_cb(button, musicButtonEventCb, LV_EVENT_CLICKED, (void *)(intptr_t)index);
@@ -297,14 +298,14 @@ static void updateStockChartCanvas(int index) {
   auto py = [&](int value) {
     return 4 + (100 - value) * (STOCK_CHART_H - 8) / 100;
   };
-  const lv_color_t grid = lvglColor565(0x2104);
+  const lv_color_t grid = lvglColor565(C_UI_LINE);
   stockCanvasHLine(stockChartBuffers[index], 13, grid);
   stockCanvasHLine(stockChartBuffers[index], 25, grid);
   stockCanvasHLine(stockChartBuffers[index], 37, grid);
   if (n) {
     int close = q.candles[n - 1][1];
     int closeY = py((close - low) * 100 / span);
-    stockCanvasHLine(stockChartBuffers[index], closeY, lvglColor565(0x630C));
+    stockCanvasHLine(stockChartBuffers[index], closeY, lvglColor565(C_UI_ACCENT2));
   }
   for (int i = 0; i < n; i++) {
     int centerX = 4 + i * slot + slot / 2;
@@ -356,10 +357,11 @@ static void createLvglOverlay() {
   settingsCard = lv_obj_create(screen);
   lv_obj_set_size(settingsCard, 340, 190);
   lv_obj_set_pos(settingsCard, CX - 170, 120);
-  lv_obj_set_style_radius(settingsCard, 12, 0);
-  lv_obj_set_style_border_width(settingsCard, 0, 0);
+  lv_obj_set_style_radius(settingsCard, 8, 0);
+  lv_obj_set_style_border_width(settingsCard, 1, 0);
+  lv_obj_set_style_border_color(settingsCard, lvglColor565(C_UI_LINE), 0);
   lv_obj_set_style_bg_opa(settingsCard, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(settingsCard, lv_color_hex(0x101216), 0);
+  lv_obj_set_style_bg_color(settingsCard, lvglColor565(C_UI_PANEL), 0);
   lv_obj_clear_flag(settingsCard, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(settingsCard, LV_OBJ_FLAG_HIDDEN);
 
@@ -370,9 +372,9 @@ static void createLvglOverlay() {
   lv_slider_set_value(settingsSlider, screenBrightness, LV_ANIM_OFF);
   lv_obj_set_style_radius(settingsSlider, LV_RADIUS_CIRCLE, LV_PART_MAIN);
   lv_obj_set_style_bg_opa(settingsSlider, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(settingsSlider, lv_color_hex(0x30343B), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(settingsSlider, lvglColor565(C_UI_LINE), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(settingsSlider, LV_OPA_COVER, LV_PART_INDICATOR);
-  lv_obj_set_style_bg_color(settingsSlider, lv_color_hex(0x41E7F2), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(settingsSlider, lvglColor565(C_UI_ACCENT), LV_PART_INDICATOR);
   lv_obj_set_style_bg_color(settingsSlider, lv_color_hex(0xFFFFFF), LV_PART_KNOB);
   lv_obj_set_style_border_width(settingsSlider, 0, LV_PART_KNOB);
   lv_obj_set_style_pad_all(settingsSlider, 6, LV_PART_KNOB);
@@ -382,7 +384,7 @@ static void createLvglOverlay() {
   settingsBrightnessLabel = lv_label_create(settingsCard);
   lv_obj_set_size(settingsBrightnessLabel, 92, 42);
   lv_obj_set_style_bg_opa(settingsBrightnessLabel, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(settingsBrightnessLabel, lv_color_hex(0x17191D), 0);
+  lv_obj_set_style_bg_color(settingsBrightnessLabel, lvglColor565(C_UI_PANEL_2), 0);
   lv_obj_set_style_radius(settingsBrightnessLabel, 8, 0);
   lv_obj_set_style_pad_top(settingsBrightnessLabel, 8, 0);
   lv_obj_set_style_text_color(settingsBrightnessLabel, lv_color_white(), 0);
@@ -400,14 +402,14 @@ static void createLvglOverlay() {
   lv_obj_add_flag(settingsTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
   settingsSubLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(settingsSubLabel, lv_color_hex(0x9AA3AD), 0);
+  lv_obj_set_style_text_color(settingsSubLabel, lvglColor565(C_UI_SUB), 0);
   lv_obj_set_style_text_font(settingsSubLabel, &lv_font_montserrat_20, 0);
   lv_label_set_text(settingsSubLabel, "Display brightness");
   lv_obj_align(settingsSubLabel, LV_ALIGN_TOP_MID, 0, 132);
   lv_obj_add_flag(settingsSubLabel, LV_OBJ_FLAG_HIDDEN);
 
   settingsHintLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(settingsHintLabel, lv_color_hex(0x69717A), 0);
+  lv_obj_set_style_text_color(settingsHintLabel, lvglColor565(C_UI_DIM), 0);
   lv_obj_set_style_text_font(settingsHintLabel, &lv_font_montserrat_16, 0);
   lv_label_set_text(settingsHintLabel, "Swipe down for home");
   lv_obj_align(settingsHintLabel, LV_ALIGN_TOP_MID, 0, 400);
@@ -417,16 +419,17 @@ static void createLvglOverlay() {
     homeActions[i] = lv_btn_create(screen);
     lv_obj_set_size(homeActions[i], 142, 56);
     lv_obj_set_pos(homeActions[i], CX - 150 + i * 158, 352);
-    lv_obj_set_style_radius(homeActions[i], 18, 0);
-    lv_obj_set_style_bg_color(homeActions[i], lv_color_hex(0x111111), 0);
+    lv_obj_set_style_radius(homeActions[i], 8, 0);
+    lv_obj_set_style_bg_color(homeActions[i], lvglColor565(C_UI_PANEL), 0);
     lv_obj_set_style_border_width(homeActions[i], 1, 0);
-    lv_obj_set_style_border_color(homeActions[i], lv_color_hex(0x333333), 0);
+    lv_obj_set_style_border_color(homeActions[i], lvglColor565(C_UI_ACCENT), 0);
     lv_obj_set_style_shadow_width(homeActions[i], 0, 0);
     lv_obj_add_event_cb(homeActions[i], homeActionEvent, LV_EVENT_CLICKED,
                         (void *)(intptr_t)(i ? PAGE_MUSIC : PAGE_WEATHER));
     lv_obj_t *label = lv_label_create(homeActions[i]);
     lv_label_set_text(label, i ? LV_SYMBOL_AUDIO "  MUSIC" : "WEATHER");
     lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(label, lvglColor565(C_UI_TEXT), 0);
     lv_obj_center(label);
     lv_obj_add_flag(homeActions[i], LV_OBJ_FLAG_HIDDEN);
   }
@@ -452,14 +455,14 @@ static void createLvglOverlay() {
   lv_obj_add_flag(homeStatusLabel, LV_OBJ_FLAG_HIDDEN);
 
   homeDeviceLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(homeDeviceLabel, lv_color_hex(0x9AA3AD), 0);
+  lv_obj_set_style_text_color(homeDeviceLabel, lvglColor565(C_UI_SUB), 0);
   lv_obj_set_style_text_font(homeDeviceLabel, &lv_font_montserrat_16, 0);
   configureOpaqueLabel(homeDeviceLabel, 300, 28);
   lv_obj_align(homeDeviceLabel, LV_ALIGN_TOP_MID, 0, 330);
   lv_obj_add_flag(homeDeviceLabel, LV_OBJ_FLAG_HIDDEN);
 
   homeHintLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(homeHintLabel, lv_color_hex(0x69717A), 0);
+  lv_obj_set_style_text_color(homeHintLabel, lvglColor565(C_UI_DIM), 0);
   lv_obj_set_style_text_font(homeHintLabel, &lv_font_montserrat_16, 0);
   lv_label_set_text(homeHintLabel, "");
   lv_obj_align(homeHintLabel, LV_ALIGN_TOP_MID, 0, 420);
@@ -474,7 +477,7 @@ static void createLvglOverlay() {
   lv_obj_add_flag(watchTimeLabel, LV_OBJ_FLAG_HIDDEN);
 
   watchDateLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(watchDateLabel, lv_color_hex(0x9AA3AD), 0);
+  lv_obj_set_style_text_color(watchDateLabel, lvglColor565(C_UI_SUB), 0);
   lv_obj_set_style_text_font(watchDateLabel, &lv_font_montserrat_16, 0);
   configureOpaqueLabel(watchDateLabel, 240, 28);
   lv_label_set_text(watchDateLabel, "WAITING FOR PHONE TIME");
@@ -490,7 +493,7 @@ static void createLvglOverlay() {
   lv_obj_add_flag(watchTempLabel, LV_OBJ_FLAG_HIDDEN);
 
   watchForecastLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(watchForecastLabel, lv_color_hex(0x9AA3AD), 0);
+  lv_obj_set_style_text_color(watchForecastLabel, lvglColor565(C_UI_SUB), 0);
   lv_obj_set_style_text_font(watchForecastLabel, &lv_font_montserrat_20, 0);
   configureOpaqueLabel(watchForecastLabel, 310, 34);
   lv_label_set_text(watchForecastLabel, "WEATHER FROM PHONE");
@@ -503,7 +506,7 @@ static void createLvglOverlay() {
   lv_obj_set_style_radius(robotHalo, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_opa(robotHalo, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(robotHalo, 3, 0);
-  lv_obj_set_style_border_color(robotHalo, lv_color_hex(0x24383D), 0);
+  lv_obj_set_style_border_color(robotHalo, lvglColor565(C_UI_ACCENT), 0);
   lv_obj_clear_flag(robotHalo, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(robotHalo, LV_OBJ_FLAG_HIDDEN);
 
@@ -544,14 +547,14 @@ static void createLvglOverlay() {
   }
 
   robotTitleLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(robotTitleLabel, lv_color_hex(0x7F8A93), 0);
+  lv_obj_set_style_text_color(robotTitleLabel, lvglColor565(C_UI_SUB), 0);
   lv_obj_set_style_text_font(robotTitleLabel, &lv_font_montserrat_16, 0);
   lv_label_set_text(robotTitleLabel, "COMPANION");
   lv_obj_align(robotTitleLabel, LV_ALIGN_TOP_MID, 0, 48);
   lv_obj_add_flag(robotTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
   robotMoodLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(robotMoodLabel, lv_color_hex(0x41E7F2), 0);
+  lv_obj_set_style_text_color(robotMoodLabel, lvglColor565(C_UI_ACCENT), 0);
   lv_obj_set_style_text_font(robotMoodLabel, &lv_font_montserrat_20, 0);
   configureOpaqueLabel(robotMoodLabel, 340, 34);
   lv_label_set_text(robotMoodLabel, "READY TO RIDE");
@@ -566,7 +569,7 @@ static void createLvglOverlay() {
   lv_obj_add_flag(stockTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
   stockStatusLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(stockStatusLabel, lv_color_hex(0x7F8A93), 0);
+  lv_obj_set_style_text_color(stockStatusLabel, lvglColor565(C_UI_SUB), 0);
   lv_obj_set_style_text_font(stockStatusLabel, &lv_font_montserrat_16, 0);
   configureOpaqueLabel(stockStatusLabel, 360, 24);
   lv_label_set_text(stockStatusLabel, "Waiting for iPhone quotes");
@@ -590,7 +593,7 @@ static void createLvglOverlay() {
     lv_obj_set_style_pad_all(row, 0, 0);
     lv_obj_set_style_radius(row, 8, 0);
     lv_obj_set_style_border_width(row, 1, 0);
-    lv_obj_set_style_border_color(row, lv_color_hex(0x242424), 0);
+    lv_obj_set_style_border_color(row, lvglColor565(C_UI_LINE), 0);
     lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(row, lv_color_hex(STOCK_PANEL_COLOR), 0);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
@@ -637,7 +640,7 @@ static void createLvglOverlay() {
     lv_obj_set_size(stockChangeLabels[i], 150, 24);
     lv_label_set_long_mode(stockChangeLabels[i], LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(stockChangeLabels[i], LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_style_text_color(stockChangeLabels[i], lv_color_hex(0x7F8A93), 0);
+    lv_obj_set_style_text_color(stockChangeLabels[i], lvglColor565(C_UI_SUB), 0);
     lv_obj_set_style_text_font(stockChangeLabels[i], &lv_font_montserrat_16, 0);
     lv_label_set_text(stockChangeLabels[i], "--");
     lv_obj_align(stockChangeLabels[i], LV_ALIGN_BOTTOM_RIGHT, -12, -4);
@@ -742,11 +745,11 @@ static void lvglHybridTick() {
     setLvglPos(musicButtons[i], x, buttonY - 43);
     setLvglHidden(musicButtons[i], !showMusic);
     bool enabled = hidMusicMode ? (hidMediaReady() || appleMedia.controlReady(i)) : (bleConnected && bleAuthed && musicHave);
-    setLvglBgColor(musicButtons[i], lvglColor565(enabled ? 0x19A7 : 0x1082));
+    setLvglBgColor(musicButtons[i], lvglColor565(enabled ? C_UI_PANEL_2 : C_UI_PANEL));
     const char *symbol = i == 0 ? LV_SYMBOL_PREV : i == 2 ? LV_SYMBOL_NEXT
       : (musicPlaying ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
     setLvglLabelText(musicButtonLabels[i], symbol);
-    setLvglTextColor(musicButtonLabels[i], lvglColor565(enabled ? 0xFFFFFF : 0x7BEF));
+    setLvglTextColor(musicButtonLabels[i], lvglColor565(enabled ? C_UI_TEXT : C_UI_SUB));
   }
 
   setLvglHidden(settingsSlider, !showSettings);
@@ -772,7 +775,8 @@ static void lvglHybridTick() {
   setLvglHidden(homeHintLabel, true);
   if (showHome) {
     const char *status = waitSt == WAIT_LOST ? "Link lost" : ((bleConnected && bleAuthed) ? "Ready" : "No link");
-    uint32_t statusColor = waitSt == WAIT_LOST ? 0xF800 : ((bleConnected && bleAuthed) ? 0x07E0 : 0x7BEF);
+    uint32_t statusColor = waitSt == WAIT_LOST ? C_UI_ACCENT2
+      : ((bleConnected && bleAuthed) ? C_UI_ACCENT : C_UI_SUB);
     if (setLvglLabelText(homeStatusLabel, status)) {
       lv_obj_align(homeStatusLabel, LV_ALIGN_TOP_MID, 14, 198);
     }
@@ -842,7 +846,7 @@ static void lvglHybridTick() {
         robotLastReacting = reacting;
         lv_label_set_text(robotMoodLabel, robotLastMood.c_str());
         lv_obj_set_style_text_color(robotMoodLabel,
-          lv_color_hex(reacting ? 0xF5B84A : online ? 0xDDE8E9 : 0x7F8A93), 0);
+          lvglColor565(reacting ? C_UI_ACCENT2 : online ? C_UI_ACCENT : C_UI_SUB), 0);
       }
     }
   } else {
@@ -918,7 +922,7 @@ static void lvglHybridTick() {
     setLvglPos(pageDotObjs[i], startX + i * spacing - 4, 440);
     setLvglHidden(pageDotObjs[i], !showDots || i >= visibleDots);
     bool active = infoDots ? page == 3 + i : i < 3 && page == dotOrder[i];
-    setLvglBgColor(pageDotObjs[i], lvglColor565(active ? 0xFFFFFF : 0x4208));
+    setLvglBgColor(pageDotObjs[i], lvglColor565(active ? C_UI_TEXT : C_UI_LINE));
   }
 
   if (page != lvglLastPage || sliding != lvglLastSliding) {
