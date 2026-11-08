@@ -53,10 +53,17 @@ void flushLogicalFrame(const uint16_t *fb, bool fullFrame,
 // The app still renders into a 466x466 logical framebuffer. A board-specific
 // flush maps it into the 480x480 RGB panel framebuffer.
 // v2.2：可以切换画布内存的画布，用来做双缓冲
+bool lvglCanvasRepainted = false;
+extern volatile bool forceFullFlush;
 class SwapCanvas : public Arduino_Canvas {
 public:
   SwapCanvas(int16_t w, int16_t h, Arduino_G *out) : Arduino_Canvas(w, h, out) {}
   void setFramebuffer(uint16_t *f) { _framebuffer = f; }
+  void fillScreen(uint16_t color) {
+    Arduino_Canvas::fillScreen(color);
+    lvglCanvasRepainted = true;
+    forceFullFlush = true;
+  }
   void flush(bool force_flush = false) override {
     (void)force_flush;
     if (_framebuffer) flushLogicalFrame(_framebuffer);
@@ -67,7 +74,8 @@ bool needFlush = false;
 bool frameIsMap = false;          // v2.2 这一帧是小地图（整帧重画，可以异步刷屏）
 bool lvglUiReady = false;         // hybrid LVGL overlay is active on the logical canvas
 bool lvglCaptureTouch = false;    // LVGL slider owns the current gesture
-int screenBrightness = 120;
+int screenBrightness = 70;
+int touchGestureAxis = 0;
 unsigned long brightnessSaveAt = 0;
 uint32_t clockEpoch = 0;
 uint32_t clockSyncedAt = 0;
@@ -86,15 +94,19 @@ bool clockLocalTime(struct tm &out) {
 }
 
 // Compact market quotes are fetched by the iPhone, then pushed over BLE.
-#define STOCK_MAX 4
+#define STOCK_MAX 8
 struct StockQuote {
   String code;
   float price;
   float changePct;
+  uint8_t candleCount = 0;
+  uint8_t candles[12][4] = {};
 };
 StockQuote stockQuotes[STOCK_MAX];
 int stockCount = 0;
 uint32_t stockRevision = 0;
+uint32_t stockPaintedRevision = UINT32_MAX;
+bool stockDirty = false;
 unsigned long stockUpdatedAt = 0;
 
 int qspiMHz = 0;                  // retained for protocol compatibility; RGB panel has no QSPI
@@ -196,7 +208,7 @@ float mapCamLockH[MCAM_MAX];  // v4.0 放图标时的地图朝向：之后固定
 uint8_t laneBg[8], laneFr[8]; // 每条车道的背景方向码、推荐方向码（0xF = 不推荐）
 
 // ===== 文字图片（手机渲染好的 4 位灰度图）=====
-#define IMG_SLOTS 13           // 0 = 路名，1 = 底部信息，2 = 来电人名字，3/4 = 天气地名和风湿度，5/6 = 音乐歌名和歌手
+#define IMG_SLOTS 21           // 0 = 路名，1 = 底部信息，2 = 来电人名字，3/4 = 天气，5/6 = 音乐，13-20 = 股票中文名
 #define IMG_MAX   8192        // 每张图最多字节数
 struct TextImg {
   uint8_t *show;              // 正在显示的图

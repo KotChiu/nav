@@ -83,9 +83,9 @@ unsigned long pageAt = 0;
 void drawPageDots() {
   if (lvglUiReady) return;
   if (page == 0 && inNav) return;
-  if (page >= 3 && page <= 6) {
-    for (int i = 0; i < 4; i++) {
-      aaDisc(CX - 27 + i * 18, 444, 4, page == 3 + i ? C_WHITE : 0x4208);
+  if (page >= 3 && page <= 5) {
+    for (int i = 0; i < 3; i++) {
+      aaDisc(CX - 20 + i * 20, 444, 4, page == 3 + i ? C_WHITE : 0x4208);
     }
     return;
   }
@@ -100,8 +100,13 @@ void drawWaiting(int st) {
   if (sliding) return;                                                 // v5.5 正在滑动：滑完再画
   if (page == 2) { onWaitScreen = false; musicDirty = true; return; }
   if (page == 1) { onWaitScreen = false; wxDirty = true; return; }   // v5.3 正在看天气：先不画首页，滑回来时再画
-  if (page >= 3 && page <= 6) { onWaitScreen = false; needFlush = true; return; }
+  if (page >= 3 && page <= 5) { onWaitScreen = false; needFlush = true; return; }
   gfx->fillScreen(C_BLACK);
+  for (int quadrant = 0; quadrant < 4; quadrant++) {
+    float start = 18 + quadrant * 90;
+    gfx->fillArc(CX, CX, 211, 208, start, start + 54, 0x632C);
+  }
+  aaDisc(CX, 27, 5, 0xD946);
   onWaitScreen = true;
   if (st == WAIT_LOST) drawRedRing();
   if (!lvglUiReady) {

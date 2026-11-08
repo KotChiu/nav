@@ -395,9 +395,51 @@ void handleText(const String &m) {
       q.changePct = (changeEnd < 0 ? m.substring(priceEnd + 1) : m.substring(priceEnd + 1, changeEnd)).toFloat();
       pos = changeEnd < 0 ? m.length() : changeEnd + 1;
     }
-    if (parsed > 0) {
+    if (parsed == incoming) {
       stockCount = parsed;
       stockUpdatedAt = millis();
+      stockRevision++;
+    }
+    return;
+  }
+  if (m.startsWith("#SK,")) {
+    int codeEnd = m.indexOf(',', 4);
+    if (codeEnd < 0) return;
+    String code = m.substring(4, codeEnd);
+    code.trim();
+    code.toUpperCase();
+    int countEnd = m.indexOf(',', codeEnd + 1);
+    int incoming = constrain((countEnd < 0 ? m.substring(codeEnd + 1) : m.substring(codeEnd + 1, countEnd)).toInt(), 0, 12);
+    if (countEnd < 0 && incoming > 0) return;
+
+    int index = -1;
+    for (int i = 0; i < stockCount; i++) {
+      if (stockQuotes[i].code.equalsIgnoreCase(code)) { index = i; break; }
+    }
+    if (index < 0) return;
+
+    uint8_t candles[12][4] = {};
+    int parsed = 0;
+    int pos = countEnd < 0 ? m.length() : countEnd + 1;
+    for (; parsed < incoming; parsed++) {
+      int values[4];
+      for (int field = 0; field < 4; field++) {
+        int end = m.indexOf(',', pos);
+        String part = end < 0 ? m.substring(pos) : m.substring(pos, end);
+        if (!part.length()) break;
+        values[field] = constrain(part.toInt(), 0, 100);
+        pos = end < 0 ? m.length() : end + 1;
+      }
+      if (pos == m.length() && parsed + 1 < incoming) break;
+      candles[parsed][0] = values[0];
+      candles[parsed][1] = values[1];
+      candles[parsed][2] = values[2];
+      candles[parsed][3] = values[3];
+    }
+    if (parsed == incoming) {
+      StockQuote &q = stockQuotes[index];
+      q.candleCount = incoming;
+      memcpy(q.candles, candles, sizeof(candles));
       stockRevision++;
     }
     return;

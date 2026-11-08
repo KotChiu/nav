@@ -28,13 +28,13 @@ class FlashTests(unittest.TestCase):
             for name, data in [('new_app_0x10000.bin', app), ('new_full_0x0.bin', bytes(0x10000) + app)]:
                 (out / name).write_bytes(data)
                 entries.append({'file': name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
-            (out / 'new_manifest.json').write_text(json.dumps({'firmware': '7.12.9-junction.11', 'board': flash.BOARD, 'files': entries}))
-            version, _ = flash.validate_images(root)
+            (out / 'new_manifest.json').write_text(json.dumps({'firmware': '7.12.9-junction.11', 'board': flash.BOARDS['175']['name'], 'files': entries}))
+            version, _ = flash.validate_images('175', root)
             self.assertEqual(version, '7.12.9-junction.11')
             source.unlink()
             (source.parents[2] / 'MotoNav.ino').unlink()
             (root / 'firmware/RELEASE_VERSION').write_text('7.12.9-junction.11\n')
-            version, _ = flash.validate_images(root)
+            version, _ = flash.validate_images('175', root)
             self.assertEqual(version, '7.12.9-junction.11')
 
     def test_upgrade_and_full_addresses(self):
@@ -88,12 +88,12 @@ class FlashTests(unittest.TestCase):
             for name, data in images.items():
                 (out / name).write_bytes(data)
                 entries.append({"file": name, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
-            (out / "test_manifest.json").write_text(json.dumps({"firmware": "7.9.0", "board": flash.BOARD, "files": entries}))
-            version, _ = flash.validate_images(root)
+            (out / "test_manifest.json").write_text(json.dumps({"firmware": "7.9.0", "board": flash.BOARDS['175']['name'], "files": entries}))
+            version, _ = flash.validate_images('175', root)
             self.assertEqual(version, "7.9.0")
             (out / "test_app_0x10000.bin").write_bytes(b"corrupted")
             with self.assertRaisesRegex(ValueError, "校验失败"):
-                flash.validate_images(root)
+                flash.validate_images('175', root)
 
 
 if __name__ == "__main__":

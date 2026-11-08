@@ -62,7 +62,7 @@ void touchPoll() {
   unsigned long now = millis();
   if (!touchOK) return;
   if (touchHasIrq && !touchIrq && !touchDown && !callOn) return;
-  if (now - lastPoll < 12) return;
+  if (now - lastPoll < 8) return;
   lastPoll = now;
   touchIrq = false;
   if (callAnswerSent && now - callAnswerAt > 4000) callAnswerSent = false;   // 4 秒还在响：允许再按一次
@@ -71,6 +71,7 @@ void touchPoll() {
   if (n > 0) {
     if (!touchDown) {
       touchDown = true;
+      touchGestureAxis = 0;
       touchHoldAt = now;
       touchX0 = touchX1 = x[0]; touchY0 = touchY1 = y[0];
       pendingEvt = "T,P," + String(x[0]) + "," + String(y[0]);
@@ -89,7 +90,7 @@ void touchPoll() {
     touchLastSeen = now;
     if (callOn || pairOn || touchEat || fxOn) dragAbort();
     else if (!lvglCaptureTouch) dragMove(touchX1 - touchX0, touchY1 - touchY0, now);
-  } else if (touchDown && now - touchLastSeen > 40) {
+  } else if (touchDown && now - touchLastSeen > 24) {
     touchDown = false;
     touchHoldAt = 0;
     if (callOn || pairOn || touchEat || fxOn) dragAbort();

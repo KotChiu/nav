@@ -17,13 +17,13 @@
 #include "src/protocol/TextBitmapReceiver.h"
 #include "src/pages/HomePage.h"
 #include "src/pages/SettingsPage.h"
-#include "src/pages/WatchPage.h"
 #include "src/pages/RobotPage.h"
 #include "src/pages/StockPage.h"
 #include "src/pages/PairingPage.h"
 #include "src/pages/ArrivalAnimation.h"
 #include "src/pages/IncomingCall.h"
 #include "src/pages/WeatherPage.h"
+#include "src/pages/PageRoutes.h"
 #include "src/pages/PageNavigation.h"
 #include "src/display/LvglOverlay.h"
 #include "src/map/MapState.h"
@@ -68,7 +68,7 @@ void setup() {
     setScreenDeg(pr.getInt("rotd", screenRot * 90), false);         // v6.4 任意角度
     bootBrand = BootAnimation::valid(pr.getInt("bootbrand", 0));
     hidMusicMode = pr.getBool("mediahid", false);
-    screenBrightness = constrain(pr.getInt("bright", 120), 5, 180);
+    screenBrightness = constrain(pr.getInt("bright", 70), 5, 180);
     fastFlushOn = pr.getBool("fastf", true);
     pr.end();
     if (qspiMHz != 40 && qspiMHz != 60 && qspiMHz != 80) qspiMHz = 40;
@@ -114,6 +114,7 @@ void setup() {
   Serial.println("stage waiting flush done");
   needFlush = false;
   lvglHybridInit();
+  slideBuffersInit();
   drawWaiting(WAIT_NOLINK);
   flushSync();
   needFlush = false;
@@ -177,6 +178,7 @@ void setup() {
 
 // 主循环：接收消息、处理输入、调度页面、绘图和推屏。
 void loop() {
+  touchPoll(); // Sample input before BLE parsing or rendering.
   hidMediaTick();                                      // press/release without blocking navigation
   static uint32_t lyricConnectionEpoch = 0;
   if (lyricConnectionEpoch != mediaConnectionEpoch) {
@@ -232,7 +234,9 @@ void loop() {
 
   // 2. 取出队列里的所有消息逐条处理（最多 30 条，避免卡住画面）
   static RxMsg local;
+  uint32_t rxSliceAt = micros();
   for (int i = 0; i < 30; i++) {
+    if (i > 0 && micros() - rxSliceAt >= 4000) break;
     bool got = false;
     portENTER_CRITICAL(&mux);
     if (rxTail != rxHead) {
@@ -280,7 +284,7 @@ void loop() {
     pairOn = false; pairDone = false;
     if (page == 2) musicDirty = true;
     else if (page == 1) wxDirty = true;
-    else if (page >= 3 && page <= 6) needFlush = true;
+    else if (page >= 3 && page <= 5) needFlush = true;
     else if (inNav) navDirty = true;
     else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
   }
@@ -296,7 +300,7 @@ void loop() {
     wasCall = false;
     if (page == 2) musicDirty = true;
     else if (page == 1) wxDirty = true;
-    else if (page >= 3 && page <= 6) needFlush = true;
+    else if (page >= 3 && page <= 5) needFlush = true;
     else if (inNav) navDirty = true;
     else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
   }
@@ -316,7 +320,7 @@ void loop() {
     if (!callOn && !pairOn) {
       if (page == 2) musicDirty = true;
       else if (page == 1) wxDirty = true;
-      else if (page >= 3 && page <= 6) needFlush = true;
+      else if (page >= 3 && page <= 5) needFlush = true;
       else if (inNav) navDirty = true;
       else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
     }
@@ -324,6 +328,9 @@ void loop() {
 
   musicTick();
   weatherTick();                                       // v5.3 天气页
+  slideTick();
+  if (page == PAGE_STOCKS && !sliding &&
+      (stockRevision != stockPaintedRevision || stockDirty)) drawStockPage();
   if (inNav && navDirty && !fxOn && !callOn && !pairOn && page == 0 && !sliding) {
     drawNavFrame();
     navDirty = false;
@@ -351,8 +358,7 @@ void loop() {
   } else if(lightShown && !pairOn && !callOn && !fxOn && !sliding) {
     if(page==2)musicDirty=true;
     else if(page==1)wxDirty=true;
-    else if(page==3)needFlush=true;
-    else if(page==4)needFlush=true;
+    else if(page>=3 && page<=5)needFlush=true;
     else if(inNav)navDirty=true;
     else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
   }
@@ -360,18 +366,23 @@ void loop() {
     showLight,inNav,lightNow,trafficLightLab.valid(lightNow),conn,page,sliding,pairOn,callOn,fxOn,staleShown);
   lightShown=showLight;
 
-  lvglHybridTick();
+  // A gesture composites two completed page snapshots. LVGL must not redraw
+  // into that framebuffer until the gesture has settled.
+  if (!sliding) lvglHybridTick();
+  static bool wasTouching = false;
+  if (wasTouching && !touchDown && !sliding) { forceFullFlush = true; needFlush = true; }
+  wasTouching = touchDown;
 
   // 6. 有变化才把画布推到屏幕（小地图帧异步推送，其他画面同步推送）
   static int lastFlushedPage = -1;
   static bool lastFlushedInNav = false;
   if (needFlush && !sliding) {
-    bool lvglOnlyPage = page == 0 ? !inNav : (page >= 3 && page <= 6);
+    bool lvglOnlyPage = page == 0 ? !inNav : (page >= 3 && page <= 5);
     bool lastLvglOnlyPage = lastFlushedPage == 0 ? !lastFlushedInNav
-      : (lastFlushedPage >= 3 && lastFlushedPage <= 6);
+      : (lastFlushedPage >= 3 && lastFlushedPage <= 5);
     bool sameMusicPage = page == 2 && lastFlushedPage == 2 && !inNav && !lastFlushedInNav;
     bool sameLvglPage = page == lastFlushedPage && inNav == lastFlushedInNav &&
-      (page == 0 ? !inNav : (page == 2 || (page >= 3 && page <= 6)));
+      (page == 0 ? !inNav : (page == 2 || (page >= 3 && page <= 5)));
     bool canPartial = sameMusicPage || sameLvglPage ||
       (page != lastFlushedPage && lvglOnlyPage && lastLvglOnlyPage);
     bool partial = canPartial && !forceFullFlush && !frameIsMap &&
@@ -411,5 +422,5 @@ void loop() {
         idlePowerOffShutdown();
     }
   }
-  delay(mapNow ? 1 : 10);
+  delay((mapNow || touchDown || sliding || dragging) ? 1 : 5);
 }

@@ -137,7 +137,7 @@ void drawMapFrame() {
   profMark(9);
   hasCam = saveCam; tripOn = saveTrip;
   drawNavHints(300);                                    // v5.0 重新规划中 / 更快路线 / GPS 信号弱
-  drawBattery(CX - 16, 18, true);                         // v6.8 电量（车速上方）；v7.2 带黑底
+  drawBattery(CX - 16, 18, false);                         // v6.8 电量（车速上方）；v7.2 带黑底
   profMark(10);
   // v2.9 小地图里不画顶部的蓝牙小圆点（会和 N 标记重叠；能收到地图就说明连着）
   needFlush = true;
@@ -174,8 +174,8 @@ void updateStats() {
 #endif
   } else if (statAt != 0 && lvglUiReady) {
 #if FPS_SERIAL_DIAGNOSTICS
-    Serial.printf("UISTAT page=%d flush=%lu/2s render=%lu avg=%lums phase(v/c/d)=%lu/%lu/%lums full=%d rects=%d pixels=%lu need=%d mut(h/p/t/b/c)=%lu/%lu/%lu/%lu/%lu\n",
-                  page, (unsigned long)fc, (unsigned long)lr,
+    Serial.printf("UISTAT deg=%d page=%d flush=%lu/2s render=%lu avg=%lums phase(v/c/d)=%lu/%lu/%lums full=%d rects=%d pixels=%lu need=%d mut(h/p/t/b/c)=%lu/%lu/%lu/%lu/%lu\n",
+                  screenDeg, page, (unsigned long)fc, (unsigned long)lr,
                   (unsigned long)(fc ? fm / fc : 0),
                   (unsigned long)(fc ? fv / fc / 1000 : 0),
                   (unsigned long)(fc ? fcopy / fc / 1000 : 0),

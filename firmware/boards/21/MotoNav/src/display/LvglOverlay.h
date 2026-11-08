@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lvgl.h>
+#include "../../resources/WatchDigits.c"
 
 static inline lv_color_t lvglColor565(uint16_t color) {
   lv_color_t out;
@@ -10,7 +11,10 @@ static inline lv_color_t lvglColor565(uint16_t color) {
 
 static lv_disp_draw_buf_t lvglDrawBuf;
 static lv_disp_drv_t lvglDispDrv;
+static lv_indev_t *lvglPointer = nullptr;
 static volatile bool lvglOverlayDirty = false;
+static bool lvglSnapshotting = false;
+static void lvglSetSnapshotting(bool value) { lvglSnapshotting = value; }
 volatile uint32_t lvglRenderCount = 0;
 volatile uint32_t lvglHideChanges = 0;
 volatile uint32_t lvglPosChanges = 0;
@@ -28,22 +32,21 @@ static lv_obj_t *settingsTitleLabel = nullptr;
 static lv_obj_t *settingsSubLabel = nullptr;
 static lv_obj_t *settingsHintLabel = nullptr;
 static lv_obj_t *settingsCard = nullptr;
+static lv_obj_t *homeActions[2] = {};
 static lv_obj_t *homeTitleLabel = nullptr;
 static lv_obj_t *homeStatusLabel = nullptr;
 static lv_obj_t *homeDeviceLabel = nullptr;
 static lv_obj_t *homeHintLabel = nullptr;
 static lv_obj_t *homeStatusDot = nullptr;
-static bool dotsWereShown = false;
 static lv_obj_t *watchTimeLabel = nullptr;
 static lv_obj_t *watchDateLabel = nullptr;
-static lv_obj_t *watchSecondsLabel = nullptr;
-static lv_obj_t *watchHintLabel = nullptr;
+static lv_obj_t *watchTempLabel = nullptr;
+static lv_obj_t *watchForecastLabel = nullptr;
 static uint32_t lastWatchEpoch = 0;
 static lv_obj_t *robotHalo = nullptr;
 static lv_obj_t *robotBody = nullptr;
 static lv_obj_t *robotFace = nullptr;
 static lv_obj_t *robotEyes[2] = {nullptr, nullptr};
-static lv_obj_t *robotMouth = nullptr;
 static lv_obj_t *robotTitleLabel = nullptr;
 static lv_obj_t *robotMoodLabel = nullptr;
 static unsigned long robotLastAnimAt = 0;
@@ -52,20 +55,21 @@ static bool robotLastBlink = false;
 static bool robotLastOnline = false;
 static bool robotLastReacting = false;
 static String robotLastMood;
+static lv_obj_t *batteryLabel = nullptr;
 static lv_obj_t *stockTitleLabel = nullptr;
 static lv_obj_t *stockStatusLabel = nullptr;
-static lv_obj_t *stockRows[4] = {nullptr, nullptr, nullptr, nullptr};
-static lv_obj_t *stockCodeLabels[4] = {nullptr, nullptr, nullptr, nullptr};
-static lv_obj_t *stockPriceLabels[4] = {nullptr, nullptr, nullptr, nullptr};
-static lv_obj_t *stockChangeLabels[4] = {nullptr, nullptr, nullptr, nullptr};
+static lv_obj_t *stockList = nullptr;
+static lv_obj_t *stockRows[STOCK_MAX] = {};
+static lv_obj_t *stockCodeLabels[STOCK_MAX] = {};
+static lv_obj_t *stockPriceLabels[STOCK_MAX] = {};
+static lv_obj_t *stockChangeLabels[STOCK_MAX] = {};
+static lv_obj_t *stockNameCanvases[STOCK_MAX] = {};
+static lv_obj_t *stockChartCanvases[STOCK_MAX] = {};
+static lv_color_t *stockNameBuffers[STOCK_MAX] = {};
+static lv_color_t *stockChartBuffers[STOCK_MAX] = {};
 static uint32_t stockLastRevision = UINT32_MAX;
 static unsigned long stockLastStatusAt = 0;
 static String stockLastStatus;
-static lv_obj_t *transitionOldImg = nullptr;
-static lv_obj_t *transitionNewImg = nullptr;
-static lv_img_dsc_t transitionOldDsc;
-static lv_img_dsc_t transitionNewDsc;
-static bool transitionActive = false;
 static void setLvglHidden(lv_obj_t *obj, bool hidden);
 static int lvglLastPage = -1;
 static bool lvglLastSliding = false;
@@ -145,18 +149,25 @@ static void lvglClearDirtyArea() {
 
 static void lvglTouchReadCb(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   (void)drv;
-  data->state = touchDown ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
+  data->state = touchDown && !dragging ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
   if (touchDown) {
-    data->point.x = touchX1;
-    data->point.y = touchY1;
+    float x = touchX1 - CX, y = touchY1 - CX;
+    touchVectorToCanvas(x, y);
+    data->point.x = lroundf(CX + x);
+    data->point.y = lroundf(CX + y);
   }
 }
 
 static void musicButtonEventCb(lv_event_t *event) {
-  if (lv_event_get_code(event) != LV_EVENT_PRESSED) return;
+  if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
   int index = (int)(intptr_t)lv_event_get_user_data(event);
   int y = (coverValid && coverImg) ? 360 : 335;
-  musicTap(CX + (index - 1) * 100, y);
+  float ax = 1, ay = 0, bx = 0, by = 1;
+  touchVectorToCanvas(ax, ay);
+  touchVectorToCanvas(bx, by);
+  float dx = (index - 1) * 100, dy = y - CX;
+  musicTap(lroundf(CX + ax * dx + ay * dy),
+           lroundf(CX + bx * dx + by * dy));
 }
 
 static void robotTapEventCb(lv_event_t *event) {
@@ -197,7 +208,7 @@ static lv_obj_t *makeMusicButton(int index) {
   lv_obj_set_style_bg_color(button, lvglColor565(0x0470), LV_STATE_PRESSED);
   lv_obj_set_style_shadow_width(button, 0, 0);
   lv_obj_clear_flag(button, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_event_cb(button, musicButtonEventCb, LV_EVENT_PRESSED, (void *)(intptr_t)index);
+  lv_obj_add_event_cb(button, musicButtonEventCb, LV_EVENT_CLICKED, (void *)(intptr_t)index);
 
   lv_obj_t *label = lv_label_create(button);
   lv_obj_set_style_text_color(label, lv_color_white(), 0);
@@ -216,13 +227,96 @@ static void configureOpaqueLabel(lv_obj_t *label, int width, int height) {
   lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
 }
 
-static void clearCanvasRect(int x, int y, int w, int h) {
-  uint16_t *fb = gfx->getFramebuffer();
-  if (!fb) return;
-  int x0 = max(0, x), x1 = min(LCD_WIDTH, x + w);
-  for (int yy = max(0, y); yy < min(LCD_HEIGHT, y + h); yy++) {
-    if (x1 > x0) memset(fb + (size_t)yy * LCD_WIDTH + x0, 0, (size_t)(x1 - x0) * 2);
+#define STOCK_NAME_W 180
+#define STOCK_NAME_H 28
+#define STOCK_CHART_W 154
+#define STOCK_CHART_H 42
+#define STOCK_PANEL_COLOR 0x080808
+
+static void stockCanvasRect(lv_color_t *buffer, int width, int x, int y,
+                            int w, int h, lv_color_t color) {
+  for (int yy = max(0, y); yy < min(STOCK_CHART_H, y + h); yy++)
+    for (int xx = max(0, x); xx < min(width, x + w); xx++)
+      buffer[yy * width + xx] = color;
+}
+
+static void updateStockNameCanvas(int index) {
+  if (!stockNameCanvases[index] || !stockNameBuffers[index]) return;
+  const lv_color_t bg = lv_color_hex(STOCK_PANEL_COLOR);
+  for (int i = 0; i < STOCK_NAME_W * STOCK_NAME_H; i++)
+    stockNameBuffers[index][i] = bg;
+
+  const TextImg &im = imgs[13 + index];
+  if (!im.show || !im.showW || !im.showH) {
+    lv_obj_invalidate(stockNameCanvases[index]);
+    return;
   }
+  const int bpr = (im.showW + 1) / 2;
+  const int y0 = im.showH < STOCK_NAME_H ? (STOCK_NAME_H - im.showH) / 2 : 0;
+  const int w = min((int)im.showW, STOCK_NAME_W);
+  const int h = min((int)im.showH, STOCK_NAME_H);
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      uint8_t packed = im.show[y * bpr + (x >> 1)];
+      uint8_t nib = (x & 1) ? (packed & 0x0F) : (packed >> 4);
+      if (!nib) continue;
+      uint8_t value = nib * 17;
+      uint16_t gray = ((value >> 3) << 11) | ((value >> 2) << 5) | (value >> 3);
+      stockNameBuffers[index][(y0 + y) * STOCK_NAME_W + x] = lvglColor565(gray);
+    }
+  }
+  lv_obj_invalidate(stockNameCanvases[index]);
+}
+
+static void updateStockChartCanvas(int index) {
+  if (!stockChartCanvases[index] || !stockChartBuffers[index]) return;
+  const lv_color_t bg = lv_color_hex(STOCK_PANEL_COLOR);
+  for (int i = 0; i < STOCK_CHART_W * STOCK_CHART_H; i++)
+    stockChartBuffers[index][i] = bg;
+
+  const StockQuote &q = stockQuotes[index];
+  const int n = min((int)q.candleCount, 12);
+  if (!n) {
+    lv_obj_invalidate(stockChartCanvases[index]);
+    return;
+  }
+  int low = 100, high = 0;
+  for (int i = 0; i < n; i++) {
+    low = min(low, (int)q.candles[i][3]);
+    high = max(high, (int)q.candles[i][2]);
+  }
+  const int span = max(1, high - low);
+  const int slot = max(6, (STOCK_CHART_W - 4) / n);
+  const int bodyWidth = max(3, min(6, slot - 3));
+  auto py = [&](int value) {
+    return 3 + (100 - value) * (STOCK_CHART_H - 6) / 100;
+  };
+  for (int i = 0; i < n; i++) {
+    int centerX = 2 + i * slot + slot / 2;
+    int open = constrain(q.candles[i][0], low, high);
+    int close = constrain(q.candles[i][1], low, high);
+    int candleHigh = constrain(q.candles[i][2], low, high);
+    int candleLow = constrain(q.candles[i][3], low, high);
+    int openY = py((open - low) * 100 / span);
+    int closeY = py((close - low) * 100 / span);
+    int highY = py((candleHigh - low) * 100 / span);
+    int lowY = py((candleLow - low) * 100 / span);
+    uint16_t color = close >= open ? 0xF800 : 0x07E0;
+    lv_color_t c = lvglColor565(color);
+    stockCanvasRect(stockChartBuffers[index], STOCK_CHART_W, centerX, highY,
+                    1, max(1, lowY - highY + 1), c);
+    int top = min(openY, closeY);
+    int height = max(2, abs(closeY - openY));
+    stockCanvasRect(stockChartBuffers[index], STOCK_CHART_W,
+                    centerX - bodyWidth / 2, top, bodyWidth, height, c);
+  }
+  lv_obj_invalidate(stockChartCanvases[index]);
+}
+
+static void homeActionEvent(lv_event_t *event) {
+  if (lv_event_get_code(event) != LV_EVENT_CLICKED || sliding) return;
+  int target = (int)(intptr_t)lv_event_get_user_data(event);
+  showPageAnimated(target, -1, 0);
 }
 
 static void createLvglOverlay() {
@@ -300,15 +394,32 @@ static void createLvglOverlay() {
   settingsHintLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(settingsHintLabel, lv_color_hex(0x69717A), 0);
   lv_obj_set_style_text_font(settingsHintLabel, &lv_font_montserrat_16, 0);
-  lv_label_set_text(settingsHintLabel, "Swipe down to return");
+  lv_label_set_text(settingsHintLabel, "Swipe down for home");
   lv_obj_align(settingsHintLabel, LV_ALIGN_TOP_MID, 0, 400);
   lv_obj_add_flag(settingsHintLabel, LV_OBJ_FLAG_HIDDEN);
 
+  for (int i = 0; i < 2; ++i) {
+    homeActions[i] = lv_btn_create(screen);
+    lv_obj_set_size(homeActions[i], 142, 56);
+    lv_obj_set_pos(homeActions[i], CX - 150 + i * 158, 352);
+    lv_obj_set_style_radius(homeActions[i], 18, 0);
+    lv_obj_set_style_bg_color(homeActions[i], lv_color_hex(0x111111), 0);
+    lv_obj_set_style_border_width(homeActions[i], 1, 0);
+    lv_obj_set_style_border_color(homeActions[i], lv_color_hex(0x333333), 0);
+    lv_obj_set_style_shadow_width(homeActions[i], 0, 0);
+    lv_obj_add_event_cb(homeActions[i], homeActionEvent, LV_EVENT_CLICKED,
+                        (void *)(intptr_t)(i ? PAGE_MUSIC : PAGE_WEATHER));
+    lv_obj_t *label = lv_label_create(homeActions[i]);
+    lv_label_set_text(label, i ? LV_SYMBOL_AUDIO "  MUSIC" : "WEATHER");
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+    lv_obj_center(label);
+    lv_obj_add_flag(homeActions[i], LV_OBJ_FLAG_HIDDEN);
+  }
   homeTitleLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(homeTitleLabel, lv_color_white(), 0);
-  lv_obj_set_style_text_font(homeTitleLabel, &lv_font_montserrat_28, 0);
-  lv_label_set_text(homeTitleLabel, "MotoNav");
-  lv_obj_align(homeTitleLabel, LV_ALIGN_TOP_MID, 0, 128);
+  lv_obj_set_style_text_font(homeTitleLabel, &lv_font_montserrat_20, 0);
+  lv_label_set_text(homeTitleLabel, "MOTO / NAV");
+  lv_obj_align(homeTitleLabel, LV_ALIGN_TOP_MID, 0, 52);
   lv_obj_add_flag(homeTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
   homeStatusDot = lv_obj_create(screen);
@@ -316,76 +427,79 @@ static void createLvglOverlay() {
   lv_obj_set_style_radius(homeStatusDot, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_border_width(homeStatusDot, 0, 0);
   lv_obj_clear_flag(homeStatusDot, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_align(homeStatusDot, LV_ALIGN_TOP_MID, -98, 218);
+  lv_obj_align(homeStatusDot, LV_ALIGN_TOP_MID, -91, 207);
   lv_obj_add_flag(homeStatusDot, LV_OBJ_FLAG_HIDDEN);
 
   homeStatusLabel = lv_label_create(screen);
   lv_obj_set_style_text_font(homeStatusLabel, &lv_font_montserrat_20, 0);
   configureOpaqueLabel(homeStatusLabel, 220, 30);
-  lv_obj_align(homeStatusLabel, LV_ALIGN_TOP_MID, 14, 214);
+  lv_obj_align(homeStatusLabel, LV_ALIGN_TOP_MID, 14, 198);
   lv_obj_add_flag(homeStatusLabel, LV_OBJ_FLAG_HIDDEN);
 
   homeDeviceLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(homeDeviceLabel, lv_color_hex(0x9AA3AD), 0);
   lv_obj_set_style_text_font(homeDeviceLabel, &lv_font_montserrat_16, 0);
   configureOpaqueLabel(homeDeviceLabel, 300, 28);
-  lv_obj_align(homeDeviceLabel, LV_ALIGN_TOP_MID, 0, 286);
+  lv_obj_align(homeDeviceLabel, LV_ALIGN_TOP_MID, 0, 330);
   lv_obj_add_flag(homeDeviceLabel, LV_OBJ_FLAG_HIDDEN);
 
   homeHintLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(homeHintLabel, lv_color_hex(0x69717A), 0);
   lv_obj_set_style_text_font(homeHintLabel, &lv_font_montserrat_16, 0);
-  lv_label_set_text(homeHintLabel, "Swipe to explore");
-  lv_obj_align(homeHintLabel, LV_ALIGN_TOP_MID, 0, 350);
+  lv_label_set_text(homeHintLabel, "");
+  lv_obj_align(homeHintLabel, LV_ALIGN_TOP_MID, 0, 420);
   lv_obj_add_flag(homeHintLabel, LV_OBJ_FLAG_HIDDEN);
 
   watchTimeLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(watchTimeLabel, lv_color_white(), 0);
-  lv_obj_set_style_text_font(watchTimeLabel, &lv_font_montserrat_40, 0);
-  configureOpaqueLabel(watchTimeLabel, 220, 64);
-  lv_label_set_text(watchTimeLabel, "--:--");
-  lv_obj_align(watchTimeLabel, LV_ALIGN_TOP_MID, 0, 136);
+  lv_obj_set_style_text_font(watchTimeLabel, &motonav_watch_digits, 0);
+  configureOpaqueLabel(watchTimeLabel, 340, 82);
+  lv_label_set_text(watchTimeLabel, "00:00");
+  lv_obj_align(watchTimeLabel, LV_ALIGN_TOP_MID, 0, 108);
   lv_obj_add_flag(watchTimeLabel, LV_OBJ_FLAG_HIDDEN);
 
   watchDateLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(watchDateLabel, lv_color_hex(0x9AA3AD), 0);
-  lv_obj_set_style_text_font(watchDateLabel, &lv_font_montserrat_20, 0);
-  configureOpaqueLabel(watchDateLabel, 330, 30);
-  lv_label_set_text(watchDateLabel, "Waiting for phone time");
-  lv_obj_align(watchDateLabel, LV_ALIGN_TOP_MID, 0, 218);
+  lv_obj_set_style_text_font(watchDateLabel, &lv_font_montserrat_16, 0);
+  configureOpaqueLabel(watchDateLabel, 240, 28);
+  lv_label_set_text(watchDateLabel, "WAITING FOR PHONE TIME");
+  lv_obj_align(watchDateLabel, LV_ALIGN_TOP_MID, 0, 76);
   lv_obj_add_flag(watchDateLabel, LV_OBJ_FLAG_HIDDEN);
 
-  watchSecondsLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(watchSecondsLabel, lv_color_hex(0x41E7F2), 0);
-  lv_obj_set_style_text_font(watchSecondsLabel, &lv_font_montserrat_20, 0);
-  configureOpaqueLabel(watchSecondsLabel, 80, 30);
-  lv_label_set_text(watchSecondsLabel, "--");
-  lv_obj_align(watchSecondsLabel, LV_ALIGN_TOP_MID, 0, 258);
-  lv_obj_add_flag(watchSecondsLabel, LV_OBJ_FLAG_HIDDEN);
+  watchTempLabel = lv_label_create(screen);
+  lv_obj_set_style_text_color(watchTempLabel, lv_color_white(), 0);
+  lv_obj_set_style_text_font(watchTempLabel, &lv_font_montserrat_40, 0);
+  configureOpaqueLabel(watchTempLabel, 120, 52);
+  lv_label_set_text(watchTempLabel, "--°");
+  lv_obj_align(watchTempLabel, LV_ALIGN_TOP_MID, 89, 240);
+  lv_obj_add_flag(watchTempLabel, LV_OBJ_FLAG_HIDDEN);
 
-  watchHintLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(watchHintLabel, lv_color_hex(0x69717A), 0);
-  lv_obj_set_style_text_font(watchHintLabel, &lv_font_montserrat_16, 0);
-  lv_label_set_text(watchHintLabel, "Swipe down to return");
-  lv_obj_align(watchHintLabel, LV_ALIGN_TOP_MID, 0, 400);
-  lv_obj_add_flag(watchHintLabel, LV_OBJ_FLAG_HIDDEN);
+  watchForecastLabel = lv_label_create(screen);
+  lv_obj_set_style_text_color(watchForecastLabel, lv_color_hex(0x9AA3AD), 0);
+  lv_obj_set_style_text_font(watchForecastLabel, &lv_font_montserrat_20, 0);
+  configureOpaqueLabel(watchForecastLabel, 310, 34);
+  lv_label_set_text(watchForecastLabel, "WEATHER FROM PHONE");
+  lv_obj_align(watchForecastLabel, LV_ALIGN_TOP_MID, 0, 304);
+  lv_obj_add_flag(watchForecastLabel, LV_OBJ_FLAG_HIDDEN);
 
   robotHalo = lv_obj_create(screen);
-  lv_obj_set_size(robotHalo, 258, 258);
-  lv_obj_set_pos(robotHalo, CX - 129, 88);
+  lv_obj_set_size(robotHalo, 290, 290);
+  lv_obj_set_pos(robotHalo, CX - 145, 86);
   lv_obj_set_style_radius(robotHalo, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_opa(robotHalo, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(robotHalo, 2, 0);
-  lv_obj_set_style_border_color(robotHalo, lv_color_hex(0x18343A), 0);
+  lv_obj_set_style_border_width(robotHalo, 3, 0);
+  lv_obj_set_style_border_color(robotHalo, lv_color_hex(0x24383D), 0);
   lv_obj_clear_flag(robotHalo, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(robotHalo, LV_OBJ_FLAG_HIDDEN);
 
   robotBody = lv_obj_create(screen);
-  lv_obj_set_size(robotBody, 190, 170);
-  lv_obj_set_pos(robotBody, CX - 95, 148);
-  lv_obj_set_style_radius(robotBody, 58, 0);
+  lv_obj_set_size(robotBody, 224, 238);
+  lv_obj_set_pos(robotBody, CX - 112, 112);
+  lv_obj_set_style_radius(robotBody, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_opa(robotBody, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(robotBody, lv_color_hex(0xE9E6DC), 0);
+  lv_obj_set_style_bg_color(robotBody, lv_color_hex(0xF9FAF7), 0);
+  lv_obj_set_style_bg_grad_color(robotBody, lv_color_hex(0xD8E2E1), 0);
+  lv_obj_set_style_bg_grad_dir(robotBody, LV_GRAD_DIR_VER, 0);
   lv_obj_set_style_border_width(robotBody, 0, 0);
   lv_obj_set_style_shadow_width(robotBody, 0, 0);
   lv_obj_clear_flag(robotBody, LV_OBJ_FLAG_SCROLLABLE);
@@ -394,49 +508,31 @@ static void createLvglOverlay() {
   lv_obj_add_flag(robotBody, LV_OBJ_FLAG_HIDDEN);
 
   robotFace = lv_obj_create(robotBody);
-  lv_obj_set_size(robotFace, 142, 80);
-  lv_obj_align(robotFace, LV_ALIGN_TOP_MID, 0, 24);
-  lv_obj_set_style_radius(robotFace, 34, 0);
-  lv_obj_set_style_bg_opa(robotFace, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(robotFace, lv_color_hex(0x0C1216), 0);
-  lv_obj_set_style_border_width(robotFace, 1, 0);
-  lv_obj_set_style_border_color(robotFace, lv_color_hex(0x24505A), 0);
+  lv_obj_set_size(robotFace, 160, 100);
+  lv_obj_align(robotFace, LV_ALIGN_TOP_MID, 0, 64);
+  lv_obj_set_style_bg_opa(robotFace, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(robotFace, 0, 0);
+  lv_obj_set_style_pad_all(robotFace, 0, 0);
   lv_obj_clear_flag(robotFace, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(robotFace, LV_OBJ_FLAG_CLICKABLE);
 
   for (int i = 0; i < 2; i++) {
     robotEyes[i] = lv_obj_create(robotFace);
-    lv_obj_set_size(robotEyes[i], 18, 26);
-    lv_obj_set_pos(robotEyes[i], i == 0 ? 39 : 85, 24);
-    lv_obj_set_style_radius(robotEyes[i], 9, 0);
+    lv_obj_set_size(robotEyes[i], 28, 50);
+    lv_obj_set_pos(robotEyes[i], i == 0 ? 37 : 95, 25);
+    lv_obj_set_style_radius(robotEyes[i], LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_opa(robotEyes[i], LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(robotEyes[i], lv_color_hex(0x41E7F2), 0);
+    lv_obj_set_style_bg_color(robotEyes[i], lv_color_hex(0x11171B), 0);
     lv_obj_set_style_border_width(robotEyes[i], 0, 0);
     lv_obj_clear_flag(robotEyes[i], LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(robotEyes[i], LV_OBJ_FLAG_CLICKABLE);
   }
-
-  robotMouth = lv_obj_create(robotFace);
-  lv_obj_set_size(robotMouth, 28, 5);
-  lv_obj_set_pos(robotMouth, 57, 60);
-  lv_obj_set_style_radius(robotMouth, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_opa(robotMouth, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(robotMouth, lv_color_hex(0x41E7F2), 0);
-  lv_obj_set_style_border_width(robotMouth, 0, 0);
-  lv_obj_clear_flag(robotMouth, LV_OBJ_FLAG_SCROLLABLE);
-
-  lv_obj_t *chest = lv_obj_create(robotBody);
-  lv_obj_set_size(chest, 34, 7);
-  lv_obj_align(chest, LV_ALIGN_BOTTOM_MID, 0, -28);
-  lv_obj_set_style_radius(chest, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_opa(chest, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(chest, lv_color_hex(0xF5B84A), 0);
-  lv_obj_set_style_border_width(chest, 0, 0);
-  lv_obj_clear_flag(chest, LV_OBJ_FLAG_SCROLLABLE);
 
   robotTitleLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(robotTitleLabel, lv_color_hex(0x7F8A93), 0);
   lv_obj_set_style_text_font(robotTitleLabel, &lv_font_montserrat_16, 0);
-  lv_label_set_text(robotTitleLabel, "MOTONAV COMPANION");
-  lv_obj_align(robotTitleLabel, LV_ALIGN_TOP_MID, 0, 54);
+  lv_label_set_text(robotTitleLabel, "COMPANION");
+  lv_obj_align(robotTitleLabel, LV_ALIGN_TOP_MID, 0, 48);
   lv_obj_add_flag(robotTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
   robotMoodLabel = lv_label_create(screen);
@@ -444,13 +540,13 @@ static void createLvglOverlay() {
   lv_obj_set_style_text_font(robotMoodLabel, &lv_font_montserrat_20, 0);
   configureOpaqueLabel(robotMoodLabel, 340, 34);
   lv_label_set_text(robotMoodLabel, "READY TO RIDE");
-  lv_obj_align(robotMoodLabel, LV_ALIGN_TOP_MID, 0, 356);
+  lv_obj_align(robotMoodLabel, LV_ALIGN_TOP_MID, 0, 386);
   lv_obj_add_flag(robotMoodLabel, LV_OBJ_FLAG_HIDDEN);
 
   stockTitleLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(stockTitleLabel, lv_color_white(), 0);
   lv_obj_set_style_text_font(stockTitleLabel, &lv_font_montserrat_28, 0);
-  lv_label_set_text(stockTitleLabel, "MARKET WATCH");
+  lv_label_set_text(stockTitleLabel, "MARKET");
   lv_obj_align(stockTitleLabel, LV_ALIGN_TOP_MID, 0, 52);
   lv_obj_add_flag(stockTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
@@ -462,102 +558,76 @@ static void createLvglOverlay() {
   lv_obj_align(stockStatusLabel, LV_ALIGN_TOP_MID, 0, 88);
   lv_obj_add_flag(stockStatusLabel, LV_OBJ_FLAG_HIDDEN);
 
-  const int stockWidths[4] = {366, 352, 330, 292};
-  for (int i = 0; i < 4; i++) {
-    lv_obj_t *row = lv_obj_create(screen);
-    lv_obj_set_size(row, stockWidths[i], 64);
-    lv_obj_set_pos(row, CX - stockWidths[i] / 2, 114 + i * 72);
+  stockList = lv_obj_create(screen);
+  lv_obj_set_size(stockList, 344, 290);
+  lv_obj_set_pos(stockList, CX - 172, 115);
+  lv_obj_set_style_pad_all(stockList, 0, 0);
+  lv_obj_set_style_border_width(stockList, 0, 0);
+  lv_obj_set_style_bg_color(stockList, lv_color_black(), 0);
+  lv_obj_set_scroll_dir(stockList, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(stockList, LV_SCROLLBAR_MODE_AUTO);
+  lv_obj_add_flag(stockList, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+  lv_obj_add_flag(stockList, LV_OBJ_FLAG_HIDDEN);
+  for (int i = 0; i < STOCK_MAX; i++) {
+    lv_obj_t *row = lv_obj_create(stockList);
+    lv_obj_set_size(row, 332, 96);
+    lv_obj_set_pos(row, 0, i * 106);
+    lv_obj_set_style_pad_all(row, 0, 0);
     lv_obj_set_style_radius(row, 12, 0);
-    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_border_width(row, 1, 0);
+    lv_obj_set_style_border_color(row, lv_color_hex(0x242424), 0);
     lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(row, lv_color_hex(0x10151A), 0);
+    lv_obj_set_style_bg_color(row, lv_color_hex(STOCK_PANEL_COLOR), 0);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(row, LV_OBJ_FLAG_HIDDEN);
     stockRows[i] = row;
 
     stockCodeLabels[i] = lv_label_create(row);
-    lv_obj_set_style_text_color(stockCodeLabels[i], lv_color_white(), 0);
-    lv_obj_set_style_text_font(stockCodeLabels[i], &lv_font_montserrat_20, 0);
-    lv_label_set_text(stockCodeLabels[i], "---");
-    lv_obj_set_pos(stockCodeLabels[i], 16, 7);
+    lv_obj_add_flag(stockCodeLabels[i], LV_OBJ_FLAG_HIDDEN);
+
+    stockNameBuffers[i] = (lv_color_t *)ps_malloc(
+      STOCK_NAME_W * STOCK_NAME_H * sizeof(lv_color_t));
+    if (stockNameBuffers[i]) {
+      stockNameCanvases[i] = lv_canvas_create(row);
+      lv_canvas_set_buffer(stockNameCanvases[i], stockNameBuffers[i],
+                           STOCK_NAME_W, STOCK_NAME_H, LV_IMG_CF_TRUE_COLOR);
+      lv_obj_set_pos(stockNameCanvases[i], 10, 8);
+      lv_obj_clear_flag(stockNameCanvases[i], LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_clear_flag(stockNameCanvases[i], LV_OBJ_FLAG_CLICKABLE);
+      updateStockNameCanvas(i);
+    }
 
     stockPriceLabels[i] = lv_label_create(row);
-    lv_obj_set_width(stockPriceLabels[i], 132);
+    lv_obj_set_size(stockPriceLabels[i], 120, 30);
+    lv_label_set_long_mode(stockPriceLabels[i], LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(stockPriceLabels[i], LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_style_text_color(stockPriceLabels[i], lv_color_white(), 0);
     lv_obj_set_style_text_font(stockPriceLabels[i], &lv_font_montserrat_24, 0);
     lv_label_set_text(stockPriceLabels[i], "--");
-    lv_obj_align(stockPriceLabels[i], LV_ALIGN_TOP_RIGHT, -16, 5);
+    lv_obj_align(stockPriceLabels[i], LV_ALIGN_TOP_RIGHT, -12, 4);
+
+    stockChartBuffers[i] = (lv_color_t *)ps_malloc(
+      STOCK_CHART_W * STOCK_CHART_H * sizeof(lv_color_t));
+    if (stockChartBuffers[i]) {
+      stockChartCanvases[i] = lv_canvas_create(row);
+      lv_canvas_set_buffer(stockChartCanvases[i], stockChartBuffers[i],
+                           STOCK_CHART_W, STOCK_CHART_H, LV_IMG_CF_TRUE_COLOR);
+      lv_obj_set_pos(stockChartCanvases[i], 10, 43);
+      lv_obj_clear_flag(stockChartCanvases[i], LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_clear_flag(stockChartCanvases[i], LV_OBJ_FLAG_CLICKABLE);
+      updateStockChartCanvas(i);
+    }
 
     stockChangeLabels[i] = lv_label_create(row);
-    lv_obj_set_width(stockChangeLabels[i], 104);
+    lv_obj_set_size(stockChangeLabels[i], 150, 24);
+    lv_label_set_long_mode(stockChangeLabels[i], LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(stockChangeLabels[i], LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_style_text_color(stockChangeLabels[i], lv_color_hex(0x7F8A93), 0);
     lv_obj_set_style_text_font(stockChangeLabels[i], &lv_font_montserrat_16, 0);
     lv_label_set_text(stockChangeLabels[i], "--");
-    lv_obj_align(stockChangeLabels[i], LV_ALIGN_BOTTOM_RIGHT, -16, -6);
+    lv_obj_align(stockChangeLabels[i], LV_ALIGN_BOTTOM_RIGHT, -12, -12);
   }
 
-  transitionOldDsc.header.always_zero = 0;
-  transitionOldDsc.header.cf = LV_IMG_CF_TRUE_COLOR;
-  transitionOldDsc.header.w = LCD_WIDTH;
-  transitionOldDsc.header.h = LCD_HEIGHT;
-  transitionOldDsc.data_size = LCD_WIDTH * LCD_HEIGHT * sizeof(lv_color_t);
-  transitionOldDsc.data = (const uint8_t *)slideOld;
-  transitionNewDsc = transitionOldDsc;
-  transitionNewDsc.data = (const uint8_t *)slideNew;
-
-  transitionOldImg = lv_img_create(screen);
-  lv_img_set_src(transitionOldImg, &transitionOldDsc);
-  lv_obj_add_flag(transitionOldImg, LV_OBJ_FLAG_HIDDEN);
-  transitionNewImg = lv_img_create(screen);
-  lv_img_set_src(transitionNewImg, &transitionNewDsc);
-  lv_obj_add_flag(transitionNewImg, LV_OBJ_FLAG_HIDDEN);
-}
-
-static void lvglTransitionBegin() {
-  if (!lvglUiReady || !slideOld || !slideNew) return;
-  transitionActive = true;
-  transitionOldDsc.data = (const uint8_t *)slideOld;
-  transitionNewDsc.data = (const uint8_t *)slideNew;
-  lv_img_set_src(transitionOldImg, &transitionOldDsc);
-  lv_img_set_src(transitionNewImg, &transitionNewDsc);
-  lv_obj_t *screen = lv_scr_act();
-  lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(screen, lv_color_black(), 0);
-  lv_obj_invalidate(transitionOldImg);
-  lv_obj_invalidate(transitionNewImg);
-  setLvglHidden(transitionOldImg, false);
-  setLvglHidden(transitionNewImg, false);
-  lvglTransitionUpdate(0);
-}
-
-static void lvglTransitionUpdate(int p) {
-  if (!transitionActive) return;
-  int full = dragHoriz ? LCD_WIDTH : LCD_HEIGHT;
-  if (p < 0) p = 0;
-  if (p > full) p = full;
-  if (dragHoriz) {
-    int oldX = dragVisualSign > 0 ? p : -p;
-    int newX = dragVisualSign > 0 ? p - LCD_WIDTH : LCD_WIDTH - p;
-    lv_obj_set_pos(transitionOldImg, oldX, 0);
-    lv_obj_set_pos(transitionNewImg, newX, 0);
-  } else {
-    int oldY = dragVisualSign > 0 ? p : -p;
-    int newY = dragVisualSign > 0 ? p - LCD_HEIGHT : LCD_HEIGHT - p;
-    lv_obj_set_pos(transitionOldImg, 0, oldY);
-    lv_obj_set_pos(transitionNewImg, 0, newY);
-  }
-}
-
-static void lvglTransitionEnd() {
-  if (!transitionActive) return;
-  transitionActive = false;
-  setLvglHidden(transitionOldImg, true);
-  setLvglHidden(transitionNewImg, true);
-  lv_obj_t *screen = lv_scr_act();
-  lv_obj_set_style_bg_opa(screen, LV_OPA_TRANSP, 0);
-  lv_obj_invalidate(screen);
 }
 
 static void lvglHybridInit() {
@@ -578,12 +648,21 @@ static void lvglHybridInit() {
   lv_indev_drv_init(&indevDrv);
   indevDrv.type = LV_INDEV_TYPE_POINTER;
   indevDrv.read_cb = lvglTouchReadCb;
-  lv_indev_drv_register(&indevDrv);
+  lvglPointer = lv_indev_drv_register(&indevDrv);
 
   createLvglOverlay();
+  batteryLabel = lv_label_create(lv_scr_act());
+  configureOpaqueLabel(batteryLabel, 130, 22);
+  lv_obj_set_style_text_font(batteryLabel, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(batteryLabel, lv_color_white(), 0);
+  lv_obj_set_pos(batteryLabel, CX - 65, 24);
   lvglLastPage = -1;
   lvglLastSliding = false;
   lvglUiReady = true;
+}
+
+static void lvglCancelPendingPress() {
+  if (lvglPointer) lv_indev_reset(lvglPointer, nullptr);
 }
 
 static void setLvglHidden(lv_obj_t *obj, bool hidden) {
@@ -628,14 +707,18 @@ static void setLvglTextColor(lv_obj_t *obj, lv_color_t color) {
 static void lvglHybridTick() {
   if (!lvglUiReady) return;
 
+  setLvglHidden(batteryLabel, pairOn || callOn || fxOn || (page == PAGE_HOME && inNav));
+  char batteryText[24];
+  if (batPct >= 0) snprintf(batteryText, sizeof(batteryText), "BAT %d%%", batPct);
+  else snprintf(batteryText, sizeof(batteryText), "BAT --");
+  setLvglLabelText(batteryLabel, batteryText);
   bool showMusic = page == 2 && !sliding && !pairOn && !callOn && !fxOn;
   bool showSettings = page == 3 && !sliding && !pairOn && !callOn && !fxOn;
-  bool showWatch = page == 4 && !sliding && !pairOn && !callOn && !fxOn;
-  bool showRobot = page == 5 && !sliding && !pairOn && !callOn && !fxOn;
-  bool showStock = page == 6 && !sliding && !pairOn && !callOn && !fxOn;
+  bool showRobot = page == 4 && !sliding && !pairOn && !callOn && !fxOn;
+  bool showStock = page == 5 && !sliding && !pairOn && !callOn && !fxOn;
   bool showHome = page == 0 && !inNav && !sliding && !pairOn && !callOn && !fxOn && !staleShown;
-  bool infoDots = page >= 3 && page <= 6;
-  bool showDots = (page <= 2 || infoDots) && !sliding && !pairOn && !callOn && !fxOn && !(page == 0 && inNav);
+  bool infoDots = page >= 3 && page <= 5;
+  bool showDots = false;
   int buttonY = (coverValid && coverImg) ? 360 : 335;
   const int dotOrder[] = {1, 0, 2};
 
@@ -666,46 +749,53 @@ static void lvglHybridTick() {
     setLvglLabelText(settingsBrightnessLabel, brightness);
   }
 
+  for (int i = 0; i < 2; ++i) setLvglHidden(homeActions[i], !showHome);
   setLvglHidden(homeTitleLabel, !showHome);
   setLvglHidden(homeStatusDot, !showHome);
   setLvglHidden(homeStatusLabel, !showHome);
-  setLvglHidden(homeDeviceLabel, !showHome);
-  setLvglHidden(homeHintLabel, !showHome);
+  setLvglHidden(homeDeviceLabel, true);
+  setLvglHidden(homeHintLabel, true);
   if (showHome) {
     const char *status = waitSt == WAIT_LOST ? "Link lost" : ((bleConnected && bleAuthed) ? "Ready" : "No link");
     uint32_t statusColor = waitSt == WAIT_LOST ? 0xF800 : ((bleConnected && bleAuthed) ? 0x07E0 : 0x7BEF);
     if (setLvglLabelText(homeStatusLabel, status)) {
-      lv_obj_align(homeStatusLabel, LV_ALIGN_TOP_MID, 14, 214);
+      lv_obj_align(homeStatusLabel, LV_ALIGN_TOP_MID, 14, 198);
     }
     setLvglTextColor(homeStatusLabel, lvglColor565(statusColor));
-    if (setLvglLabelText(homeDeviceLabel, bleName.c_str())) {
-      lv_obj_align(homeDeviceLabel, LV_ALIGN_TOP_MID, 0, 286);
-    }
     setLvglBgColor(homeStatusDot, lvglColor565(statusColor));
   }
 
-  setLvglHidden(watchTimeLabel, !showWatch);
-  setLvglHidden(watchDateLabel, !showWatch);
-  setLvglHidden(watchSecondsLabel, !showWatch);
-  setLvglHidden(watchHintLabel, !showWatch);
-  if (showWatch) {
+  setLvglHidden(watchTimeLabel, !showHome);
+  setLvglHidden(watchDateLabel, !showHome);
+  setLvglHidden(watchTempLabel, !showHome);
+  setLvglHidden(watchForecastLabel, !showHome);
+  if (showHome) {
     uint32_t epoch = clockNowEpoch();
     if (epoch && epoch != lastWatchEpoch) {
       lastWatchEpoch = epoch;
       struct tm local {};
       if (clockLocalTime(local)) {
-        char timeText[16], secondText[12], dateText[40];
+        char timeText[16], dateText[40];
         static const char *const months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
         snprintf(timeText, sizeof(timeText), "%02d:%02d", local.tm_hour, local.tm_min);
-        snprintf(secondText, sizeof(secondText), "%02d", local.tm_sec);
-        snprintf(dateText, sizeof(dateText), "%s %02d  %02d", months[local.tm_mon % 12],
-                 local.tm_mday, local.tm_year + 1900);
-        lv_label_set_text(watchTimeLabel, timeText);
-        lv_label_set_text(watchSecondsLabel, secondText);
-        lv_label_set_text(watchDateLabel, dateText);
+        snprintf(dateText, sizeof(dateText), "%s %02d %s", WX_WEEK[local.tm_wday ? local.tm_wday : 7],
+                 local.tm_mday, months[local.tm_mon % 12]);
+        setLvglLabelText(watchTimeLabel, timeText);
+        setLvglLabelText(watchDateLabel, dateText);
       }
     }
+    char temperature[16];
+    snprintf(temperature, sizeof(temperature), wxHave ? "%d°" : "--°", wxTemp);
+    setLvglLabelText(watchTempLabel, temperature);
+    char forecast[36];
+    if (wxHave && !wxHourly && wxN > 0)
+      snprintf(forecast, sizeof(forecast), "%s %d°   |   %s %d°",
+               LV_SYMBOL_DOWN, wxFl[0], LV_SYMBOL_UP, wxFh[0]);
+    else if (wxHave && wxHourly && wxN > 0)
+      snprintf(forecast, sizeof(forecast), "NEXT HOUR  %d°", wxFh[0]);
+    else snprintf(forecast, sizeof(forecast), "WEATHER FROM PHONE");
+    setLvglLabelText(watchForecastLabel, forecast);
   }
 
   setLvglHidden(robotHalo, !showRobot);
@@ -718,28 +808,26 @@ static void lvglHybridTick() {
       robotLastAnimAt = now;
       bool online = bleConnected && bleAuthed;
       bool reacting = (int32_t)(robotReactUntil - now) > 0;
-      bool blink = !online || (now % 4800UL) < 170UL;
-      if (blink != robotLastBlink || online != robotLastOnline) {
+      bool blink = (now % (online ? 4800UL : 6200UL)) < (online ? 170UL : 450UL);
+      if (blink != robotLastBlink || online != robotLastOnline || reacting != robotLastReacting) {
         robotLastBlink = blink;
         robotLastOnline = online;
-        int eyeHeight = blink ? 4 : 26;
-        int eyeY = blink ? 35 : 24;
+        int eyeHeight = blink ? 5 : reacting ? 58 : 50;
+        int eyeY = blink ? 48 : reacting ? 21 : 25;
         for (int i = 0; i < 2; i++) {
           lv_obj_set_height(robotEyes[i], eyeHeight);
           lv_obj_set_y(robotEyes[i], eyeY);
-          lv_obj_set_style_bg_color(robotEyes[i],
-            lv_color_hex(online ? 0x41E7F2 : 0x526169), 0);
+          lv_obj_set_width(robotEyes[i], reacting ? 33 : 28);
+          lv_obj_set_x(robotEyes[i], i == 0 ? reacting ? 33 : 37 : 95);
         }
       }
-      String mood = reacting ? "HELLO, RIDER" : online ? "READY TO RIDE" : "CONNECT YOUR PHONE";
+      String mood = reacting ? "HELLO!" : online ? "READY TO RIDE" : "WAITING FOR PHONE";
       if (mood != robotLastMood || reacting != robotLastReacting) {
         robotLastMood = mood;
         robotLastReacting = reacting;
         lv_label_set_text(robotMoodLabel, robotLastMood.c_str());
         lv_obj_set_style_text_color(robotMoodLabel,
-          lv_color_hex(reacting ? 0xF5B84A : online ? 0x41E7F2 : 0x7F8A93), 0);
-        lv_obj_set_style_bg_color(robotMouth,
-          lv_color_hex(reacting ? 0xF5B84A : online ? 0x41E7F2 : 0x526169), 0);
+          lv_color_hex(reacting ? 0xF5B84A : online ? 0xDDE8E9 : 0x7F8A93), 0);
       }
     }
   } else {
@@ -750,30 +838,34 @@ static void lvglHybridTick() {
     robotLastMood = "";
   }
 
+  setLvglHidden(stockList, !showStock);
   setLvglHidden(stockTitleLabel, !showStock);
   setLvglHidden(stockStatusLabel, !showStock);
   if (showStock) {
-    bool refresh = stockRevision != stockLastRevision;
+    bool refresh = stockRevision != stockLastRevision || stockDirty;
     if (refresh) {
       stockLastRevision = stockRevision;
-      for (int i = 0; i < 4; i++) {
+      stockDirty = false;
+      for (int i = 0; i < STOCK_MAX; i++) {
         bool hasQuote = i < stockCount;
         setLvglHidden(stockRows[i], !hasQuote);
         if (!hasQuote) continue;
         const StockQuote &q = stockQuotes[i];
         char price[24], change[24];
         snprintf(price, sizeof(price), "%.2f", q.price);
-        snprintf(change, sizeof(change), "%+.2f%%", q.changePct);
-        lv_label_set_text(stockCodeLabels[i], q.code.c_str());
+        float delta = fabsf(100 + q.changePct) > 0.001f ? q.price * q.changePct / (100 + q.changePct) : 0;
+        snprintf(change, sizeof(change), "%+.2f  (%+.2f%%)", delta, q.changePct);
         lv_label_set_text(stockPriceLabels[i], price);
         lv_label_set_text(stockChangeLabels[i], change);
         uint32_t color = q.changePct > 0.0001f ? 0xFF5A68
           : q.changePct < -0.0001f ? 0x38D996 : 0x9AA3AD;
-        lv_obj_set_style_text_color(stockChangeLabels[i], lvglColor565(color), 0);
+        lv_obj_set_style_text_color(stockChangeLabels[i], lv_color_hex(color), 0);
+        updateStockNameCanvas(i);
+        updateStockChartCanvas(i);
       }
       stockLastStatusAt = 0;
     }
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < STOCK_MAX; i++) {
       setLvglHidden(stockRows[i], i >= stockCount);
     }
     unsigned long now = millis();
@@ -799,17 +891,12 @@ static void lvglHybridTick() {
   } else {
     stockLastRevision = UINT32_MAX;
     stockLastStatusAt = 0;
-    for (int i = 0; i < 4; i++) setLvglHidden(stockRows[i], true);
+    for (int i = 0; i < STOCK_MAX; i++) setLvglHidden(stockRows[i], true);
   }
 
-  if (!showDots && dotsWereShown) {
-    clearCanvasRect(CX - 44, 432, 88, 34);
-  }
-  dotsWereShown = showDots;
-
-  int visibleDots = infoDots ? 4 : 3;
-  int startX = infoDots ? CX - 27 : CX - 20;
-  int spacing = infoDots ? 18 : 20;
+  int visibleDots = 3;
+  int startX = CX - 20;
+  int spacing = 20;
   for (int i = 0; i < 4; i++) {
     setLvglPos(pageDotObjs[i], startX + i * spacing - 4, 440);
     setLvglHidden(pageDotObjs[i], !showDots || i >= visibleDots);
@@ -822,7 +909,22 @@ static void lvglHybridTick() {
     lvglLastSliding = sliding;
   }
 
-  lv_timer_handler();
+  // Canvas pages can clear the framebuffer underneath unchanged LVGL objects.
+  // Invalidate visible top-level widgets so controls and labels are repainted.
+  if (lvglCanvasRepainted) {
+    lvglCanvasRepainted = false;
+    lv_obj_t *screen = lv_scr_act();
+    uint32_t childCount = lv_obj_get_child_cnt(screen);
+    for (uint32_t i = 0; i < childCount; i++) {
+      lv_obj_t *child = lv_obj_get_child(screen, i);
+      if (child && !lv_obj_has_flag(child, LV_OBJ_FLAG_HIDDEN)) lv_obj_invalidate(child);
+    }
+  }
+
+  // Snapshot preparation only needs a display refresh. Running the input
+  // timers here would deliver the still-held finger to the destination page.
+  if (lvglSnapshotting) lv_refr_now(nullptr);
+  else lv_timer_handler();
   if (lvglOverlayDirty) {
     lvglOverlayDirty = false;
     needFlush = true;

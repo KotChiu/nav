@@ -57,11 +57,13 @@ void saveBrightnessIfDue() {
 bool fastFlushInit() { return false; }
 
 void flushSetFullFrame() {
+  if (flushDone) { flushWait(); xSemaphoreGive(flushDone); }
   flushFullFrame = true;
   flushRectCount = 0;
 }
 
 void flushSetDirtyRects(const FlushRect *rects, int count) {
+  if (flushDone) { flushWait(); xSemaphoreGive(flushDone); }
   flushFullFrame = false;
   flushRectCount = constrain(count, 0, FLUSH_RECT_MAX);
   for (int i = 0; i < flushRectCount; i++) {
@@ -109,12 +111,39 @@ void flushLogicalFrame(const uint16_t *fb, bool fullFrame,
         }
       }
     }
-  } else {
-    for (int y = 0; y < PANEL_HEIGHT; y++) {
-      uint16_t *row = target + y * PANEL_WIDTH;
-      for (int x = 0; x < PANEL_WIDTH; x++) {
-        row[x] = portScale.pixel(fb, x, y, screenRot, rotFree, rotCos, rotSin);
+  } else if (!rotFree) {
+    // Quarter turns need only integer addressing, not bilinear resampling.
+    const int border = (PANEL_WIDTH - LCD_WIDTH) / 2;
+    memset(target, 0, PANEL_WIDTH * PANEL_HEIGHT * sizeof(uint16_t));
+    for (int y = 0; y < LCD_HEIGHT; ++y) {
+      uint16_t *row = target + (y + border) * PANEL_WIDTH + border;
+      for (int x = 0; x < LCD_WIDTH; ++x) {
+        int sx = screenRot == 1 ? y : screenRot == 2 ? LCD_WIDTH - 1 - x : LCD_WIDTH - 1 - y;
+        int sy = screenRot == 1 ? LCD_HEIGHT - 1 - x : screenRot == 2 ? LCD_HEIGHT - 1 - y : x;
+        row[x] = fb[sy * LCD_WIDTH + sx];
       }
+    }
+  } else {
+    // Inverse affine mapping: compute a row origin once and advance by adds.
+    // Nearest sampling avoids four PSRAM reads and bilinear math per pixel.
+    const int32_t center = (LCD_WIDTH - 1) * 32768;
+    const int32_t stepX = (int32_t)((int64_t)rotCos * LCD_WIDTH / PANEL_WIDTH);
+    const int32_t stepY = (int32_t)(-(int64_t)rotSin * LCD_WIDTH / PANEL_WIDTH);
+    const int32_t physicalX = portScale.axis[0] - center;
+    const int sampleStep = 1;
+    for (int y = 0; y < PANEL_HEIGHT; y += sampleStep) {
+      const int32_t physicalY = portScale.axis[y] - center;
+      int32_t fx = (int32_t)(((int64_t)physicalX * rotCos + (int64_t)physicalY * rotSin) >> 16) + center;
+      int32_t fy = (int32_t)((-(int64_t)physicalX * rotSin + (int64_t)physicalY * rotCos) >> 16) + center;
+      uint16_t *row = target + y * PANEL_WIDTH;
+      for (int x = 0; x < PANEL_WIDTH; x += sampleStep, fx += stepX * sampleStep, fy += stepY * sampleStep) {
+        int sx = (fx + 32768) >> 16, sy = (fy + 32768) >> 16;
+        uint16_t pixel = (unsigned)sx < LCD_WIDTH && (unsigned)sy < LCD_HEIGHT
+          ? fb[sy * LCD_WIDTH + sx] : 0;
+        row[x] = pixel;
+        if (sampleStep == 2) row[x + 1] = pixel;
+      }
+      if (sampleStep == 2) memcpy(row + PANEL_WIDTH, row, PANEL_WIDTH * sizeof(uint16_t));
     }
   }
   uint32_t copyAt = micros();
@@ -122,6 +151,13 @@ void flushLogicalFrame(const uint16_t *fb, bool fullFrame,
   uint32_t vsyncAt = micros();
   board21Rgb->drawFrameBuffer(target, PANEL_WIDTH, PANEL_HEIGHT);
   uint32_t drawAt = micros();
+  static uint8_t diagnosticFrames = 0;
+  if (diagnosticFrames < 6) {
+    diagnosticFrames++;
+    Serial.printf("DISPLAY deg=%d full=%d copy=%luus vsync=%luus submit=%luus\n",
+      screenDeg, fullFrame, (unsigned long)(copyAt-phaseAt),
+      (unsigned long)(vsyncAt-copyAt), (unsigned long)(drawAt-vsyncAt));
+  }
   flushCopyUsAcc += copyAt - phaseAt;
   flushVsyncUsAcc += vsyncAt - copyAt;
   flushDrawUsAcc += drawAt - vsyncAt;
@@ -150,8 +186,14 @@ void flushWait() {
 }
 
 void flushAsync() {
-  if (lvglUiReady) {
-    flushSync();
+  if (lvglUiReady && fbBuf[1]) {
+    // LVGL keeps its canonical buffer; transport owns an immutable snapshot.
+    flushWait();
+    memcpy(fbBuf[1], gfx->getFramebuffer(), LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t));
+    flushSrc = fbBuf[1];
+    flushFullFrame = true;
+    flushRectCount = 0;
+    xSemaphoreGive(flushReq);
     return;
   }
   if (!fbBuf[1]) {

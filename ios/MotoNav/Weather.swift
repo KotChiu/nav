@@ -11,6 +11,7 @@ final class Weather: ObservableObject {
     var key: String { UserDefaults.standard.string(forKey: "qw_key") ?? "" }
     private var generation = 0
     private var busy = false
+    private var locationRetries = 0
     private var lastAt = Date.distantPast
     private var cacheLifetime: TimeInterval = 600
     private var retryAt = Date.distantPast
@@ -28,8 +29,10 @@ final class Weather: ObservableObject {
         UserDefaults.standard.set(normalized, forKey: "qw_host")
         UserDefaults.standard.set(key, forKey: "qw_key")
         generation += 1; busy = false; messages = []; images = []; lastAt = .distantPast; retryAt = .distantPast
-        info = "配置已保存，请切换到天气页查询"; detail = info
+        info = "配置已保存，正在查询天气"; detail = info
         clearScreen()
+        locationRetries = 0
+        request(force: true)
     }
     private func clearScreen() {
         BleLink.shared.clearWeather()
@@ -39,7 +42,18 @@ final class Weather: ObservableObject {
         if !force && !messages.isEmpty && Date().timeIntervalSince(lastAt) < cacheLifetime { push(); return }
         guard !busy, Date() >= retryAt else { return }
         guard let loc = LocationService.shared.location, abs(loc.timestamp.timeIntervalSinceNow) < 120,
-              loc.horizontalAccuracy >= 0 else { info = "等待手机定位，请稍后重试"; LocationService.shared.start(); return }
+              loc.horizontalAccuracy >= 0 else { info = "等待手机定位，请稍后重试"; LocationService.shared.start()
+            if locationRetries < 10 {
+                locationRetries += 1
+                let expectedGeneration = generation
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                    guard let self = self, self.generation == expectedGeneration else { return }
+                    self.request(force: force)
+                }
+            }
+            return
+        }
+        locationRetries = 0
         busy = true; info = "正在查天气…"
         generation += 1
         let id = generation, accountHost = host, accountKey = key
@@ -56,18 +70,24 @@ final class Weather: ObservableObject {
         let point = String(format: "%.2f/%.2f", locale: Locale(identifier: "en_US_POSIX"), loc.coordinate.latitude, loc.coordinate.longitude)
         let location = String(format: "%.2f%%2C%.2f", locale: Locale(identifier: "en_US_POSIX"), loc.coordinate.longitude, loc.coordinate.latitude)
         let paths = ["/weather/v1/current/\(point)?lang=zh&localTime=true", "/weather/v1/hourly/\(point)?hours=6&lang=zh&localTime=true", "/v7/minutely/5m?location=\(location)&lang=zh", "/airquality/v1/current/\(point)?lang=zh", "/weatheralert/v1/current/\(point)?lang=zh&localTime=true"]
-        var results: [[String: Any]?] = [], notes: [String] = []
-        let labels = ["实况", "逐小时", "降水", "空气", "预警"]
-        for (i, path) in paths.enumerated() {
-            do {
-                let json = try await QWeatherHTTP.get(host: host, key: key, path: path)
-                guard generation == id else { return }
-                results.append(json)
-            } catch {
-                guard generation == id else { return }
-                notes.append("\(labels[i])：\(error.localizedDescription)"); results.append(nil)
-                if i == 0 { busy = false; retryAt = Date().addingTimeInterval(30); info = notes.joined(separator: "；"); clearScreen(); return }
+        let fetched = await withTaskGroup(of: (Int, [String: Any]?, String?).self) { group in
+            for (i, path) in paths.enumerated() {
+                group.addTask {
+                    do { return (i, try await QWeatherHTTP.get(host: host, key: key, path: path), nil) }
+                    catch { return (i, nil, error.localizedDescription) }
+                }
             }
+            var values: [(Int, [String: Any]?, String?)] = []
+            for await value in group { values.append(value) }
+            return values.sorted { $0.0 < $1.0 }
+        }
+        let results = fetched.map { $0.1 }
+        let labels = ["实况", "逐小时", "降水", "空气", "预警"]
+        let notes = fetched.compactMap { item in item.2.map { "\(labels[item.0])：\($0)" } }
+        guard generation == id else { return }
+        if results[0] == nil {
+            busy = false; retryAt = Date().addingTimeInterval(30)
+            info = notes.joined(separator: "；"); detail = info; clearScreen(); return
         }
         guard generation == id else { return }
         busy = false

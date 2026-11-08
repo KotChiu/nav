@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CoreFoundation
 
 /// Fetches a small market watchlist on the iPhone and forwards compact quotes
 /// to the display. Keeping network credentials and parsing on the phone avoids
@@ -10,10 +11,13 @@ final class StockBridge: ObservableObject {
     struct Quote: Identifiable {
         var id: String { code }
         let code: String
+        let name: String
         let price: Double
         let changePct: Double
     }
 
+    struct Candle { let open: Double; let close: Double; let high: Double; let low: Double }
+    @Published private(set) var candles: [String: [Candle]] = [:]
     @Published private(set) var watchlist: [String]
     @Published private(set) var quotes: [Quote] = []
     @Published private(set) var status = "等待刷新"
@@ -22,10 +26,19 @@ final class StockBridge: ObservableObject {
     private let defaultsKey = "stock_watchlist_v1"
     private var timer: Timer?
     private var fetching = false
+    private var candleTasks: [String: URLSessionDataTask] = [:]
 
     private init() {
         let saved = UserDefaults.standard.stringArray(forKey: defaultsKey) ?? []
-        watchlist = saved.isEmpty ? ["sh000001", "sz399001", "usAAPL"] : Array(saved.prefix(4))
+        if UserDefaults.standard.object(forKey: defaultsKey) == nil {
+            watchlist = ["sh000001", "sz399001", "usAAPL"]
+        } else {
+            var seen = Set<String>()
+            watchlist = saved.compactMap { Self.normalize($0) }
+                .filter { seen.insert($0).inserted }
+                .prefix(8)
+                .map { $0 }
+        }
     }
 
     func start() {
@@ -58,7 +71,7 @@ final class StockBridge: ObservableObject {
             } else if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                 parsed = .failure(StockError.http(http.statusCode))
             } else if let data = data,
-                      let text = String(data: data, encoding: .isoLatin1) {
+                      let text = String(data: data, encoding: String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)))) {
                 parsed = .success(Self.parse(text, requested: codes))
             } else {
                 parsed = .failure(StockError.invalidData)
@@ -70,10 +83,11 @@ final class StockBridge: ObservableObject {
                     if values.isEmpty {
                         self.status = "没有收到行情，检查股票代码"
                     } else {
-                        self.quotes = values
+                        self.quotes = values.filter { q in self.watchlist.contains { $0.lowercased() == q.code.lowercased() } }
                         self.lastUpdated = Date()
                         self.status = "已更新 \(values.count) 只 · \(Self.timeText(Date()))"
                         self.sendLatest()
+                        self.fetchCandles()
                     }
                 case .failure(let error):
                     self.status = "行情更新失败：\(error.localizedDescription)"
@@ -84,7 +98,7 @@ final class StockBridge: ObservableObject {
 
     @discardableResult
     func add(_ raw: String) -> Bool {
-        guard watchlist.count < 4, let code = Self.normalize(raw) else { return false }
+        guard watchlist.count < 8, let code = Self.normalize(raw) else { return false }
         guard !watchlist.contains(code) else { return false }
         watchlist.append(code)
         save()
@@ -94,21 +108,76 @@ final class StockBridge: ObservableObject {
     }
 
     func remove(_ code: String) {
-        watchlist.removeAll { $0 == code }
-        quotes.removeAll { $0.code == code }
+        let key = (Self.normalize(code) ?? code).lowercased()
+        watchlist.removeAll { $0.lowercased() == key }
+        quotes.removeAll { $0.code.lowercased() == key }
+        candles.removeValue(forKey: key.uppercased())
+        candleTasks.removeValue(forKey: key)?.cancel()
+        status = watchlist.isEmpty ? "自选列表为空" : "已删除 \(key.uppercased())"
         save()
         sendLatest()
+        guard !watchlist.isEmpty else { return }
         refresh()
     }
 
     /// Re-send the last successful payload after authentication or reconnect.
     func sendLatest() {
-        guard BleLink.shared.isReady, !quotes.isEmpty else { return }
-        var parts = ["#STK", String(min(quotes.count, 4))]
-        for q in quotes.prefix(4) {
+        guard BleLink.shared.isReady else { return }
+        var parts = ["#STK", String(min(quotes.count, 8))]
+        for q in quotes.prefix(8) {
             parts.append(q.code.uppercased())
             parts.append(String(format: "%.2f", q.price))
             parts.append(String(format: "%+.2f", q.changePct))
+        }
+        BleLink.shared.send(parts.joined(separator: ",") + (quotes.isEmpty ? "," : ""))
+        for (i, q) in quotes.prefix(8).enumerated() {
+            TextImage.send(slot: 13 + i, q.name, maxW: 180, size: 22, minSize: 16)
+            sendCandles(q.code)
+        }
+    }
+
+    private func fetchCandles() {
+        let codes = quotes.map { $0.code.lowercased() }
+        for code in codes {
+            guard let url = URL(string: "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=\(code),day,,,12,qfq") else { continue }
+            candleTasks.removeValue(forKey: code)?.cancel()
+            let task = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+                var values: [Candle] = []
+                if let data = data,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let all = json["data"] as? [String: Any], let item = all[code] as? [String: Any],
+                   let rows = (item["qfqday"] ?? item["day"]) as? [[Any]] {
+                    values = rows.suffix(12).compactMap { row in
+                        guard row.count >= 5,
+                              let o = Double(String(describing: row[1])),
+                              let c = Double(String(describing: row[2])),
+                              let h = Double(String(describing: row[3])),
+                              let l = Double(String(describing: row[4])),
+                              [o,c,h,l].allSatisfy({ $0.isFinite && $0 > 0 }), h >= max(o,c), l <= min(o,c) else { return nil }
+                        return Candle(open:o, close:c, high:h, low:l)
+                    }
+                }
+                DispatchQueue.main.async {
+                    guard let self = self, self.watchlist.contains(code) else { return }
+                    self.candleTasks.removeValue(forKey: code)
+                    self.candles[code.uppercased()] = values
+                    self.sendCandles(code.uppercased())
+                }
+            }
+            candleTasks[code] = task
+            task.resume()
+        }
+    }
+
+    private func sendCandles(_ code: String) {
+        guard BleLink.shared.isReady else { return }
+        let values = candles[code] ?? []
+        var parts = ["#SK", code, String(values.count)]
+        let low = values.map(\.low).min() ?? 0
+        let high = values.map(\.high).max() ?? 1
+        let span = max(high - low, 0.000001)
+        for c in values {
+            parts += [c.open,c.close,c.high,c.low].map { String(Int((($0-low)/span*100).rounded())) }
         }
         BleLink.shared.send(parts.joined(separator: ","))
     }
@@ -155,7 +224,7 @@ final class StockBridge: ObservableObject {
             let previous = Double(fields[4]) ?? 0
             let reported = fields.count > 32 ? Double(fields[32]) : nil
             let pct = reported ?? (previous > 0 ? (price - previous) / previous * 100 : 0)
-            found[key] = Quote(code: key.uppercased(), price: price, changePct: pct)
+            found[key] = Quote(code: key.uppercased(), name: fields[1], price: price, changePct: pct)
         }
         return requested.compactMap { found[$0.lowercased()] }
     }

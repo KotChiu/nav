@@ -13,6 +13,7 @@ void handleBitmap(const uint8_t *d, int n) {
     navDirty = true;
     if (slot == 3 || slot == 4) wxDirty = true;
     if (slot == 5 || slot == 6 || slot == 12) musicDirty = true;
+    if (slot >= 13 && slot < 13 + STOCK_MAX) stockDirty = true;
     return;
   }
   if (slot == 12 && (!musicLyrics || !hidMusicMode || !appleMedia.available ||
@@ -34,5 +35,6 @@ void handleBitmap(const uint8_t *d, int n) {
     navDirty = true;
     if (slot == 3 || slot == 4) wxDirty = true;
     if (slot == 5 || slot == 6 || slot == 12) musicDirty = true;                // 音乐文字图片收齐后刷新
+    if (slot >= 13 && slot < 13 + STOCK_MAX) stockDirty = true;
   }
 }

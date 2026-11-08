@@ -61,7 +61,7 @@ final class BleLink: NSObject, ObservableObject {
     private var lastState: [String: String] = [:]          // 文字状态（重连后补发）
     private var stateOrder: [String] = []
     private var lastImg: [Int: (w: Int, h: Int, data: Data)] = [:]
-    private var imgId = [Int](repeating: 0, count: 13)
+    private var imgId = [Int](repeating: 0, count: 21)
     private var heartbeat: Timer?
     private var lastWriteAt = Date.distantPast
     private var writePacer = BleWritePacer()
@@ -175,6 +175,10 @@ final class BleLink: NSObject, ObservableObject {
     // MARK: - 发送
 
     private func keyOf(_ msg: String) -> String {
+        if msg.hasPrefix("#SK,") {
+            let parts = msg.split(separator: ",", maxSplits: 2).map(String.init)
+            if parts.count >= 2 { return "#SK,\(parts[1])" }
+        }
         if msg.hasPrefix("#") { return String(msg.split(separator: ",", maxSplits: 1).first ?? "") }
         if msg == "P" { return "P" }
         return "NAV"                                    // 导航方向、到达 A、清屏 C

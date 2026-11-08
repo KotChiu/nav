@@ -37,9 +37,9 @@ struct ContentView: View {
     @State private var addingVia = false               // 正在搜途经点
     @State private var stockInput = ""
 
-    static let bg = Color(red: 0.055, green: 0.04, blue: 0.08)
-    static let card = Color(red: 0.10, green: 0.08, blue: 0.14)
-    static let stroke = Color(red: 0.17, green: 0.14, blue: 0.22)
+    static let bg = Color(red: 0.015, green: 0.015, blue: 0.015)
+    static let card = Color(red: 0.055, green: 0.055, blue: 0.055)
+    static let stroke = Color(red: 0.16, green: 0.16, blue: 0.16)
     static let pink = Color(red: 1.0, green: 0.31, blue: 0.71)
     static let cyan = Color(red: 0.26, green: 0.88, blue: 0.94)
     static let sub = Color(red: 0.62, green: 0.58, blue: 0.67)
@@ -547,29 +547,55 @@ struct ContentView: View {
                         .foregroundColor(.white)
                         .background(RoundedRectangle(cornerRadius: 10).fill(ContentView.pink))
                 }
-                .disabled(stocks.watchlist.count >= 4)
+                .disabled(stocks.watchlist.count >= 8)
             }
-            if stocks.quotes.isEmpty {
-                Text("最多 4 只。行情由 iPhone 获取并同步到表盘。")
+            if stocks.watchlist.isEmpty {
+                Text("最多 8 只。行情由 iPhone 获取并同步到表盘。")
                     .font(.caption).foregroundColor(ContentView.sub)
             } else {
-                ForEach(stocks.quotes) { quote in
-                    HStack(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(quote.code).font(.subheadline.monospaced()).foregroundColor(.white)
-                            Text(String(format: "%.2f", quote.price)).font(.caption.monospaced()).foregroundColor(ContentView.sub)
+                ForEach(stocks.watchlist, id: \.self) { code in
+                    let quote = stocks.quotes.first { $0.code.lowercased() == code.lowercased() }
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(quote?.name ?? code.uppercased())
+                                    .font(.subheadline.bold())
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                Text(code.uppercased())
+                                    .font(.caption2.monospaced())
+                                    .foregroundColor(ContentView.sub)
+                            }
+                            Spacer(minLength: 8)
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(quote.map { String(format: "%.2f", $0.price) } ?? "等待行情")
+                                    .font(.subheadline.monospaced().bold())
+                                    .foregroundColor(.white)
+                                Text(quote.map { String(format: "%+.2f%%", $0.changePct) } ?? "--")
+                                    .font(.caption.monospaced().bold())
+                                    .foregroundColor((quote?.changePct ?? 0) > 0 ? .red : (quote?.changePct ?? 0) < 0 ? .green : ContentView.sub)
+                            }
+                            Button(role: .destructive) {
+                                stocks.remove(code)
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                                    .labelStyle(.iconOnly)
+                                    .font(.caption.bold())
+                                    .frame(width: 36, height: 36)
+                                    .foregroundColor(.white)
+                                    .background(Color.red.opacity(0.78), in: RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(.plain)
+                            .contentShape(RoundedRectangle(cornerRadius: 8))
+                            .accessibilityLabel("删除 \(quote?.name ?? code)")
                         }
-                        Spacer()
-                        Text(String(format: "%+.2f%%", quote.changePct))
-                            .font(.subheadline.monospaced().bold())
-                            .foregroundColor(quote.changePct > 0 ? .red : quote.changePct < 0 ? .green : ContentView.sub)
-                        Button {
-                            stocks.remove(quote.code)
-                        } label: {
-                            Image(systemName: "xmark.circle.fill").foregroundColor(ContentView.sub)
-                        }
+                        MiniKLineView(candles: stocks.candles[code.uppercased()] ?? [])
+                            .frame(height: 42)
+                            .background(ContentView.bg, in: RoundedRectangle(cornerRadius: 6))
                     }
-                    .padding(.vertical, 3)
+                    .padding(10)
+                    .background(ContentView.bg, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(ContentView.stroke, lineWidth: 1))
                 }
             }
             HStack {
@@ -664,6 +690,60 @@ struct ContentView: View {
 }
 
 // MARK: - 小组件
+
+struct MiniKLineView: View {
+    let candles: [StockBridge.Candle]
+
+    var body: some View {
+        Canvas { context, size in
+            guard !candles.isEmpty else {
+                context.draw(
+                    Text("暂无 K 线")
+                        .font(.caption2)
+                        .foregroundColor(ContentView.sub),
+                    at: CGPoint(x: size.width / 2, y: size.height / 2)
+                )
+                return
+            }
+
+            let low = candles.map(\.low).min() ?? 0
+            let high = candles.map(\.high).max() ?? 1
+            let span = max(high - low, 0.000001)
+            let plot = CGRect(x: 5, y: 5, width: max(1, size.width - 10), height: max(1, size.height - 10))
+            let slot = plot.width / CGFloat(candles.count)
+            let bodyWidth = max(2, min(6, slot * 0.55))
+
+            var baseline = Path()
+            baseline.move(to: CGPoint(x: plot.minX, y: plot.maxY))
+            baseline.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY))
+            context.stroke(baseline, with: .color(ContentView.stroke), lineWidth: 0.5)
+
+            func y(_ value: Double) -> CGFloat {
+                plot.maxY - CGFloat((value - low) / span) * plot.height
+            }
+
+            for (index, candle) in candles.enumerated() {
+                let centerX = plot.minX + slot * (CGFloat(index) + 0.5)
+                let color = candle.close >= candle.open ? Color.red : Color.green
+                var wick = Path()
+                wick.move(to: CGPoint(x: centerX, y: y(candle.high)))
+                wick.addLine(to: CGPoint(x: centerX, y: y(candle.low)))
+                context.stroke(wick, with: .color(color), lineWidth: 1)
+
+                let top = min(y(candle.open), y(candle.close))
+                let height = max(1.5, abs(y(candle.open) - y(candle.close)))
+                let body = CGRect(
+                    x: centerX - bodyWidth / 2,
+                    y: top,
+                    width: bodyWidth,
+                    height: height
+                )
+                context.fill(Path(body), with: .color(color))
+            }
+        }
+        .accessibilityLabel("K 线")
+    }
+}
 
 struct CardView<Content: View>: View {
     @ViewBuilder var content: Content
