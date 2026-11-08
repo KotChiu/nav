@@ -23,6 +23,8 @@
 
 #include "esp_lcd_panel_rgb.h"
 #include "esp_lcd_panel_ops.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 
 //#include "esp32s3/rom/cache.h"
@@ -120,6 +122,11 @@ public:
   }
 
   uint16_t *getFrameBuffer(int16_t w, int16_t h);
+  uint16_t *getFrameBuffer(uint8_t index);
+  bool drawFrameBuffer(uint16_t *frame_buffer, int16_t w, int16_t h);
+
+  bool refresh();
+  bool waitVsync();
 
 protected:
 private:
@@ -144,6 +151,11 @@ private:
   size_t _bounce_buffer_size_px;
 
   esp_lcd_panel_handle_t _panel_handle = NULL;
+  uint16_t *_frame_buffers[2] = {nullptr, nullptr};
+  SemaphoreHandle_t _vsync_ready = nullptr;
+  static bool _vsyncCallback(esp_lcd_panel_handle_t panel,
+                             const esp_lcd_rgb_panel_event_data_t *event_data,
+                             void *user_ctx);
 };
 
 #endif // #if defined(ESP32) && (CONFIG_IDF_TARGET_ESP32S3)

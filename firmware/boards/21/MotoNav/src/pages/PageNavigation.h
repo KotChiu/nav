@@ -1,0 +1,456 @@
+#pragma once
+// 音乐页面、手势换页和数据中断提示。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
+// ---- v5.5 跟手换页 ----
+// 触摸坐标和画面方向相反时改成 1（拖动时画面往手指反方向走就是反了）
+#ifndef BOARD_TOUCH_FLIP_X
+#define BOARD_TOUCH_FLIP_X 1
+#endif
+#ifndef BOARD_TOUCH_FLIP_Y
+#define BOARD_TOUCH_FLIP_Y 1
+#endif
+#define TOUCH_FLIP_X BOARD_TOUCH_FLIP_X
+#define TOUCH_FLIP_Y BOARD_TOUCH_FLIP_Y
+#define DRAG_START  16        // 手指移动超过这么多像素才开始拖
+uint16_t *slideOld = nullptr, *slideNew = nullptr;
+int16_t chordHalf[LCD_HEIGHT];   // 每一行在圆里的半宽（圆外不用算）
+bool chordReady = false;
+int lastSlideSx = -1, lastSlideSy = 0;      // 上次进天气页的方向（自动回去时反着滑）
+void drawNavFrame();
+
+// v7.8 音乐页：歌名/歌手图片栏 5/6；#Z,有会话,播放中,按钮位掩码。
+// v7.12.10-cover 收到封面（bulk type 5）时改为封面圆盘布局：圆盘 r=64 居上，歌名/歌手/按钮下移，不放歌词。
+void drawMusic() {
+  forceFullFlush = true;
+  gfx->fillScreen(C_BLACK);
+  onWaitScreen = false;
+  frameIsMap = false;
+  bool coverShow = coverValid && coverImg;
+  if (coverShow) {
+    aaDisc(CX, 110, 67, 0x1082);                       // 封面底环（半径 67，贴图半径 64，留 3px 环）
+    uint16_t *fb = gfx->getFramebuffer();
+    int cy = 110, cx0 = CX - 64, cy0 = cy - 64;
+    for (int dy = -64; dy < 64; dy++) {
+      int y = cy + dy;
+      float dyf = y + 0.5f - cy;
+      float half = sqrtf(64.0f * 64.0f - dyf * dyf) - 0.5f;
+      if (half <= 0) continue;
+      int x0 = (int)(CX - half), x1 = (int)(CX + half);
+      if (x0 < cx0) x0 = cx0;
+      if (x1 > cx0 + 127) x1 = cx0 + 127;
+      int len = x1 - x0 + 1;
+      if (len <= 0 || y < 0 || y >= LCD_HEIGHT) continue;
+      int v = (y - cy0) * coverH / 128;
+      if (v < 0) v = 0; else if (v >= coverH) v = coverH - 1;
+      uint16_t *dst = fb + (uint32_t)y * LCD_WIDTH + x0;
+      const uint16_t *src = coverImg + (uint32_t)v * coverW;
+      for (int i = 0; i < len; i++) {
+        int u = (x0 + i - cx0) * coverW / 128;
+        if (u >= coverW) u = coverW - 1;
+        dst[i] = src[u];
+      }
+    }
+  } else printCentered("MUSIC", CX, 65, 4, C_CYAN);
+  bool linked = bleConnected && bleAuthed;
+  if (hidMusicMode && linked && !appleMedia.available) {
+    printCentered("PHONE MEDIA KEYS", CX, coverShow ? 194 : 158, 2, C_WHITE);
+    printCentered("OPEN MUSIC APP ON PHONE", CX, coverShow ? 220 : 210, 2, C_GREY);
+  } else if (linked) {
+    drawTextImg(5, coverShow ? 194 : 158, 0xFF);
+    drawTextImg(6, coverShow ? 240 : 210, 0xBB);
+  } else printCentered("PHONE OFFLINE", CX, coverShow ? 205 : 170, 3, C_GREY);
+  bool showLyrics = linked && hidMusicMode && musicLyrics && appleMedia.available && imgs[12].showW > 0 && !coverShow;
+  if (showLyrics) drawTextImg(12, 242, 0xDD);
+  const char *feedback[] = {"", "SENT", "PHONE RECEIVED", "DONE", "NO RESPONSE", "NO PLAYER", "HID SENT", "HID NOT READY", "HID SEND FAILED", "AMS SENT", "AMS SEND FAILED", "AMS QUEUED"};
+  String state = linked && musicHave ? (musicPlaying ? "PLAYING" : "PAUSED") : "NO PLAYER";
+  if (hidMusicMode) {
+    state = !hidMediaReady() ? (appleMedia.controlMask() ? "AMS MEDIA READY" : "PAIR HID IN PHONE SETTINGS") : !appleMedia.available ? "HID READY / AMS UNAVAILABLE"
+      : !appleMedia.playback.known ? "STATE UNKNOWN" : appleMedia.playback.state == 1 ? "PLAYING" : appleMedia.playback.state == 0 ? "PAUSED" : "SEEKING";
+  }
+  if (musicAck > 0 && musicAck <= 11) state = feedback[musicAck];
+  printCentered(state, CX, showLyrics ? 272 : coverShow ? 276 : 257, 2, musicAck == 4 ? C_ORANGE : C_GREY);
+  for (int i = 0; !lvglUiReady && i < 3; i++) {
+    int x = CX + (i - 1) * 100, y = coverShow ? 360 : 335;
+    bool enabled = hidMusicMode ? (hidMediaReady() || appleMedia.controlReady(i)) : linked && musicHave;
+    uint16_t c = enabled ? C_WHITE : C_GREY;
+    aaDisc(x, y, 43, musicPressed == i ? (enabled ? 0x0470 : 0x2104) : (enabled ? 0x19A7 : 0x1082));
+    if (i == 1) {
+      if (hidMusicMode && !appleMedia.playback.known) {
+        gfx->fillTriangle(x - 19, y - 15, x - 19, y + 15, x + 1, y, c);
+        gfx->fillRect(x + 7, y - 15, 5, 30, c); gfx->fillRect(x + 16, y - 15, 5, 30, c);
+      } else if (musicPlaying) {
+        gfx->fillRect(x - 13, y - 15, 8, 30, c);
+        gfx->fillRect(x + 5, y - 15, 8, 30, c);
+      } else gfx->fillTriangle(x - 10, y - 17, x - 10, y + 17, x + 17, y, c);
+    } else {
+      int sign = i == 0 ? -1 : 1;
+      gfx->fillTriangle(x - sign * 12, y - 15, x - sign * 12, y + 15, x + sign * 10, y, c);
+      gfx->fillRect(x + sign * 15 - 3, y - 15, 6, 30, c);
+    }
+  }
+  if (hidMusicMode && appleMedia.available) {
+    double duration = AppleMediaData::duration(appleMedia.values[3].text.c_str());
+    if (duration > 0 && appleMedia.playback.known) {
+      double elapsed = appleMedia.playback.elapsed + appleMedia.playback.rate * (millis() - appleMedia.playbackAt) / 1000.0;
+      int sec = (int)constrain(elapsed, 0.0, duration), total = (int)duration;
+      char time[32]; snprintf(time, sizeof(time), "%d:%02d / %d:%02d", sec/60, sec%60, total/60, total%60);
+      printCentered(time, CX, coverShow ? 410 : 392, 2, C_GREY);
+    }
+  } else printCentered("SWIPE LEFT TO RETURN", CX, coverShow ? 410 : 402, 2, C_GREY);
+  drawPageDots();
+  needFlush = true;
+}
+
+// 拖动状态
+bool dragging = false;
+int dragTarget = 0, dragSign = 1;
+bool dragHoriz = true;
+int dragVisualSign = 1;
+float dragP = 0, dragV = 0;                 // 新页面已经进来多少像素；速度（像素/毫秒）
+unsigned long dragT = 0;
+
+uint16_t *shownFrame() {
+  if (fbBuf[1] && flushSrc) return flushSrc;
+  return gfx->getFramebuffer();
+}
+
+static inline uint16_t dim565(uint16_t c, uint32_t k) {   // k: 0~32，32 = 原样
+  uint32_t r = (c >> 11) & 31, g = (c >> 5) & 63, b = c & 31;
+  return (uint16_t)(((r * k >> 5) << 11) | ((g * k >> 5) << 5) | (b * k >> 5));
+}
+
+// 画一个页面到画布（不改当前页）
+void renderPage(int p) {
+  int keep = page;
+  bool ks = sliding;
+  page = p; sliding = false;
+  if (p == 2) drawMusic();
+  else if (p == 1) drawWeather();
+  else if (p == 3) drawSettings();
+  else if (p == 4) drawWatchFace();
+  else if (p == 5) drawRobotPage();
+  else if (p == 6) drawStockPage();
+  else if (inNav) drawNavFrame();
+  else drawWaiting(bleConnected ? WAIT_READY : WAIT_NOLINK);
+  page = keep; sliding = ks;
+}
+
+// 准备滑动：存下屏幕上的旧画面，在画布上画好目标页面存起来
+bool slidePrepare(int target) {
+  const size_t BYTES = (size_t)LCD_WIDTH * LCD_HEIGHT * 2;
+  if (!slideOld) slideOld = (uint16_t *)heap_caps_malloc(BYTES, MALLOC_CAP_SPIRAM);
+  if (!slideNew) slideNew = (uint16_t *)heap_caps_malloc(BYTES, MALLOC_CAP_SPIRAM);
+  if (!slideOld || !slideNew) return false;
+  if (!chordReady) {
+    for (int y = 0; y < LCD_HEIGHT; y++) {
+      float d = y + 0.5f - LCD_HEIGHT / 2.0f, r = LCD_WIDTH / 2.0f + 1;
+      chordHalf[y] = d * d < r * r ? (int16_t)ceilf(sqrtf(r * r - d * d)) : 0;
+    }
+    chordReady = true;
+  }
+  if (fbBuf[1]) { flushWait(); xSemaphoreGive(flushDone); }   // 等正在推的那帧推完，旧画面才完整
+  memcpy(slideOld, shownFrame(), BYTES);
+  renderPage(target);
+  memcpy(slideNew, gfx->getFramebuffer(), BYTES);
+  sliding = true;
+  if (lvglUiReady) lvglTransitionBegin();
+  needFlush = false; frameIsMap = false;
+  return true;
+}
+
+// 合成一帧：新页面已经进来 p 像素（盖在上面），旧页面往同方向退 30%、变暗，交界处一道阴影
+void slideCompose(int p) {
+  const int W = LCD_WIDTH, H = LCD_HEIGHT;
+  if (p < 0) p = 0;
+  if (p > (dragHoriz ? W : H)) p = dragHoriz ? W : H;
+  if (lvglUiReady) {
+    lvglTransitionUpdate(p);
+    needFlush = false; frameIsMap = false;
+    return;
+  }
+  uint16_t *fb = gfx->getFramebuffer();
+  if (dragHoriz) {
+    for (int y = 0; y < H; y++) {
+      int h = chordHalf[y];
+      if (!h) continue;
+      int xa = max(0, W / 2 - h), xb = min(W, W / 2 + h);
+      uint16_t *row = fb + (size_t)y * W;
+      const uint16_t *o = slideOld + (size_t)y * W, *n = slideNew + (size_t)y * W;
+      if (dragVisualSign > 0) {                         // 新页面从左边进来
+        int split = constrain(p, xa, xb);
+        if (split > xa) memcpy(row + xa, n + (W - p) + xa, (split - xa) * 2);
+        if (xb > split) memcpy(row + split, o + (split - p), (xb - split) * 2);
+        if (p > xa && p < xb) row[p - 1] = 0x4208;
+      } else {                                          // 新页面从右边进来
+        int split = constrain(W - p, xa, xb);
+        if (split > xa) memcpy(row + xa, o + (xa + p), (split - xa) * 2);
+        if (xb > split) memcpy(row + split, n + (split - (W - p)), (xb - split) * 2);
+        if (W - p > xa && W - p < xb) row[W - p] = 0x4208;
+      }
+    }
+  } else {
+    for (int y = 0; y < H; y++) {
+      int h = chordHalf[y];
+      if (!h) continue;
+      int xa = max(0, W / 2 - h), xb = min(W, W / 2 + h);
+      uint16_t *row = fb + (size_t)y * W;
+      bool newPage = dragVisualSign > 0 ? y < p : y >= H - p;
+      int sy = newPage
+        ? (dragVisualSign > 0 ? y + (H - p) : y - (H - p))
+        : (dragVisualSign > 0 ? y - p : y + p);
+      const uint16_t *src = (newPage ? slideNew : slideOld) + (size_t)sy * W;
+      memcpy(row + xa, src + xa, (xb - xa) * 2);
+      if (p > 0 && p < H && (y == p - 1 || y == H - p)) {
+        for (int x = xa; x < xb; x++) row[x] = 0x4208;
+      }
+    }
+  }
+  flushAsync();                                         // 两块画布轮流：推这一帧的同时画下一帧
+  needFlush = false; frameIsMap = false;
+}
+
+// 换页完成
+void slideCommit() {
+  const size_t BYTES = (size_t)LCD_WIDTH * LCD_HEIGHT * 2;
+  sliding = false; dragging = false;
+  lvglTransitionEnd();
+  page = dragTarget;
+  pageAt = millis();
+  memcpy(gfx->getFramebuffer(), slideNew, BYTES);
+  needFlush = true; frameIsMap = false;
+  if (page == 2) {
+    onWaitScreen = false; musicDirty = true; pendingEvt = "T,M,Q";
+  } else if (page == 1) {
+    lastSlideSx = dragHoriz ? dragVisualSign : 0; lastSlideSy = dragHoriz ? 0 : dragVisualSign;
+    onWaitScreen = false;
+    wxDirty = false;
+    if (!wxHave || millis() - wxAt > 15UL * 60 * 1000) { pendingEvt = "T,W"; wxAskAt = millis(); }
+  } else if (page >= 3 && page <= 6) {
+    onWaitScreen = false;
+    if (page == 6) pendingEvt = "T,S";
+  } else {
+    if (inNav) navDirty = true;
+    else { riderPrevF = -1; riderPrevZ = -2; catForce = true; }
+  }
+}
+
+// 没换成：回到原页面
+void slideCancel() {
+  sliding = false; dragging = false;
+  lvglTransitionEnd();
+  renderPage(page);
+  if (page == 2) musicDirty = true;
+  else if (page == 1) wxDirty = false;
+  else if (page >= 3 && page <= 6) needFlush = true;
+  else if (inNav) navDirty = true;
+  else { onWaitScreen = true; catForce = true; }
+  needFlush = true;
+}
+
+// 从 p0 顺势滑到 p1（先快后慢）；ms = 时长
+void slideAnimate(float p0, float p1, int ms) {
+  unsigned long t0 = millis();
+  for (;;) {
+    float t = (millis() - t0) / (float)ms;
+    if (t >= 1) break;
+    float e = 1 - (1 - t) * (1 - t) * (1 - t);         // ease-out
+    unsigned long frameAt = millis();
+    slideCompose((int)(p0 + (p1 - p0) * e));
+    if (lvglUiReady) {
+      lvglHybridTick();
+      if (needFlush) { flushSync(); needFlush = false; frameIsMap = false; }
+      unsigned long spent = millis() - frameAt;
+      if (spent < 16) delay(16 - spent);
+    }
+  }
+  slideCompose((int)p1);
+  if (lvglUiReady) {
+    lvglHybridTick();
+    if (needFlush) { flushSync(); needFlush = false; frameIsMap = false; }
+  }
+}
+
+// 触摸向量统一换算：先修正芯片坐标的镜像，再按刷屏的逆旋转映射到画布。
+// 位移和相对屏幕中心的点都使用这一个函数，避免旋转后点按与手势方向不一致。
+void touchVectorToCanvas(float &dx, float &dy) {
+  if (TOUCH_FLIP_X) dx = -dx;
+  if (TOUCH_FLIP_Y) dy = -dy;
+  float ox = dx, oy = dy;
+  if (rotFree) { dx = ox * rotCosF + oy * rotSinF; dy = -ox * rotSinF + oy * rotCosF; }
+  else if (screenRot == 1) { dx = oy; dy = -ox; }
+  else if (screenRot == 2) { dx = -ox; dy = -oy; }
+  else if (screenRot == 3) { dx = -oy; dy = ox; }
+}
+
+// 手指在拖：(dx, dy) = 从按下到现在的位移
+void dragMove(int dx, int dy, unsigned long now) {
+  float vx = dx, vy = dy;
+  touchVectorToCanvas(vx, vy);
+  dx = (int)lroundf(vx); dy = (int)lroundf(vy);
+  if (!dragging) {
+    int threshold = page == 2 ? 36 : DRAG_START;
+    if (abs(dx) < threshold && abs(dy) < threshold) return;
+    dragHoriz = abs(dx) >= abs(dy);
+    int d = dragHoriz ? dx : dy;
+    dragSign = d > 0 ? 1 : -1;
+    dragVisualSign = dragSign;
+    if (page == 6) { if (dragHoriz || dragSign > 0) return; dragTarget = 5; }
+    else if (page == 5) {
+      if (dragHoriz) return;
+      dragTarget = dragSign < 0 ? 6 : 4;
+    }
+    else if (page == 4) {
+      if (dragHoriz) return;
+      dragTarget = dragSign < 0 ? 5 : 3;
+    }
+    else if (page == 3) {
+      if (dragHoriz) return;
+      dragTarget = dragSign < 0 ? 4 : 0;
+    }
+    else if (page == 2) { if (!dragHoriz || dragSign < 0) return; dragTarget = 0; }
+    else if (page == 1) dragTarget = 0;
+    else if (dragHoriz) dragTarget = dragSign > 0 ? 1 : 2;
+    else dragTarget = dragSign < 0 ? 3 : 1;
+    if (!lvglUiReady && !slidePrepare(dragTarget)) return;
+    dragging = true;
+    dragP = 0; dragV = 0; dragT = now;
+  }
+  float p = (dragHoriz ? dx : dy) * dragSign;
+  if (p < 0) p = 0;
+  float dt = now - dragT;
+  if (dt > 0) dragV = dragV * 0.5f + ((p - dragP) / dt) * 0.5f;
+  dragP = p; dragT = now;
+  if (lvglUiReady) return;
+  slideCompose((int)p);
+}
+
+// 松手：拖过 30% 或者往前甩出去 → 顺势滑完；否则弹回
+void dragEnd() {
+  if (!dragging) return;
+  int full = dragHoriz ? LCD_WIDTH : LCD_HEIGHT;
+  bool go = dragP > full * 0.3f || (dragV > 0.35f && dragP > 24);
+  if (dragV < -0.35f) go = false;                       // 往回甩：取消
+  if (lvglUiReady) {
+    dragging = false; sliding = false;
+    if (!go) return;
+    page = dragTarget;
+    pageAt = millis();
+    renderPage(page);
+    needFlush = true; frameIsMap = false;
+    if (page == 2) {
+      onWaitScreen = false; musicDirty = true; pendingEvt = "T,M,Q";
+    } else if (page == 1) {
+      lastSlideSx = dragHoriz ? dragVisualSign : 0;
+      lastSlideSy = dragHoriz ? 0 : dragVisualSign;
+      onWaitScreen = false;
+      wxDirty = false;
+      if (!wxHave || millis() - wxAt > 15UL * 60 * 1000) { pendingEvt = "T,W"; wxAskAt = millis(); }
+    } else if (page >= 3 && page <= 6) {
+      onWaitScreen = false;
+      if (page == 6) pendingEvt = "T,S";
+    } else if (inNav) {
+      navDirty = true;
+    } else {
+      riderPrevF = -1; riderPrevZ = -2; catForce = true;
+    }
+    return;
+  }
+  float target = go ? full : 0;
+  float left = fabsf(target - dragP);
+  int ms = 140 + (int)(260 * left / full);
+  if (go && dragV > 0.5f) ms = max(140, (int)(ms * 0.75f));   // 甩得快就滑得快
+  slideAnimate(dragP, target, ms);
+  if (go) slideCommit(); else slideCancel();
+}
+
+// 来电等情况：直接放弃拖动
+void dragAbort() {
+  if (!dragging) return;
+  sliding = false; dragging = false;
+  lvglTransitionEnd();
+  if (page == 2) musicDirty = true; else if (page == 1) wxDirty = true; else if (page >= 3 && page <= 6) needFlush = true; else if (inNav) navDirty = true;
+}
+
+// 将触摸点换算到画布坐标，按钮使用较大的点按范围。
+int musicButtonAt(int x, int y) {
+  float dx = x - CX, dy = y - CX;
+  touchVectorToCanvas(dx, dy);
+  x = lroundf(CX + dx); y = lroundf(CX + dy);
+  for (int i = 0; i < 3; i++) {
+    int bx = CX + (i - 1) * 100;
+    int by = (coverValid && coverImg) ? 360 : 335;
+    if ((x - bx) * (x - bx) + (y - by) * (y - by) <= 49 * 49) return i;
+  }
+  return -1;
+}
+
+void musicTap(int x, int y) {
+  if (dragging || page != 2 || callOn || pairOn || !bleConnected || !bleAuthed) return;
+  int button = musicButtonAt(x, y);
+  if (hidMusicMode) {
+    if (button < 0) return;
+    bool hidReady = hidMediaReady();
+    if (!hidReady && !appleMedia.controlReady(button)) { musicAck = 7; musicAckUntil = millis() + 2500; musicDirty = true; return; }
+    if (hidTapAt && millis() - hidTapAt < 120) return;
+    hidTapAt = millis();
+    if (!hidReady) {
+      musicAck = appleMedia.control(button) ? 11 : 10; musicAckUntil = millis() + 2500; musicDirty = true; return;
+    }
+    if (!hidPulses.enqueue(button)) { musicAck = 8; musicAckUntil = millis() + 2500; musicDirty = true; }
+    else { musicAck = 6; musicAckUntil = millis() + 2500; musicDirty = true; }
+    return; // no T,M,P/T/N: do not also control Apple Music through the App
+  }
+  if (button < 0 || !musicHave) {
+    pendingEvt = String("T,M,H,") + x + "," + y + "," + button;
+    return;
+  }
+  pendingEvt = String("T,M,") + (button == 0 ? "P" : button == 1 ? "T" : "N") + "," + x + "," + y + "," + button;
+  musicAck = 1; musicAckUntil = millis() + 2500; musicDirty = true;
+}
+
+// 自动换页（导航中看天气超时 / 快到路口）：整段动画
+void showPageAnimated(int target, int sx, int sy) {
+  if (page == target) return;
+  dragHoriz = sx != 0 || sy == 0;
+  dragSign = dragHoriz ? (sx ? sx : 1) : sy;
+  dragVisualSign = dragSign;
+  dragTarget = target;
+  if (!slidePrepare(target)) { page = target; renderPage(target); needFlush = true; return; }
+  dragging = true;
+  slideAnimate(0, dragHoriz ? LCD_WIDTH : LCD_HEIGHT, 420);
+  slideCommit();
+}
+
+// 音乐页在路口前回导航，其余时候保持显示，便于连续切歌。
+void musicTick() {
+  if (musicAckUntil && (long)(millis() - musicAckUntil) >= 0) {
+    if (musicAck == 1) { musicAck = 4; musicAckUntil = millis() + 2500; }
+    else { musicAck = 0; musicAckUntil = 0; }
+    musicDirty = true;
+  }
+  if (page != 2 || callOn || pairOn || sliding) return;
+  if (inNav && !cruiseOn && navDir != "S" && navDir.length() && navDist > 0 && navDist < 200 && millis() - pageAt > 3000) {
+    showPageAnimated(0, -1, 0);
+    return;
+  }
+  if (musicDirty) { musicDirty = false; drawMusic(); }
+}
+
+// 每圈调用：天气页要不要重画、要不要回导航
+void weatherTick() {
+  if (page != 1 || callOn || sliding) return;
+  unsigned long now = millis();
+  // 导航中：看 15 秒自动回去；快到路口也立刻回去
+  if (inNav && (now - pageAt > 15000 || (navDir != "S" && navDir.length() && navDist > 0 && navDist < 200))) {
+    showPageAnimated(0, -lastSlideSx, -lastSlideSy);   // 按进来的方向反着滑回去
+    return;
+  }
+  // 还没数据或数据旧了：30 秒再要一次
+  if (bleConnected && (!wxHave || now - wxAt > 15UL * 60 * 1000) && now - wxAskAt > 30000) { pendingEvt = "T,W"; wxAskAt = now; }
+  if (wxDirty) { wxDirty = false; drawWeather(); }
+}
+
+void drawStaleOverlay() {
+  drawRedRing();
+  printCentered("NO DATA", CX, 412, 3, C_RED);
+  needFlush = true;
+}

@@ -50,6 +50,7 @@ final class BleLink: NSObject, ObservableObject {
     private var handshake=BleHandshakeClock()
     private var connectionRetries=0
     private var retryAfter=0.0
+    private var lastClockSyncAt = Date.distantPast
 
     // 发送队列
     private struct Out { let key: String?; var data: Data }
@@ -76,6 +77,7 @@ final class BleLink: NSObject, ObservableObject {
         heartbeat = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.checkConnectionSetup()
             self?.requestBuildingCapability()
+            self?.syncClockIfNeeded()
             MusicBridge.shared.syncLyrics()
             guard let self = self, self.isReady, self.queue.isEmpty, !self.bulkQ.hasData,
                   Date().timeIntervalSince(self.lastWriteAt) > 1.5 else { return }
@@ -151,6 +153,15 @@ final class BleLink: NSObject, ObservableObject {
     private func requestBuildingCapability() {
         guard buildingProbe.next(ready: isReady && txNotifyReady, supported: buildingsSupported, now: Date().timeIntervalSinceReferenceDate) else { return }
         sendOnce("#GB?")
+    }
+
+    private func syncClockIfNeeded(force: Bool = false) {
+        guard isReady, txNotifyReady else { return }
+        let now = Date()
+        guard force || now.timeIntervalSince(lastClockSyncAt) >= 60 else { return }
+        lastClockSyncAt = now
+        let offsetMinutes = TimeZone.current.secondsFromGMT() / 60
+        send("#TIME,\(Int(now.timeIntervalSince1970)),\(offsetMinutes)")
     }
 
     func retryBuildingCapability() { buildingProbe.reset(); requestBuildingCapability() }
@@ -375,6 +386,7 @@ final class BleLink: NSObject, ObservableObject {
         pump()
         Settings.shared.pushAll()
         requestBuildingCapability()
+        syncClockIfNeeded(force: true)
         MapFeeder.shared.resendAll()                    // 圆屏可能重启过：地图块和路线重发
     }
 }
@@ -490,7 +502,7 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
         guard let raw = String(data: d, encoding: .utf8) else { return }
         let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if s == "U,1", !verified {
-            verified = true; buildingProbe.reset(); requestBuildingCapability(); Settings.shared.pushAll(); MapFeeder.shared.resendAll(); return
+            verified = true; buildingProbe.reset(); requestBuildingCapability(); Settings.shared.pushAll(); MapFeeder.shared.resendAll(); StockBridge.shared.sendLatest(); return
         }
         if s == "CAP,HID,1" {
             mediaHIDSupported = true

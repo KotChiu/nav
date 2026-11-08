@@ -16,6 +16,7 @@ struct ContentView: View {
     @ObservedObject var map = MapFeeder.shared
     @ObservedObject var history = History.shared
     @ObservedObject var favorites = Favorites.shared
+    @ObservedObject var stocks = StockBridge.shared
     @State private var page = 0
     @State private var showWebMotor = false
     @State private var independentMode: IndependentMode = .motorcycle
@@ -34,6 +35,7 @@ struct ContentView: View {
     @State private var shareStatus = ""
     @State private var cruiseNote = ""
     @State private var addingVia = false               // 正在搜途经点
+    @State private var stockInput = ""
 
     static let bg = Color(red: 0.055, green: 0.04, blue: 0.08)
     static let card = Color(red: 0.10, green: 0.08, blue: 0.14)
@@ -524,6 +526,61 @@ struct ContentView: View {
             .pickerStyle(.segmented)
             if !settings.nightDesc.isEmpty { Text(settings.nightDesc).font(.caption2).foregroundColor(ContentView.sub) }
             Toggle("弯道急缓上色", isOn: $settings.curve).foregroundColor(.white).tint(ContentView.pink)
+            Divider().background(ContentView.stroke).padding(.vertical, 2)
+            Text("圆屏股票").foregroundColor(.white).bold()
+            HStack(spacing: 8) {
+                TextField("代码，如 600519 / AAPL / 00700", text: $stockInput)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .textFieldStyle(.plain)
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(ContentView.bg))
+                    .foregroundColor(.white)
+                    .submitLabel(.done)
+                    .onSubmit { addStock() }
+                Button {
+                    addStock()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.headline)
+                        .frame(width: 42, height: 42)
+                        .foregroundColor(.white)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(ContentView.pink))
+                }
+                .disabled(stocks.watchlist.count >= 4)
+            }
+            if stocks.quotes.isEmpty {
+                Text("最多 4 只。行情由 iPhone 获取并同步到表盘。")
+                    .font(.caption).foregroundColor(ContentView.sub)
+            } else {
+                ForEach(stocks.quotes) { quote in
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(quote.code).font(.subheadline.monospaced()).foregroundColor(.white)
+                            Text(String(format: "%.2f", quote.price)).font(.caption.monospaced()).foregroundColor(ContentView.sub)
+                        }
+                        Spacer()
+                        Text(String(format: "%+.2f%%", quote.changePct))
+                            .font(.subheadline.monospaced().bold())
+                            .foregroundColor(quote.changePct > 0 ? .red : quote.changePct < 0 ? .green : ContentView.sub)
+                        Button {
+                            stocks.remove(quote.code)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundColor(ContentView.sub)
+                        }
+                    }
+                    .padding(.vertical, 3)
+                }
+            }
+            HStack {
+                Text(stocks.status).font(.caption).foregroundColor(ContentView.sub)
+                Spacer()
+                Button {
+                    stocks.refresh()
+                } label: {
+                    Image(systemName: "arrow.clockwise").foregroundColor(ContentView.cyan)
+                }
+            }
         }
     }
     private var favoritesCard: some View {
@@ -573,6 +630,10 @@ struct ContentView: View {
     private func needAmapKey() -> Bool {
         if settings.amapKeyInUse.isEmpty { hideKeyboard(); showKeys = true; return true }
         return false
+    }
+
+    private func addStock() {
+        if stocks.add(stockInput) { stockInput = "" }
     }
 
     // MARK: 调试信息

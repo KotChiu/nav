@@ -73,7 +73,7 @@ uint16_t *Arduino_ESP32RGBPanel::getFrameBuffer(int16_t w, int16_t h)
 #else
       .bits_per_pixel = 16,
       .num_fbs = 1,
-      .bounce_buffer_size_px = _bounce_buffer_size_px,
+      .bounce_buffer_size_px = 0,
 #endif
       .sram_trans_align = 8,
       .psram_trans_align = 64,
@@ -151,9 +151,57 @@ uint16_t *Arduino_ESP32RGBPanel::getFrameBuffer(int16_t w, int16_t h)
 #else
   void *frame_buffer = nullptr;
   ESP_ERROR_CHECK(esp_lcd_rgb_panel_get_frame_buffer(_panel_handle, 1, &frame_buffer));
+  _frame_buffers[0] = (uint16_t *)frame_buffer;
 
-  return ((uint16_t *)frame_buffer);
+  _vsync_ready = xSemaphoreCreateBinary();
+  if (_vsync_ready)
+  {
+    xSemaphoreGive(_vsync_ready);
+    esp_lcd_rgb_panel_event_callbacks_t callbacks = {};
+    callbacks.on_vsync = _vsyncCallback;
+    ESP_ERROR_CHECK(esp_lcd_rgb_panel_register_event_callbacks(
+        _panel_handle, &callbacks, this));
+  }
+
+  return _frame_buffers[0];
 #endif
+}
+
+uint16_t *Arduino_ESP32RGBPanel::getFrameBuffer(uint8_t index)
+{
+  return index < 2 ? _frame_buffers[index] : nullptr;
+}
+
+bool Arduino_ESP32RGBPanel::drawFrameBuffer(uint16_t *frame_buffer,
+                                            int16_t w, int16_t h)
+{
+  return _panel_handle &&
+         esp_lcd_panel_draw_bitmap(_panel_handle, 0, 0, w, h,
+                                   frame_buffer) == ESP_OK;
+}
+
+bool Arduino_ESP32RGBPanel::refresh()
+{
+  return _panel_handle && esp_lcd_rgb_panel_refresh(_panel_handle) == ESP_OK;
+}
+
+bool Arduino_ESP32RGBPanel::waitVsync()
+{
+  return _vsync_ready && xSemaphoreTake(_vsync_ready, portMAX_DELAY) == pdTRUE;
+}
+
+bool Arduino_ESP32RGBPanel::_vsyncCallback(
+    esp_lcd_panel_handle_t panel,
+    const esp_lcd_rgb_panel_event_data_t *event_data,
+    void *user_ctx)
+{
+  (void)panel;
+  (void)event_data;
+  Arduino_ESP32RGBPanel *self = static_cast<Arduino_ESP32RGBPanel *>(user_ctx);
+  if (!self || !self->_vsync_ready) return pdFALSE;
+  BaseType_t higher_priority_task_woken = pdFALSE;
+  xSemaphoreGiveFromISR(self->_vsync_ready, &higher_priority_task_woken);
+  return higher_priority_task_woken == pdTRUE;
 }
 
 #endif // #if defined(ESP32) && (CONFIG_IDF_TARGET_ESP32S3)

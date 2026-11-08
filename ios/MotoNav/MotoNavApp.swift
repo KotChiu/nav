@@ -40,12 +40,14 @@ struct MotoNavApp: App {
             if p.first == "T", p.count >= 2 {
                 switch p[1] {
                 case "W": Weather.shared.request()                    // 滑到了天气页
+                case "S": StockBridge.shared.refresh()                // 滑到了股票页
                 case "A": break                                       // 按住接电话：iOS 不允许 App 接电话
                 default: break
                 }
             }
         }
         BleLink.shared.connect()
+        StockBridge.shared.start()
         LocationService.shared.start()
         Settings.shared.startDayNight()                 // 夜间配色、亮度按日出日落自动切换（每分钟检查）
         NaviBridge.shared.attach()

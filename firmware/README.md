@@ -2,6 +2,16 @@
 
 [最新通用版、构建方式及验证范围](../docs/RELEASE-FIRMWARE-7.12.9-junction.11.md)。公开源码不含个人 Rebel 500 开机资源。1.85B 保持 7.12.3-185B。**最新成品：[v7.12.9-junction.11 Release](https://github.com/zyn950929/MotoNav/releases/tag/firmware-v7.12.9-junction.11)**。下方 7.12.1 下载是历史版本。
 
+## 2.1 英寸 RGB 圆屏实验版
+
+`firmware/boards/21` 是面向 Waveshare ESP32-S3-Touch-LCD-2.1（480×480，ST7701S + CST820）的实验移植。它保留现有 466×466 逻辑界面并缩放到 480×480，构建方式：
+
+```sh
+python3 firmware/build.py --board 21
+```
+
+当前已完成编译、实物点亮和 `touch ok` 基本验证，仍待完成画面方向、触摸交互和完整 BLE 回归。详见 [2.1 调研与移植状态](../docs/BOARD-2.1-RESEARCH.md)。
+
 ---
 
 # 通用圆屏固件 7.12.1

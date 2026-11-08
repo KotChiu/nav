@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Flash the repository's verified 1.75-inch image with the local Arduino esptool."""
+"""Flash a repository-built board image with the local Arduino esptool."""
 import argparse
 import glob
 import hashlib
@@ -13,7 +13,20 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-BOARD = "Waveshare ESP32-S3-Touch-AMOLED-1.75"
+BOARDS = {
+    "175": {
+        "folder": "175",
+        "name": "Waveshare ESP32-S3-Touch-AMOLED-1.75",
+        "source": "boards/175/MotoNav/src/core/FirmwareConfig.h",
+        "description": "微雪 1.75 英寸圆屏",
+    },
+    "21": {
+        "folder": "21",
+        "name": "Waveshare ESP32-S3-Touch-LCD-2.1",
+        "source": "boards/21/MotoNav/src/core/FirmwareConfig.h",
+        "description": "微雪 2.1 英寸触摸圆屏",
+    },
+}
 
 
 def usb_ports():
@@ -33,8 +46,9 @@ def find_tool():
     raise ValueError("未找到 esptool。请先安装 Arduino ESP32 Core 3.3.10。")
 
 
-def validate_images(root=ROOT):
-    source = root / "firmware/boards/175/MotoNav/src/core/FirmwareConfig.h"
+def validate_images(board_id, root=ROOT):
+    board = BOARDS[board_id]
+    source = root / "firmware" / board["source"]
     if not source.exists():
         source = root / "firmware/boards/175/MotoNav/MotoNav.ino"
     if source.exists():
@@ -46,11 +60,11 @@ def validate_images(root=ROOT):
         version = (root / 'firmware/RELEASE_VERSION').read_text().strip()
         if not re.fullmatch(r'\d+\.\d+\.\d+(?:-[A-Za-z0-9][A-Za-z0-9.-]*)?', version):
             raise ValueError("固件版本标记无效。")
-    folder = root / "firmware/dist/175/panel0"
+    folder = root / "firmware/dist" / board["folder"] / "panel0"
     manifests = sorted(folder.glob("*_manifest.json"))
     for path in manifests:
         manifest = json.loads(path.read_text())
-        if manifest.get("firmware") != version or manifest.get("board") != BOARD:
+        if manifest.get("firmware") != version or manifest.get("board") != board["name"]:
             continue
         images = {}
         for item in manifest.get("files", []):
@@ -81,16 +95,17 @@ def flash_command(tool, port, image, full=False):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Mac 一键烧录 MotoNav 1.75 英寸圆屏固件（默认应用升级）")
+    parser = argparse.ArgumentParser(description="Mac 一键烧录 MotoNav 圆屏固件（默认应用升级）")
+    parser.add_argument("--board", choices=sorted(BOARDS), default="175", help="板型，默认 1.75")
     parser.add_argument("--check", action="store_true", help="仅检查工具、固件和串口，不烧录")
     parser.add_argument("--port", help="指定实际 USB 串口，例如 /dev/cu.usbmodem…")
     parser.add_argument("--full", action="store_true", help="首次完整安装，替换引导与分区布局")
     args = parser.parse_args(argv)
     try:
         tool = find_tool()
-        version, images = validate_images()
+        version, images = validate_images(args.board)
         ports = usb_ports()
-        print("MotoNav v" + version + " · 微雪 1.75 英寸圆屏", flush=True)
+        print("MotoNav v" + version + " · " + BOARDS[args.board]["description"], flush=True)
         print("工具：" + tool, flush=True)
         print("固件 SHA-256 与应用偏移校验通过。", flush=True)
         if args.check:
