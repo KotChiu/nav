@@ -137,8 +137,6 @@ static void st7701Init() {
     for (uint8_t i = 0; i < step.length; i++) st7701Data(step.data[i]);
     if (step.delayMs) delay(step.delayMs);
   }
-  st7701Command(0x21); // INVOFF is in the vendor sequence; this panel shows inverted polarity.
-  delay(10);
   tcaSetBit(TCA_LCD_CS_BIT, true);
 }
 

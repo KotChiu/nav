@@ -93,6 +93,14 @@
 - `PairingPage.h` 和 `NavigationPage.h` 的青色文字统一到 `C_UI_ACCENT`。
 - 来电页、到达动画继续保留功能色，不再强行单色化。
 
+### 反色修复
+
+`firmware/boards/21/MotoNav/Board21Panel.h`
+
+厂商初始化序列本身已经发送 `0x20`（INVON），后续代码又额外发送了
+`0x21`（INVOFF），导致屏幕颜色与预期反相。已删除这条覆盖命令，保留
+厂商初始化序列中的正常 INVON 状态。
+
 ## 验证
 
 已执行并通过：
