@@ -5,7 +5,7 @@ import AVFoundation
 /// 版本：跟随 App 版本（见 Config.swift）
 ///
 /// 主界面：圆屏连接状态、搜索目的地 / 导入高德分享路线、选路线、开始导航、巡航、圆屏设置、Key 设置、调试信息
-/// （黑色主视觉界面）
+/// （罪恶都市风深色界面）
 struct ContentView: View {
     @ObservedObject var ble = BleLink.shared
     @ObservedObject var navi = NaviBridge.shared
@@ -37,12 +37,12 @@ struct ContentView: View {
     @State private var addingVia = false               // 正在搜途经点
     @State private var stockInput = ""
 
-    static let bg = Color.black
-    static let card = Color(red: 0.055, green: 0.055, blue: 0.055)
-    static let stroke = Color(red: 0.15, green: 0.15, blue: 0.15)
-    static let pink = Color(red: 0.92, green: 0.92, blue: 0.92)
-    static let cyan = Color(red: 0.72, green: 0.72, blue: 0.72)
-    static let sub = Color(red: 0.60, green: 0.60, blue: 0.60)
+    static let bg = Color(red: 0.055, green: 0.04, blue: 0.08)
+    static let card = Color(red: 0.10, green: 0.08, blue: 0.14)
+    static let stroke = Color(red: 0.17, green: 0.14, blue: 0.22)
+    static let pink = Color(red: 1.0, green: 0.31, blue: 0.71)
+    static let cyan = Color(red: 0.26, green: 0.88, blue: 0.94)
+    static let sub = Color(red: 0.62, green: 0.58, blue: 0.67)
     static let up = Color(red: 0.95, green: 0.29, blue: 0.39)
     static let down = Color(red: 0.18, green: 0.73, blue: 0.56)
 
@@ -85,7 +85,6 @@ struct ContentView: View {
             }.background(Self.card)
         }
         .background(ContentView.bg.ignoresSafeArea())
-        .preferredColorScheme(.dark)
         .fullScreenCover(isPresented: $showWebMotor) { WebMotorView(mode:independentMode) }
         .sheet(isPresented: $showRides) { NavigationView { RideHistoryView() } }
         .fullScreenCover(isPresented: $showNavi) { NaviScreen() }
@@ -128,7 +127,7 @@ struct ContentView: View {
             Text("MotoNav")
                 .font(.system(size: 34, weight: .heavy, design: .rounded))
                 .italic()
-                .foregroundStyle(LinearGradient(colors: [.white, ContentView.sub], startPoint: .leading, endPoint: .trailing))
+                .foregroundStyle(LinearGradient(colors: [ContentView.pink, ContentView.cyan], startPoint: .leading, endPoint: .trailing))
             Text("圆屏导航 · \(APP_VERSION)").font(.caption).foregroundColor(ContentView.sub)
         }
         .padding(.top, 8)
@@ -542,7 +541,7 @@ struct ContentView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 148)
-                .tint(.white)
+                .tint(ContentView.pink)
             }
             HStack(spacing: 8) {
                 TextField("代码，如 600519 / AAPL / 00700", text: $stockInput)
@@ -610,7 +609,7 @@ struct ContentView: View {
                             period: stocks.period
                         )
                             .frame(height: 86)
-                            .background(Color.black, in: RoundedRectangle(cornerRadius: 8))
+                            .background(ContentView.bg, in: RoundedRectangle(cornerRadius: 8))
                             .overlay(RoundedRectangle(cornerRadius: 8).stroke(ContentView.stroke, lineWidth: 1))
                     }
                     .padding(10)
@@ -790,8 +789,8 @@ struct CardView<Content: View>: View {
         VStack(alignment: .leading, spacing: 10) { content }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 8).fill(ContentView.card))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(ContentView.stroke, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 18).fill(ContentView.card))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(ContentView.stroke, lineWidth: 1))
     }
 }
 
