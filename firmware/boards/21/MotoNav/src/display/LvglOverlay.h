@@ -2,6 +2,7 @@
 
 #include <lvgl.h>
 #include "../../resources/WatchDigits.c"
+#include "../../ui/LvglHomeChrome.h"
 
 static inline lv_color_t lvglColor565(uint16_t color) {
   lv_color_t out;
@@ -9,6 +10,7 @@ static inline lv_color_t lvglColor565(uint16_t color) {
   return out;
 }
 
+static MotoNavHomeChrome lvglHomeChrome;
 static lv_disp_draw_buf_t lvglDrawBuf;
 static lv_disp_drv_t lvglDispDrv;
 static lv_indev_t *lvglPointer = nullptr;
@@ -339,6 +341,8 @@ static void createLvglOverlay() {
   lv_obj_t *screen = lv_scr_act();
   lv_obj_set_style_bg_opa(screen, LV_OPA_TRANSP, 0);
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+  // Home ring is now a native LVGL layer and does not rely on Canvas pixels.
+  motonavHomeChromeCreate(lvglHomeChrome, screen, CX, C_UI_ACCENT, C_UI_ACCENT2);
 
   for (int i = 0; i < 3; i++) {
     musicButtons[i] = makeMusicButton(i);
@@ -735,6 +739,7 @@ static void lvglHybridTick() {
   bool showRobot = page == 4 && !sliding && !pairOn && !callOn && !fxOn;
   bool showStock = page == 5 && !sliding && !pairOn && !callOn && !fxOn;
   bool showHome = page == 0 && !inNav && !sliding && !pairOn && !callOn && !fxOn && !staleShown;
+  motonavHomeChromeVisible(lvglHomeChrome, showHome);
   bool infoDots = page >= 3 && page <= 5;
   bool showDots = false;
   int buttonY = (coverValid && coverImg) ? 360 : 335;
