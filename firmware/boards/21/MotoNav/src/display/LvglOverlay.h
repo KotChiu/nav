@@ -787,7 +787,7 @@ static void lvglHybridTick() {
     String cameraRange = distText(camDist);
     motonavNavigationHudUpdate(lvglMapHud, speedKmh, hasCam, camLimit,
                                cameraRange.c_str(), over,
-                               lvglColor565(TH.hud), lvglColor565(C_RED));
+                               lvglColor565(mapHudColor565()), lvglColor565(C_RED));
   }
   bool showMusic = page == PAGE_MUSIC && !sliding && !pairOn && !callOn && !fxOn;
   motonavMusicStatusVisible(lvglMusicView, showMusic);
