@@ -636,7 +636,8 @@ static void lvglHybridTick() {
   MotoNavUI::settingsUpdate(showSettings);
 
   setLvglHidden(musicHeaderLabel, !showMusic || (coverValid && coverImg));
-  setLvglHidden(musicPlaceholder, !showMusic || (coverValid && coverImg));
+  setLvglHidden(musicPlaceholder, !showMusic || (coverValid && coverImg) ||
+                ((bleConnected && bleAuthed) && musicHave));
   setLvglHidden(musicStatusLabel, !showMusic);
   setLvglHidden(musicFooterLabel, !showMusic);
   bool showPhotoEmpty = page == PAGE_PHOTO && !photoValid && !sliding &&
