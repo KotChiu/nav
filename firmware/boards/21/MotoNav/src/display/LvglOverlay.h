@@ -1,8 +1,9 @@
 #pragma once
 
 #include <lvgl.h>
-#include "../../resources/WatchDigits.c"
-#include "../../CompanionFace.h"
+#include "../../ui/VisualLanguage.h"
+#include "../../ui/LvglSettingsPanel.h"
+#include "../../ui/LvglRideDashboard.h"
 
 static inline lv_color_t lvglColor565(uint16_t color) {
   lv_color_t out;
@@ -27,35 +28,22 @@ static int lvglDirtyRectCount = 0;
 static lv_obj_t *musicButtons[3] = {nullptr, nullptr, nullptr};
 static lv_obj_t *musicButtonLabels[3] = {nullptr, nullptr, nullptr};
 static lv_obj_t *pageDotObjs[4] = {nullptr, nullptr, nullptr, nullptr};
-static lv_obj_t *settingsSlider = nullptr;
-static lv_obj_t *settingsBrightnessLabel = nullptr;
-static lv_obj_t *settingsTitleLabel = nullptr;
-static lv_obj_t *settingsSubLabel = nullptr;
-static lv_obj_t *settingsHintLabel = nullptr;
-static lv_obj_t *settingsCard = nullptr;
+// Settings is now a separate stateful controller in LvglSettingsPanel.h.
 static lv_obj_t *homeTitleLabel = nullptr;
 static lv_obj_t *homeStatusLabel = nullptr;
 static lv_obj_t *homeHintLabel = nullptr;
+static lv_obj_t *homeOrbit[3] = {};
+static lv_obj_t *homeWeatherCard = nullptr;
+static lv_obj_t *homeStatusChip = nullptr;
+static lv_obj_t *musicHeaderLabel = nullptr;
+static lv_obj_t *musicStatusLabel = nullptr;
+static lv_obj_t *musicFooterLabel = nullptr;
 static lv_obj_t *watchTimeLabel = nullptr;
 static lv_obj_t *watchDateLabel = nullptr;
 static lv_obj_t *watchTempLabel = nullptr;
 static lv_obj_t *watchForecastLabel = nullptr;
 static uint32_t lastWatchEpoch = 0;
-static lv_obj_t *robotHalo = nullptr;
-static lv_obj_t *robotBody = nullptr;
-static lv_obj_t *robotFace = nullptr;
-static lv_obj_t *robotEyes[2] = {nullptr, nullptr};
-static lv_obj_t *robotTitleLabel = nullptr;
-static lv_obj_t *robotMoodLabel = nullptr;
-static uint32_t robotLastAnimAt = 0;
-static uint32_t robotVisibleTime = 0;
-static uint32_t robotSampleAt = 0;
-static uint32_t robotManualAt = 0;
-static CompanionFace::Expression robotExpression = CompanionFace::Calm;
-static bool robotWasVisible = false;
-static bool robotLongPressed = false;
-static int robotPoseKey = -1;
-static String robotLastMood;
+// Ride page is now an instrument dashboard; no animated expression state.
 static lv_obj_t *batteryLabel = nullptr;
 static lv_obj_t *stockTitleLabel = nullptr;
 static lv_obj_t *stockStatusLabel = nullptr;
@@ -169,45 +157,6 @@ static void musicButtonEventCb(lv_event_t *event) {
   float dx = (index - 1) * 100, dy = y - CX;
   musicTap(lroundf(CX + ax * dx + ay * dy),
            lroundf(CX + bx * dx + by * dy));
-}
-
-static void robotTapEventCb(lv_event_t *event) {
-  const lv_event_code_t code = lv_event_get_code(event);
-  if (code == LV_EVENT_PRESSED) robotLongPressed = false;
-  else if (code == LV_EVENT_LONG_PRESSED) {
-    robotLongPressed = true;
-    robotExpression = robotExpression == CompanionFace::Sleepy
-      ? CompanionFace::Calm : CompanionFace::Sleepy;
-    robotManualAt = robotVisibleTime;
-    robotPoseKey = -1;
-  } else if (code == LV_EVENT_CLICKED && !robotLongPressed) {
-    robotExpression = CompanionFace::next(robotExpression);
-    robotManualAt = robotVisibleTime;
-    robotPoseKey = -1;
-  }
-}
-
-static void saveBrightness() {
-  Preferences pr;
-  pr.begin("motonav", false);
-  pr.putInt("bright", screenBrightness);
-  pr.end();
-}
-
-static void brightnessEventCb(lv_event_t *event) {
-  lv_event_code_t code = lv_event_get_code(event);
-  if (code == LV_EVENT_PRESSED) {
-    lvglCaptureTouch = true;
-  } else if (code == LV_EVENT_VALUE_CHANGED) {
-    screenBrightness = constrain((int)lv_slider_get_value(settingsSlider), 5, 180);
-    panel->setBrightness(screenBrightness);
-    lv_label_set_text_fmt(settingsBrightnessLabel, "%d%%",
-                          (screenBrightness * 100 + 92) / 180);
-    lv_obj_invalidate(settingsSlider);
-  } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-    lvglCaptureTouch = false;
-    saveBrightness();
-  }
 }
 
 static lv_obj_t *makeMusicButton(int index) {
