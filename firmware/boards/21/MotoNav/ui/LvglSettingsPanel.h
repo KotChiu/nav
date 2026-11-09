@@ -3,6 +3,7 @@
 // card. Display / Ride / Link / About use persisted device state, not mocks.
 // Included from LvglOverlay.h after the firmware state declarations.
 #include "VisualLanguage.h"
+#include <cstring>
 
 namespace MotoNavUI {
 struct SettingsView {
@@ -29,23 +30,27 @@ static void settingsText(lv_obj_t *parent, const char *str, int x, int y,
   lv_obj_t *l = label(parent, str, font, tint);
   lv_obj_set_pos(l, x, y);
 }
+static void settingsSetText(lv_obj_t *label, const char *text) {
+  if (label && text && std::strcmp(lv_label_get_text(label), text) != 0)
+    lv_label_set_text(label, text);
+}
 static void settingsRefresh() {
   if (!settings.root) return;
   char value[96];
   snprintf(value, sizeof(value), "%d%%", (screenBrightness * 100 + 90) / 180);
-  lv_label_set_text(settings.brightnessValue, value);
+  settingsSetText(settings.brightnessValue, value);
   snprintf(value, sizeof(value), "%d DEG", screenDeg);
-  lv_label_set_text(settings.rotationValue, value);
-  lv_label_set_text(settings.cleanValue, cleanOn ? "ON" : "OFF");
-  lv_label_set_text(settings.progressValue, progOn ? "ON" : "OFF");
-  lv_label_set_text(settings.musicModeValue, hidMusicMode ? "HID" : "APP");
-  lv_label_set_text(settings.deviceStatus,
+  settingsSetText(settings.rotationValue, value);
+  settingsSetText(settings.cleanValue, cleanOn ? "ON" : "OFF");
+  settingsSetText(settings.progressValue, progOn ? "ON" : "OFF");
+  settingsSetText(settings.musicModeValue, hidMusicMode ? "HID" : "APP");
+  settingsSetText(settings.deviceStatus,
                     bleConnected && bleAuthed ? "SECURELY CONNECTED" : "WAITING FOR PHONE");
-  lv_label_set_text(settings.deviceName, bleName.c_str());
-  lv_label_set_text(settings.firmware, FW_VERSION);
+  settingsSetText(settings.deviceName, bleName.c_str());
+  settingsSetText(settings.firmware, FW_VERSION);
   snprintf(value, sizeof(value), "%u KB FREE",
            (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
-  lv_label_set_text(settings.memory, value);
+  settingsSetText(settings.memory, value);
 }
 static void settingsSelectTab(int index) {
   if (!settings.root || index < 0 || index >= 4) return;
@@ -152,7 +157,7 @@ static void settingsCreate(lv_obj_t *screen) {
   for (int i = 0; i < 4; ++i) {
     settings.tabs[i] = button(settings.root, 55 + i * 91, 124, 83, 43, "");
     settings.tabText[i] = lv_obj_get_child(settings.tabs[i], 0);
-    lv_label_set_text(settings.tabText[i], names[i]);
+    settingsSetText(settings.tabText[i], names[i]);
     lv_obj_set_style_text_font(settings.tabText[i], &lv_font_montserrat_16, 0);
     lv_obj_add_event_cb(settings.tabs[i], settingsTabEvent,
                         LV_EVENT_CLICKED, (void *)(intptr_t)i);
