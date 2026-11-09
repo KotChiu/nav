@@ -8,6 +8,10 @@ SemaphoreHandle_t flushReq = nullptr, flushDone = nullptr;
 uint16_t *volatile flushSrc = nullptr;
 volatile uint32_t flushMsAcc = 0, flushCnt = 0;
 volatile uint32_t flushVsyncUsAcc = 0, flushCopyUsAcc = 0, flushDrawUsAcc = 0;
+ // Enable only for a controlled device benchmark: serial output affects timing.
+ #ifndef DISPLAY_PIPELINE_METRICS
+ #define DISPLAY_PIPELINE_METRICS 0
+ #endif
 volatile bool flushFullFrame = true;
 volatile bool forceFullFlush = true;
 volatile int flushRectCount = 0;
@@ -161,6 +165,24 @@ void flushLogicalFrame(const uint16_t *fb, bool fullFrame,
   flushCopyUsAcc += copyAt - phaseAt;
   flushVsyncUsAcc += vsyncAt - copyAt;
   flushDrawUsAcc += drawAt - vsyncAt;
+#if DISPLAY_PIPELINE_METRICS
+  // Report bounded sampling windows, not lifetime averages or advertised FPS.
+  static uint32_t sampleCount = 0, copyTotal = 0, vsyncTotal = 0, submitTotal = 0;
+  static uint32_t copyPeak = 0, vsyncPeak = 0;
+  const uint32_t copyUs = copyAt - phaseAt, vsyncUs = vsyncAt - copyAt;
+  copyTotal += copyUs;
+  vsyncTotal += vsyncUs;
+  submitTotal += drawAt - vsyncAt;
+  if (copyUs > copyPeak) copyPeak = copyUs;
+  if (vsyncUs > vsyncPeak) vsyncPeak = vsyncUs;
+  if (++sampleCount == 64) {
+    Serial.printf("DISPLAYSTAT deg=%d avg_copy=%luus max_copy=%luus avg_vsync=%luus max_vsync=%luus avg_submit=%luus\n",
+      screenDeg, (unsigned long)(copyTotal / sampleCount), (unsigned long)copyPeak,
+      (unsigned long)(vsyncTotal / sampleCount), (unsigned long)vsyncPeak,
+      (unsigned long)(submitTotal / sampleCount));
+    sampleCount = copyTotal = vsyncTotal = submitTotal = copyPeak = vsyncPeak = 0;
+  }
+#endif
 }
 
 void flushLogicalFrame(const uint16_t *fb) {
@@ -195,7 +217,22 @@ void flushAsync() {
   if (lvglUiReady && fbBuf[1]) {
     // LVGL keeps its canonical buffer; transport owns an immutable snapshot.
     flushWait();
+#if DISPLAY_PIPELINE_METRICS
+    const uint32_t snapshotAt = micros();
+#endif
     memcpy(fbBuf[1], gfx->getFramebuffer(), LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t));
+#if DISPLAY_PIPELINE_METRICS
+    static uint32_t snapshotCount = 0, snapshotTotal = 0, snapshotPeak = 0;
+    const uint32_t snapshotUs = micros() - snapshotAt;
+    snapshotTotal += snapshotUs;
+    if (snapshotUs > snapshotPeak) snapshotPeak = snapshotUs;
+    if (++snapshotCount == 64) {
+      Serial.printf("SNAPSHOT bytes=%lu avg=%luus max=%luus\n",
+        (unsigned long)(LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t)),
+        (unsigned long)(snapshotTotal / snapshotCount), (unsigned long)snapshotPeak);
+      snapshotCount = snapshotTotal = snapshotPeak = 0;
+    }
+#endif
     flushSrc = fbBuf[1];
     flushFullFrame = true;
     flushRectCount = 0;
