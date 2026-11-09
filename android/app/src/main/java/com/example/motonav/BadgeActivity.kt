@@ -169,6 +169,7 @@ object BadgeTransfer {
     @Volatile private var pendingId = -1
     @Volatile private var encoding = false
     private var seq = 0
+    @Volatile private var generation = 0
     private val handler = Handler(Looper.getMainLooper())
 
     fun upload(photo: Bitmap) {
@@ -180,20 +181,23 @@ object BadgeTransfer {
             status = "导航或巡航中不可上传图片，请停车结束导航后重试"
             return
         }
-        synchronized(this) {
+        val request = synchronized(this) {
             if (encoding || pendingId >= 0) {
                 status = "上一张图片仍在处理或等待设备确认"
                 return
             }
             encoding = true
+            ++generation
         }
         status = "正在处理图片…"
         Thread {
             try {
                 val packet = BadgeActivity.encode(photo)
                 handler.post {
+                    if (request != generation) return@post // disconnected while encoding
                     encoding = false
-                    if (!BleLink.isConnected || !BleLink.badgeSupported) {
+                    if (!BleLink.isConnected || !BleLink.badgeSupported ||
+                        NaviBridge.guidanceActive) {
                         status = "连接中断，尚未上传"
                     } else {
                         seq = (seq + 1) and 255
@@ -215,6 +219,7 @@ object BadgeTransfer {
                 }
             } catch (_: Exception) {
                 handler.post {
+                    if (request != generation) return@post
                     encoding = false
                     status = "处理图片失败，请换一张照片"
                 }
@@ -239,6 +244,7 @@ object BadgeTransfer {
     }
 
     fun connectionLost() {
+        ++generation // invalidate any worker that might finish after reconnection
         if (encoding || pendingId >= 0) {
             pendingId = -1
             encoding = false
