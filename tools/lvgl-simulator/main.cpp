@@ -309,6 +309,28 @@ int main(int argc, char **argv) {
   lvPointer.type = LV_INDEV_TYPE_POINTER; lvPointer.read_cb = readPointer;
   lv_indev_drv_register(&lvPointer);
   showPage(0);
+  if (smoke) {
+    // Exercise every page in CI, not just the splash/home scene.
+    // Rendering must reach the RGB565 framebuffer without hardware.
+    for (int p = 0; p < 6; ++p) {
+      showPage(p);
+      lv_tick_inc(40);
+      lv_timer_handler();
+      lv_refr_now(nullptr);
+      size_t visible = 0;
+      for (uint16_t px : framebuffer) if (px != 0) ++visible;
+      if (visible < 100) {
+        std::fprintf(stderr, "LVGL smoke failed: page=%d pixels=%zu\\n", p, visible);
+        SDL_DestroyTexture(texture);
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 2;
+      }
+      std::fill(std::begin(framebuffer), std::end(framebuffer), 0);
+    }
+    showPage(0);
+  }
 
   bool running = true;
   uint32_t lastTick = SDL_GetTicks();
