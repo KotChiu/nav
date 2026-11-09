@@ -25,8 +25,7 @@ static MotoNavNavigationHud lvglMapHud;
 static MotoNavNavigationCues lvglTurnCues;
 static bool lvglNativeCueSupported() {
 #if MOTONAV_NATIVE_NAV_CUES
-  return navDir == "S" || navDir == "L" || navDir == "R" ||
-         navDir == "SL" || navDir == "SR";
+  return motonavCueSupported(motonavCueKind(navDir.c_str()));
 #else
   return false;
 #endif
@@ -894,7 +893,8 @@ static void lvglHybridTick() {
     const bool trip = !mapUiRingActive() && progress >= 0;
     const bool track = navDir != "S" && !trip;
     String distance = distText(navDist);
-    motonavNavigationCuesUpdate(lvglTurnCues, angle, distance.c_str(),
+    motonavNavigationCuesUpdate(lvglTurnCues, motonavCueKind(navDir.c_str()),
+      angle, distance.c_str(),
       near, progress, mapUiRingActive(), track, trip,
       lvglColor565(trip ? TRIP_DONE_C : veryNear ? C_ORANGE : C_YELLOW));
   }
