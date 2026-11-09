@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
+#include "TurnCueGeometry.h"
 
 #ifndef MOTONAV_NATIVE_NAV_CUES
 #define MOTONAV_NATIVE_NAV_CUES 0
@@ -73,25 +75,20 @@ static inline void motonavNavigationCuesUpdate(
     bool near, float progress, bool progressActive, bool showTrack,
     bool tripActive, lv_color_t color) {
   if (!view.root) return;
-  // Screen coordinates: 0 degrees points north, positive turns to the right.
-  const float a = headingDeg * 3.14159265359f / 180;
-  const float sx = std::sin(a), cy = -std::cos(a);
-  const float x = near ? 176.f : 185.f, y = near ? 403.f : 417.f;
-  const float ex = x + 40 * sx, ey = y + 40 * cy;
-  const float lx = ex - 14 * sx - 10 * cy, ly = ey - 14 * cy + 10 * sx;
-  const float rx = ex - 14 * sx + 10 * cy, ry = ey - 14 * cy - 10 * sx;
-  view.shaftPoints[0] = {static_cast<lv_coord_t>(x),
-                         static_cast<lv_coord_t>(y + 5)};
-  view.shaftPoints[1] = {static_cast<lv_coord_t>(x),
-                         static_cast<lv_coord_t>(y - 8)};
-  view.shaftPoints[2] = {static_cast<lv_coord_t>(std::lround(ex)),
-                         static_cast<lv_coord_t>(std::lround(ey))};
+  const auto p = motonavTurnArrowGeometry(
+      headingDeg, near ? 176.f : 185.f, near ? 403.f : 417.f);
+  view.shaftPoints[0] = {static_cast<lv_coord_t>(std::lround(p.startX)),
+                         static_cast<lv_coord_t>(std::lround(p.startY))};
+  view.shaftPoints[1] = {static_cast<lv_coord_t>(std::lround(p.elbowX)),
+                         static_cast<lv_coord_t>(std::lround(p.elbowY))};
+  view.shaftPoints[2] = {static_cast<lv_coord_t>(std::lround(p.endX)),
+                         static_cast<lv_coord_t>(std::lround(p.endY))};
   view.leftPoints[0] = view.shaftPoints[2];
-  view.leftPoints[1] = {static_cast<lv_coord_t>(std::lround(lx)),
-                        static_cast<lv_coord_t>(std::lround(ly))};
+  view.leftPoints[1] = {static_cast<lv_coord_t>(std::lround(p.leftX)),
+                        static_cast<lv_coord_t>(std::lround(p.leftY))};
   view.rightPoints[0] = view.shaftPoints[2];
-  view.rightPoints[1] = {static_cast<lv_coord_t>(std::lround(rx)),
-                         static_cast<lv_coord_t>(std::lround(ry))};
+  view.rightPoints[1] = {static_cast<lv_coord_t>(std::lround(p.rightX)),
+                         static_cast<lv_coord_t>(std::lround(p.rightY))};
   lv_line_set_points(view.arrow, view.shaftPoints, 3);
   lv_line_set_points(view.tipLeft, view.leftPoints, 2);
   lv_line_set_points(view.tipRight, view.rightPoints, 2);
