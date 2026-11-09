@@ -181,8 +181,14 @@ void flushTask(void *arg) {
 }
 
 void flushWait() {
-  if (xSemaphoreTake(flushDone, pdMS_TO_TICKS(3000)) == pdTRUE) return;
-  xSemaphoreTake(flushDone, portMAX_DELAY);
+  if (flushDone && xSemaphoreTake(flushDone, pdMS_TO_TICKS(3000)) == pdTRUE)
+    return;
+  // Never reuse a source buffer while a stalled VSYNC/DMA task might still
+  // read it. A bounded failure/reboot is safer than a permanently frozen
+  // navigation display or corruption of an in-flight frame.
+  Serial.println("DISPLAY FATAL: frame ownership/flush wait timed out");
+  ESP.restart();
+  abort();
 }
 
 void flushAsync() {
@@ -221,11 +227,28 @@ void flushSync() {
 
 void initDoubleBuffer() {
   fbBuf[0] = gfx->getFramebuffer();
-  fbBuf[1] = (uint16_t *)heap_caps_aligned_alloc(16, LCD_WIDTH * LCD_HEIGHT * 2, MALLOC_CAP_SPIRAM);
-  if (!fbBuf[1]) return;
-  memcpy(fbBuf[1], fbBuf[0], LCD_WIDTH * LCD_HEIGHT * 2);
+  const size_t bytes = (size_t)LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t);
+  if (!fbBuf[0]) {
+    Serial.println("DISPLAY: no logical framebuffer; use synchronous fallback");
+    return;
+  }
+  fbBuf[1] = (uint16_t *)heap_caps_aligned_alloc(16, bytes, MALLOC_CAP_SPIRAM);
+  if (!fbBuf[1]) {
+    Serial.println("DISPLAY: transport PSRAM unavailable; using synchronous fallback");
+    return;
+  }
+  memcpy(fbBuf[1], fbBuf[0], bytes);
   flushReq = xSemaphoreCreateBinary();
   flushDone = xSemaphoreCreateBinary();
+  if (!flushReq || !flushDone ||
+      xTaskCreatePinnedToCore(flushTask, "flush", 4096, nullptr, 1,
+                              nullptr, 0) != pdPASS) {
+    Serial.println("DISPLAY: flush task/semaphore failed; synchronous fallback");
+    if (flushReq) { vSemaphoreDelete(flushReq); flushReq = nullptr; }
+    if (flushDone) { vSemaphoreDelete(flushDone); flushDone = nullptr; }
+    heap_caps_free(fbBuf[1]);
+    fbBuf[1] = nullptr;
+    return;
+  }
   xSemaphoreGive(flushDone);
-  xTaskCreatePinnedToCore(flushTask, "flush", 4096, nullptr, 1, nullptr, 0);
 }
