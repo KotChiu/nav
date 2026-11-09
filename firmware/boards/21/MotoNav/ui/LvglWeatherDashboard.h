@@ -11,7 +11,7 @@ struct WeatherView {
   lv_obj_t *forecastTemp[4] = {};
   lv_obj_t *footer = nullptr;
   bool wasVisible = false;
-  int lastSignature = -1;
+  uint32_t lastSignature = UINT32_MAX;
 };
 static WeatherView weather;
 
@@ -89,15 +89,19 @@ static void weatherUpdate(bool visible) {
   }
   if (!weather.wasVisible) {
     lv_obj_clear_flag(weather.root, LV_OBJ_FLAG_HIDDEN);
-    weather.lastSignature = -1;
+    weather.lastSignature = UINT32_MAX;
     weather.wasVisible = true;
   }
   // Most fields change only when the app sends new weather. Avoid per-frame
   // LVGL layout/repaints on the continuous map render loop.
-  int signature = (wxHave ? 1 : 0) ^ (wxIcon << 2) ^ (wxTemp << 7) ^
-                  ((int)wxN << 16) ^ (wxHourly ? 0x100000 : 0);
-  for (int i = 0; i < wxN && i < 4; ++i) signature ^= (wxFh[i] + wxFl[i] * 7 +
-    wxWk[i] * 31 + wxFi[i] * 79) << (i & 3);
+  uint32_t signature = (wxHave ? 1U : 0U) ^ ((uint32_t)wxIcon << 2) ^
+                       ((uint32_t)wxTemp << 7) ^ ((uint32_t)wxN << 16) ^
+                       (wxHourly ? 0x100000U : 0U);
+  for (int i = 0; i < wxN && i < 4; ++i) {
+    const uint32_t item = (uint32_t)(wxFh[i] + wxFl[i] * 7 +
+                                      wxWk[i] * 31 + wxFi[i] * 79);
+    signature ^= item << (i & 3);
+  }
   if (signature == weather.lastSignature) return;
   weather.lastSignature = signature;
   char str[30];
