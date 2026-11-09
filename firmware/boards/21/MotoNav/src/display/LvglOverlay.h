@@ -874,16 +874,16 @@ static void lvglHybridTick() {
   motonavNavigationCuesVisible(lvglTurnCues, showNativeCues);
   if (showNativeCues) {
     float angle = 0;
-    const bool far = navDir != "S" && navDist > STAGE_FAR_M;
+    const bool far = navDir != "S" && navDist > mapUiFarStageMeters();
     if (!far) (void)dirAngle(navDir, angle);
-    const bool near = navDir != "S" && navDist <= MAP_NEAR_M;
-    const bool veryNear = navDir != "S" && navDist <= STAGE_NEAR_M;
-    float progress = ringActive ? ringShown : tripFrac();
-    const bool trip = !ringActive && progress >= 0;
+    const bool near = navDir != "S" && navDist <= mapUiNearMeters();
+    const bool veryNear = navDir != "S" && navDist <= mapUiNearStageMeters();
+    float progress = mapUiRingActive() ? mapUiRingShown() : tripFrac();
+    const bool trip = !mapUiRingActive() && progress >= 0;
     const bool track = navDir != "S" && !trip;
     String distance = distText(navDist);
     motonavNavigationCuesUpdate(lvglTurnCues, angle, distance.c_str(),
-      near, progress, ringActive, track, trip,
+      near, progress, mapUiRingActive(), track, trip,
       lvglColor565(trip ? TRIP_DONE_C : veryNear ? C_ORANGE : C_YELLOW));
   }
   bool showMusic = page == PAGE_MUSIC && !sliding && !pairOn && !callOn && !fxOn;
