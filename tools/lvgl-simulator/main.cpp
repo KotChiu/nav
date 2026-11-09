@@ -12,6 +12,9 @@
 #include <iterator>
 #include <ctime>
 #include <string>
+#include <filesystem>
+#include <fstream>
+#include <stdexcept>
 
 #include "../../firmware/boards/21/MotoNav/ui/LvglHomeChrome.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglWeatherView.h"
@@ -41,6 +44,8 @@ int cursorX = W / 2, cursorY = H / 2;
 bool pressed = false, dirty = true;
 int pageIndex = 0, brightness = 70, speed = 68;
 bool navigation = false, linkReady = true, playing = true;
+float demoTurnDegrees = 90.f, demoProgress = 0.45f;
+bool demoNearTurn = false;
 bool dragging = false;
 int downX = 0, downY = 0;
 MotoNavHomeChrome chrome;
@@ -185,8 +190,11 @@ void navigationPage(lv_obj_t *screen) {
   motonavMapCanvasVisible(demoMapCanvas, true);
   demoTurnCues = MotoNavNavigationCues{};
   motonavNavigationCuesCreate(demoTurnCues, screen);
-  motonavNavigationCuesUpdate(demoTurnCues, 90, "250m", false, 0.45f,
-                              true, true, false, lv_color_hex(0xFDE15A));
+  motonavNavigationCuesUpdate(demoTurnCues, demoTurnDegrees,
+                              demoNearTurn ? "35m" : "250m",
+                              demoNearTurn, demoProgress,
+                              true, true, false,
+                              lv_color_hex(demoNearTurn ? 0xFFAA33 : 0xFDE15A));
   motonavNavigationCuesVisible(demoTurnCues, true);
   centerLabel(screen, "TURN RIGHT IN 250m", 304, 0xFFFFFF, &lv_font_montserrat_20);
   button(screen, "END MOCK ROUTE", 125, 363, 216, navEvent);
@@ -349,6 +357,36 @@ void readPointer(lv_indev_drv_t *, lv_indev_data_t *data) {
   data->point.x = cursorX;
   data->point.y = cursorY;
 }
+static void savePanelPpm(const std::string &path) {
+  // Write the exact logical LVGL RGB565 draw result, centered in the
+  // physical 480x480 circular panel. No SDL screenshot dependence.
+  std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+  if (!stream) throw std::runtime_error("Cannot write " + path);
+  stream << "P6\\n" << PANEL << " " << PANEL << "\\n255\\n";
+  const int r2 = (W / 2 - 2) * (W / 2 - 2);
+  for (int y = 0; y < PANEL; ++y) {
+    for (int x = 0; x < PANEL; ++x) {
+      const int px = x - BORDER, py = y - BORDER;
+      const int dx = px - W / 2, dy = py - H / 2;
+      uint16_t c = 0;
+      if (px >= 0 && py >= 0 && px < W && py < H && dx * dx + dy * dy <= r2)
+        c = framebuffer[py * W + px];
+      const unsigned char rgb[3] = {
+        static_cast<unsigned char>(((c >> 11) & 31) * 255 / 31),
+        static_cast<unsigned char>(((c >> 5) & 63) * 255 / 63),
+        static_cast<unsigned char>((c & 31) * 255 / 31)
+      };
+      stream.write(reinterpret_cast<const char *>(rgb), sizeof(rgb));
+    }
+  }
+  if (!stream) throw std::runtime_error("Failed writing " + path);
+}
+static void captureScenario(const std::string &folder, const char *name) {
+  lv_tick_inc(40);
+  lv_timer_handler();
+  lv_refr_now(nullptr);
+  savePanelPpm(folder + "/" + name + ".ppm");
+}
 void render(SDL_Renderer *renderer, SDL_Texture *texture) {
   std::memcpy(roundedFrame, framebuffer, sizeof(roundedFrame));
   const int radius = W / 2, radiusSquared = (radius - 2) * (radius - 2);
@@ -369,7 +407,24 @@ void render(SDL_Renderer *renderer, SDL_Texture *texture) {
 } // namespace
 
 int main(int argc, char **argv) {
-  bool smoke = argc > 1 && std::string(argv[1]) == "--smoke-test";
+  bool smoke = false;
+  std::string captureDir;
+  for (int i = 1; i < argc; ++i) {
+    if (std::string(argv[i]) == "--smoke-test") smoke = true;
+    else if (std::string(argv[i]) == "--capture-dir" && i + 1 < argc)
+      captureDir = argv[++i];
+    else {
+      std::fprintf(stderr, "Usage: %s [--smoke-test] [--capture-dir DIR]\\n", argv[0]);
+      return 2;
+    }
+  }
+  if (!captureDir.empty()) {
+    try { std::filesystem::create_directories(captureDir); }
+    catch (const std::exception &e) {
+      std::fprintf(stderr, "Cannot create capture dir: %s\\n", e.what());
+      return 2;
+    }
+  }
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0) {
     std::fprintf(stderr, "SDL init failed: %s\n", SDL_GetError());
     return 1;
@@ -393,6 +448,35 @@ int main(int argc, char **argv) {
   lvPointer.type = LV_INDEV_TYPE_POINTER; lvPointer.read_cb = readPointer;
   lv_indev_drv_register(&lvPointer);
   showPage(0);
+  if (!captureDir.empty()) {
+    static const char *scenes[] = {"home", "weather", "music", "companion", "stocks", "settings"};
+    for (int p = 0; p < 6; ++p) {
+      showPage(p);
+      captureScenario(captureDir, scenes[p]);
+    }
+    navigation = true;
+    linkReady = true;
+    const float headings[] = {0, -90, 90, 90, 90};
+    const char *names[] = {"nav-straight", "nav-left", "nav-right", "nav-near",
+                            "nav-overspeed"};
+    for (int i = 0; i < 5; ++i) {
+      demoTurnDegrees = headings[i];
+      demoNearTurn = i == 3;
+      demoProgress = i == 3 ? 0.95f : 0.45f;
+      speed = i == 4 ? 92 : 68;
+      showPage(0);
+      captureScenario(captureDir, names[i]);
+    }
+    navigation = false;
+    demoNearTurn = false;
+    demoTurnDegrees = 90;
+    speed = 68;
+    linkReady = false;
+    showPage(0);
+    captureScenario(captureDir, "home-offline");
+    linkReady = true;
+    showPage(0);
+  }
   if (smoke) {
     // Exercise every page in CI, not just the splash/home scene.
     // Rendering must reach the RGB565 framebuffer without hardware.
