@@ -229,6 +229,11 @@ struct TextImg {
   int recvId; uint16_t recvW; uint8_t recvH; uint8_t recvParts; uint32_t recvMask;
 };
 TextImg imgs[IMG_SLOTS];
+// Incremented by the bitmap receiver on replacement/clear. Bitmap sources
+// alternate between two buffers, so pointer identity alone is not a revision.
+uint32_t textImageRevision[IMG_SLOTS] = {};
+bool lvglTextAssetReady[IMG_SLOTS] = {};
+bool lvglCoverAssetReady = false;
 AppleMediaClient appleMedia;
 volatile uint32_t mediaConnectionEpoch = 0;
 uint32_t lyricImageGeneration = 0; uint16_t lyricImageTitleRevision = 0, lyricImageArtistRevision = 0;
@@ -241,6 +246,7 @@ bool musicHave = false, musicPlaying = false;
 uint16_t *coverImg = nullptr;              // PSRAM：COVER_PX*COVER_PX RGB565
 int coverW = 0, coverH = 0;
 bool coverValid = false;
+uint32_t coverImageRevision = 0;
 int musicActions = 0;
 int musicPressed = -1, musicAck = 0;
 unsigned long musicAckUntil = 0;
