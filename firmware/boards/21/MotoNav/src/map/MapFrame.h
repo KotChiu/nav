@@ -10,6 +10,22 @@ void drawMapFrame() {
   unsigned long t = millis();
   lastMapDraw = t;
   frameIsMap = true;
+  // Native LVGL map Canvas owns a dedicated PSRAM RGB565 buffer. Old map
+  // primitives and the new LVGL vector operations can safely share it while
+  // the display's canonical framebuffer remains untouched until LVGL paints.
+  // A screen-level traffic-light overlay is still Canvas-based: fall back
+  // until it too becomes a native LVGL widget, so it cannot be overpainted.
+  const bool trafficOverlay = (bleConnected && bleAuthed) &&
+    (trafficLightLab.valid(t) || trafficLightFrame.valid(t) ||
+     (trafficLightPreviewUntil &&
+      (int32_t)(trafficLightPreviewUntil - t) > 0));
+  uint16_t *logicalFrame = gfx->getFramebuffer();
+  const bool usingMapCanvas = lvglUiReady && logicalFrame &&
+    !trafficOverlay && !staleShown && !sliding &&
+    !pairOn && !callOn && !fxOn &&
+    lvglMapCanvasPixels() && lvglMapCanvasStartFrame();
+  if (usingMapCanvas) gfx->setFramebuffer(lvglMapCanvasPixels());
+  else lvglMapCanvasFallback();
   // 位置：按车速和转弯速度往前推算（v6.7 沿弧线，再加一点提前量），让画面连续移动、少“慢半拍”
   float cx, cy, hPred;
   predictPose(t, leadMs / 1000.0f, cx, cy, hPred);
@@ -141,6 +157,12 @@ void drawMapFrame() {
   drawNavHints(300);                                    // v5.0 重新规划中 / 更快路线 / GPS 信号弱
   drawBattery(CX - 16, 18, false);                         // v6.8 电量（车速上方）；v7.2 带黑底
   profMark(10);
+  // Return the renderer to the *canonical* logical frame before any
+  // LVGL timers, transport snapshots or page transitions run.
+  if (usingMapCanvas) {
+    gfx->setFramebuffer(logicalFrame);
+    lvglMapCanvasEndFrame();
+  }
   // v2.9 小地图里不画顶部的蓝牙小圆点（会和 N 标记重叠；能收到地图就说明连着）
   needFlush = true;
   mapFrames++;
