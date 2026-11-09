@@ -142,7 +142,14 @@ void drawMapFrame() {
     bool isNear = navDist <= STAGE_NEAR_M;
     // v7.4 平时外圈是行程环；出现转弯倒计时就换成倒计时环（盖掉行程环）
     float tp = ringActive ? -1 : tripFrac();
-    drawRingLayer(navDir != "S" && tp < 0, ringActive ? ringShown : 0, isNear ? 14 : 10, isNear ? C_ORANGE : C_YELLOW, over, tp);
+    if (usingMapCanvas && lvglNativeCueSupported() && !cruiseOn)
+      // Preserve outer black mask/overspeed rim; the native LVGL arc owns
+      // the colored trip/distance indicator when explicitly enabled.
+      drawRingLayer(false, 0, isNear ? 14 : 10,
+                    isNear ? C_ORANGE : C_YELLOW, over, -1);
+    else
+      drawRingLayer(navDir != "S" && tp < 0, ringActive ? ringShown : 0,
+                    isNear ? 14 : 10, isNear ? C_ORANGE : C_YELLOW, over, tp);
   }
   profMark(6);
   // LVGL renders the live speed and limit overlay on the shared map canvas.
