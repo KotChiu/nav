@@ -47,6 +47,10 @@ jobs:
             g++ -std=c++17 -Wall -Wextra -Werror -pedantic "firmware/tests/${test}.cpp" -o "/tmp/${test}"
             "/tmp/${test}"
           done
+      - name: Check QA packaging and non-destructive flash selector
+        run: |
+          python3 -m py_compile firmware/build.py firmware/flash_macos.py tools/hardware-qa/collect.py
+          python3 -m unittest discover -s firmware/tests -p 'test_flash_macos.py' -v
       - name: Configure
         run: cmake -S tools/lvgl-simulator -B build/lvgl-simulator -DCMAKE_BUILD_TYPE=Release
       - name: Build
