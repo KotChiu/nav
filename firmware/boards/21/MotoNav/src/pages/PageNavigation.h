@@ -1,4 +1,5 @@
 #pragma once
+#include "../../ui/TransitionPolicy.h"
 // 音乐页面、手势换页和数据中断提示。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
 // ---- v5.5 跟手换页 ----
 // 触摸坐标和画面方向相反时改成 1（拖动时画面往手指反方向走就是反了）
@@ -141,8 +142,8 @@ float dragP = 0, dragV = 0;                 // 新页面已经进来多少像素
 unsigned long dragT = 0;
 unsigned long dragFrameAt = 0;
 bool slideSettling = false;
-// The LVGL snapshot layer is enabled only for transitions between 3/4/5
-// (settings, companion, stocks). Other pages still have Canvas dependencies.
+// The LVGL snapshot layer uses any completed non-navigation page snapshots.
+// Navigation-active swipes remain on the legacy compositor until road QA.
 static bool lvglSwipeTransition = false;
 bool slideSettleGo = false;
 float slideSettleFrom = 0, slideSettleTo = 0;
@@ -194,10 +195,8 @@ bool slidePrepare(int target) {
     page = previous;
   }
   memcpy(slideNew, gfx->getFramebuffer(), BYTES);
-  lvglSwipeTransition = lvglUiReady && !inNav &&
-    page >= PAGE_SETTINGS && page <= PAGE_STOCKS &&
-    target >= PAGE_SETTINGS && target <= PAGE_STOCKS &&
-    lvglSwipeBegin(slideOld, slideNew);
+  lvglSwipeTransition = motonavNativeSwipeAllowed(
+    page, target, inNav, lvglUiReady) && lvglSwipeBegin(slideOld, slideNew);
   sliding = true;
   lvglClearDirtyArea();
   needFlush = false; frameIsMap = false;
