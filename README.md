@@ -23,6 +23,18 @@
 
 **公开的 1.75 固件成品**：[7.12.9-junction.11 Release](https://github.com/zyn950929/MotoNav/releases/tag/firmware-v7.12.9-junction.11)（仅适用微雪 1.75，禁止跨板刷写）。iPhone 历史 IPA、发布说明和安装教程见下方对应章节，旧版本安装包不代表最新源码。
 
+## 不烧录真机的 LVGL 预览（迁移实验）
+
+2.1 英寸版本现在提供 [基于 LVGL 8.3.10 的 SDL2 桌面模拟器](tools/lvgl-simulator/README.md)。Mac / Linux 可本地编译运行；首页圆环与 ESP32 固件共享原生 LVGL 组件，其他页面当前仍是模拟数据和示例视图，**不等于完整固件 UI 或实机显示效果**。
+
+```bash
+cmake -S tools/lvgl-simulator -B build/lvgl-simulator
+cmake --build build/lvgl-simulator -j4
+./build/lvgl-simulator/motonav-lvgl-simulator
+```
+
+LVGL 是 UI 框架，不能替代 ST7701S 的 RGB 显示/背光/时序驱动。本分支只完成第一阶段安全迁移，导航 Canvas、地图栅格、页面快照和全部设备端渲染接口仍待逐步迁移。
+
 ## 2.1 英寸圆屏开发进展
 
 - **硬件适配**：Waveshare ESP32-S3-Touch-LCD-2.1，480×480 RGB 显示、ST7701S 控制器、CST820 触摸；使用板级驱动和逻辑坐标缩放，复用 MotoNav 手机端 BLE 通信设计。
