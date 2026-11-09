@@ -180,9 +180,15 @@ void flushTask(void *arg) {
   }
 }
 
+// Never hand a framebuffer back to the producer after a failed wait: the
+// worker may still own it. Restart fail-closed instead of deadlocking forever.
 void flushWait() {
-  if (xSemaphoreTake(flushDone, pdMS_TO_TICKS(3000)) == pdTRUE) return;
-  xSemaphoreTake(flushDone, portMAX_DELAY);
+  if (!flushDone || xSemaphoreTake(flushDone, pdMS_TO_TICKS(3000)) != pdTRUE) {
+    Serial.printf("DISPLAY FATAL: flush timeout or missing semaphore; count=%lu\n",
+                  (unsigned long)flushCnt);
+    ESP.restart();
+    abort();  // Do not reuse potentially in-flight PSRAM if restart returns.
+  }
 }
 
 void flushAsync() {
@@ -219,13 +225,29 @@ void flushSync() {
   xSemaphoreGive(flushDone);
 }
 
+// An incomplete worker setup must not leave fbBuf[1] looking usable.
+// Direct gfx->flush() is the existing synchronous fallback.
 void initDoubleBuffer() {
   fbBuf[0] = gfx->getFramebuffer();
-  fbBuf[1] = (uint16_t *)heap_caps_aligned_alloc(16, LCD_WIDTH * LCD_HEIGHT * 2, MALLOC_CAP_SPIRAM);
-  if (!fbBuf[1]) return;
-  memcpy(fbBuf[1], fbBuf[0], LCD_WIDTH * LCD_HEIGHT * 2);
-  flushReq = xSemaphoreCreateBinary();
-  flushDone = xSemaphoreCreateBinary();
-  xSemaphoreGive(flushDone);
-  xTaskCreatePinnedToCore(flushTask, "flush", 4096, nullptr, 1, nullptr, 0);
+  if (!fbBuf[0]) {
+    Serial.println("DISPLAY: no primary framebuffer");
+    return;
+  }
+  fbBuf[1] = (uint16_t *)heap_caps_aligned_alloc(
+      16, LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+  if (fbBuf[1]) {
+    flushReq = xSemaphoreCreateBinary();
+    flushDone = xSemaphoreCreateBinary();
+    if (flushReq && flushDone &&
+        xTaskCreatePinnedToCore(flushTask, "flush", 4096, nullptr, 1, nullptr, 0) == pdPASS) {
+      memcpy(fbBuf[1], fbBuf[0], LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t));
+      xSemaphoreGive(flushDone);
+      return;
+    }
+  }
+  // No worker was started: safe to destroy partially created resources.
+  Serial.println("DISPLAY: double-buffer init failed; using synchronous flush");
+  if (flushReq) { vSemaphoreDelete(flushReq); flushReq = nullptr; }
+  if (flushDone) { vSemaphoreDelete(flushDone); flushDone = nullptr; }
+  if (fbBuf[1]) { heap_caps_aligned_free(fbBuf[1]); fbBuf[1] = nullptr; }
 }
