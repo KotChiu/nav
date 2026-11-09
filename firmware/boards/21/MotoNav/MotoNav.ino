@@ -433,5 +433,8 @@ void loop() {
         idlePowerOffShutdown();
     }
   }
+#if MOTONAV_BOARD_QA
+  qaRuntimeTick(); // Passive evidence: requires actual app/BLE, never fakes PASS.
+#endif
   delay((mapNow || touchDown || sliding || dragging) ? 1 : 5);
 }
