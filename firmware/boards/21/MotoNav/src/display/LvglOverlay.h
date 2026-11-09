@@ -5,6 +5,7 @@
 #include "../../ui/LvglHomeChrome.h"
 #include "../../ui/LvglWeatherView.h"
 #include "../../ui/LvglMusicStatusView.h"
+#include "../../ui/LvglNavigationHud.h"
 #include "../../ui/LvglRasterAssets.h"
 
 static inline lv_color_t lvglColor565(uint16_t color) {
@@ -16,6 +17,7 @@ static inline lv_color_t lvglColor565(uint16_t color) {
 static MotoNavHomeChrome lvglHomeChrome;
 static MotoNavWeatherView lvglWeatherView;
 static MotoNavMusicStatusView lvglMusicView;
+static MotoNavNavigationHud lvglMapHud;
 // 4-bit images from the phone are shared between firmware and PC SDL.
 // Image backing buffers are allocated lazily in PSRAM, not internal RAM.
 static MotoNavRasterAsset lvglTextAssets[10];
@@ -358,6 +360,7 @@ static void createLvglOverlay() {
   motonavHomeChromeCreate(lvglHomeChrome, screen, CX, C_UI_ACCENT, C_UI_ACCENT2);
   motonavWeatherViewCreate(lvglWeatherView, screen);
   motonavMusicStatusCreate(lvglMusicView, screen);
+  motonavNavigationHudCreate(lvglMapHud, screen);
   for (int i = 0; i < 10; ++i)
     motonavRasterCreate(lvglTextAssets[i], screen, motonavRasterPsramAlloc, free);
   motonavCoverCreate(lvglAlbumCover, screen, motonavRasterPsramAlloc, free);
@@ -775,6 +778,16 @@ static void lvglHybridTick() {
       weather.forecastLowOrRain[i] = wxFl[i];
     }
     motonavWeatherViewUpdate(lvglWeatherView, weather);
+  }
+  bool showMapHud = page == PAGE_HOME && inNav && mapModeActive() &&
+                    !sliding && !pairOn && !callOn && !fxOn;
+  motonavNavigationHudVisible(lvglMapHud, showMapHud);
+  if (showMapHud) {
+    const bool over = hasCam && camLimit > 0 && speedKmh > camLimit;
+    String cameraRange = distText(camDist);
+    motonavNavigationHudUpdate(lvglMapHud, speedKmh, hasCam, camLimit,
+                               cameraRange.c_str(), over,
+                               lvglColor565(TH.hud), lvglColor565(C_RED));
   }
   bool showMusic = page == PAGE_MUSIC && !sliding && !pairOn && !callOn && !fxOn;
   motonavMusicStatusVisible(lvglMusicView, showMusic);
