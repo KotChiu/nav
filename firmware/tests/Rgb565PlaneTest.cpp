@@ -28,7 +28,8 @@ int main() {
     assert(storage[1 + 3 * W + x] == ((x >= 2 && x <= 4) ? 0x3333 : 0x1111));
   p.vline(4, 5, -4, 0x4444); // y=2,3,4,5
   for (int y = 0; y < H; ++y) {
-    uint16_t want = y >= 2 && y <= 5 ? 0x4444 : 0x1111;
+    uint16_t want = y >= 2 && y <= 5 ? 0x4444 :
+                    y == 1 ? 0x2222 : 0x1111;
     assert(storage[1 + y * W + 4] == want);
   }
   p.pixel(8, 6, 0x5555);
