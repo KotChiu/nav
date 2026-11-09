@@ -1,18 +1,71 @@
-# MotoNav
+# MotoNav 🏍️
 
-Android / iOS 手机配合 ESP32-S3 圆屏的导航项目。当前公开源码：**Android 8.3.26**、**红绿灯读秒实验 8.3.26-fusion.19.2**、**iOS 0.15.0**、**1.75 固件 7.12.9-junction.11（通用开机画面）**。1.85B 保留 7.12.3-185B，禁止混刷。Fresh 不包含在本次发布。
+**MotoNav 是一个以手机 + ESP32-S3 圆屏为核心的摩托车导航及骑行信息显示项目。** Android / iOS 手机负责定位、算路、地图和天气数据处理，通过 BLE 向车把圆屏发送导航、媒体和其他状态信息；圆屏负责显示与触摸交互，**不能脱离手机独立导航**。
 
-**1.75 固件成品下载：[v7.12.9-junction.11 Release](https://github.com/zyn950929/MotoNav/releases/tag/firmware-v7.12.9-junction.11)**，含 Windows 一键烧录 ZIP、独立镜像、固件源码和 SHA256。仅适用微雪 1.75，不能用于 1.85B。
+> **开发状态（2026-11-09）**：当前默认分支 `feature/board-2.1` 正在推进 **Waveshare 2.1 英寸 480×480 RGB 圆屏**，包含黑底青色／品红的赛博霓虹 UI、滑动页面和股票／互动角色等扩展页面。2.1 属于**实验开发版**，不是 1.75 的可直接替换固件。实际行车前仍需完整验证。
 
-[本轮完整更新说明与验证范围](docs/RELEASE-2026-10-25.md) · [安卓红绿灯实验版说明](experiments/traffic-lights/README.md) · [iOS 功能与构建说明](docs/RELEASE-IOS-0.15.0.md)
+![MotoNav 导航模拟效果](docs/media/mockups/hero-simulation.png)
 
-**安卓红绿灯读秒属于实验功能，不保证一直有效。** 上游服务、账号权限、地区和路口覆盖、网络、后台限制及路线匹配变化都可能使它停止、缺失或不可用。无数据或核对不符时不补造读秒。任何导航图标和读秒都不能代替道路上的实际交通信号。
+*上图是 AI 模拟图，并非 2.1 英寸开发板实机截图；实际效果请以设备为准。*
 
-iOS 0.15.0 本轮仅公开源码，**尚未经过 Xcode 编译、没有新版 IPA、未做 iPhone 真机验证**；不包含红绿灯读秒。历史 Release、IPA 仍保留原版本，请勿把旧包当作本次更新。构建方式与平台限制见上述说明。
+## 当前版本与适用范围
 
-**本项目借助 AI 辅助开发，由个人进行需求设计、设备验证和迭代。仅供个人非商业使用与学习交流，禁止未经许可的商业使用及转售。**
+以下区分**仓库源码版本**与**已发布的可下载成品**，不能把源码版本当成已经验证的 APK、IPA 或固件 Release。
 
-## 本次更新（2026-10-25）
+| 组件 | 当前源码版本 / 目录 | 状态 |
+| --- | --- | --- |
+| 2.1 英寸圆屏 | `v7.13.0-companion` · `firmware/boards/21/MotoNav` | **活跃开发**；480×480 ST7701S + CST820，已编译、烧录及完成基础启动/触摸确认；完整交互、BLE 与道路测试仍待验证 |
+| 1.75 英寸圆屏 | `v7.12.10-cover.1` · `firmware/boards/175/MotoNav` | 当前源码含音乐专辑封面传输；已确认的公开成品仍见下方 `7.12.9-junction.11` Release |
+| 1.85B 圆屏 | `7.12.3-185B` · `firmware/boards/185b/MotoNav` | 实验适配，不能刷入其他板型固件 |
+| Android 原版 | `8.3.26` · `android/` | 摩托车／驾车／自行车规划、导航、BLE、轨迹及天气；普通版**不包含红绿灯读秒** |
+| Android 红绿灯实验 | `experiments/traffic-lights/` | 独立实验源码，有额外构建依赖；读秒不保证持续可用 |
+| iOS | `0.15.16` · `ios/` | 源码包含音乐专辑封面等迭代；**不能据此认定已有对应 IPA 或完成全量真机验证** |
+
+**公开的 1.75 固件成品**：[7.12.9-junction.11 Release](https://github.com/zyn950929/MotoNav/releases/tag/firmware-v7.12.9-junction.11)（仅适用微雪 1.75，禁止跨板刷写）。iPhone 历史 IPA、发布说明和安装教程见下方对应章节，旧版本安装包不代表最新源码。
+
+## 2.1 英寸圆屏开发进展
+
+- **硬件适配**：Waveshare ESP32-S3-Touch-LCD-2.1，480×480 RGB 显示、ST7701S 控制器、CST820 触摸；使用板级驱动和逻辑坐标缩放，复用 MotoNav 手机端 BLE 通信设计。
+- **交互与页面**：主页（含导航、时钟、天气摘要）、天气、音乐、互动角色、股票及设置；支持左右滑动切换、下滑回主页。股票页提供滚动卡片和简化 K 线，可展示的内容取决于手机端提供的数据。
+- **视觉主题**：近黑底色、白色正文、青色主强调、品红重点状态；保留天气预警与股票涨跌等功能色。已修正屏幕反色问题。
+- **验证边界**：已完成本地固件构建及设备烧录，串口确认基础初始化（包括 `touch ok`、`MotoNav ready`）。局部显示阶段有测时记录，但**不代表已验证固定 FPS、滑动流畅度、完整 BLE 或实车导航**。
+
+开发记录：[2.1 移植与硬件](docs/BOARD-2.1-RESEARCH.md) · [黑色主题交接记录](docs/HANDOFF-2026-11-08-esp32-black-theme.md) · [交互性能测量](docs/UI-PERFORMANCE-2026-11-08.md)
+
+### 2.1 固件快速构建
+
+准备 Arduino CLI、Espressif ESP32 Arduino Core 3.3.10 及项目所需依赖。构建脚本会检查并尝试安装 LVGL 8.3.10。
+
+```bash
+# macOS / Linux：仅构建，不会自动烧录
+python3 firmware/build.py --board 21
+
+# 检查串口、烧录配置（不会写入设备）
+python3 firmware/flash_macos.py --board 21 --check
+
+# 明确确认板型、备份设置后，首次完整刷入 2.1
+python3 firmware/flash_macos.py --board 21 --full
+```
+
+Windows PowerShell 构建：`.\\firmware\\build.ps1 -Board 21`。镜像生成目录为 `firmware/dist/21/panel0/`，其中 `app_0x10000` 供相同分区的既有设备升级，`full_0x0` 用于首次完整刷写。**完整刷写可能清除原有程序、配对和设置；1.75、1.85B 与 2.1 镜像绝对不能混刷。**
+
+## 从哪里开始
+
+| 目标 | 入口 |
+| --- | --- |
+| 了解整体代码与 BLE / 固件 | [固件说明](firmware/README.md)、[音乐与 BLE HID](docs/BLE-HID.md) |
+| Android 构建、地图与天气 Key | 下方「Windows 一键打包」「地图与天气配置」；入口 `一键打包.bat` |
+| iPhone 安装及源码构建 | [新手安装](docs/INSTALL-BEGINNER.md)、[签名与续签](docs/INSTALL-IOS.md)；Mac 构建 `bash scripts/build-ios-local.sh` |
+| 2.1 硬件、主题与性能 | [2.1 开发记录](docs/BOARD-2.1-RESEARCH.md) |
+| 1.75 发布版说明 | [2026-10-25 发布记录](docs/RELEASE-2026-10-25.md) |
+| iOS 0.15.16 专辑封面协议 | [专辑封面更新说明](docs/RELEASE-IOS-0.15.16.md) |
+| Android 读秒实验 | [单独的实验版说明](experiments/traffic-lights/README.md) |
+
+**安全与许可**：行驶时不要操作手机或圆屏，导航、地图、电子眼和红绿灯实验信息均不能代替现场道路、标志与信号灯。红绿灯实验依赖上游数据，可能缺失、延迟或失效。项目由个人借助 AI 辅助开发，供非商业学习交流；原创代码和素材适用 [LICENSE.md](LICENSE.md) 的非商业条款，第三方组件遵循各自许可。
+
+---
+
+## 2026-10-25 源码发布记录（历史）
 
 ### 安卓原版 8.3.26
 
@@ -130,9 +183,13 @@ Windows 下载独立的一键烧录 ZIP，完整解压后双击“一键烧录.b
 
 ## 支持的硬件
 
-- Waveshare ESP32-S3-Touch-AMOLED-1.75，466×466。
+| 板型 | 分辨率 | 状态 |
+| --- | --- | --- |
+| Waveshare ESP32-S3-Touch-AMOLED-1.75 | 466×466 | 已有公开固件成品；参考上方 Release |
+| Waveshare ESP32-S3-Touch-LCD-2.1 | 480×480 | 当前开发分支；已点亮、烧录并确认基础触摸初始化，完整交互与 BLE 尚待验证 |
+| Waveshare ESP32-S3-Touch-AMOLED-1.85B | 360×360 | 旧版实验源码，暂不宣称已完成真机验证 |
 
-正式使用说明以 1.75 英寸板型为准。仓库原有 `firmware/boards/185b` 同步提供 7.12.3-185B 实验移植源码，360×360、三种面板初始化可编译，尚无本次实物验证；1.75 的外接电源自动关机例外未移植到 1.85B。`firmware/boards/21` 是 Waveshare ESP32-S3-Touch-LCD-2.1 的实验移植，当前仅完成编译验证。M5Stack StopWatch 不包含在本仓库。
+各板型面板驱动、分辨率和刷写镜像不同，**不可混刷**。1.75 的外接电源自动关机例外没有直接移植到 1.85B。M5Stack StopWatch 不包含在本仓库。
 
 ## 功能
 
@@ -144,7 +201,7 @@ iPhone 新增圆屏 BLE HID 媒体按键，可向当前播放器发送播放/暂
 
 ## iPhone 安装
 
-从 [GitHub Releases](https://github.com/zyn950929/MotoNav/releases) 下载 `MotoNav-0.13.8-unsigned.ipa`，使用自己的 Apple 账号通过 Sideloadly 签名安装。新手可先看[中文图文安装教程](docs/INSTALL-BEGINNER.md)，签名与续签细节见[安装与续签说明](docs/INSTALL-IOS.md)。
+历史公开安装示例：从 [GitHub Releases](https://github.com/zyn950929/MotoNav/releases) 下载 `MotoNav-0.13.8-unsigned.ipa`，使用自己的 Apple 账号通过 Sideloadly 签名安装。**这是历史版本，不是当前 0.15.16 源码对应的新 IPA。** 新手可先看[中文图文安装教程](docs/INSTALL-BEGINNER.md)，签名与续签细节见[安装与续签说明](docs/INSTALL-IOS.md)。
 
 ## Windows 一键打包
 
@@ -179,9 +236,9 @@ iPhone 新增圆屏 BLE HID 媒体按键，可向当前播放器发送播放/暂
 
 ## Mac 双击烧录
 
-本机已安装 Arduino CLI / ESP32 Core 3.3.10 和 esptool 5.3.0。连接微雪 1.75 英寸圆屏的 USB 数据线，在 Finder 中双击根目录 [一键烧录固件.command](一键烧录固件.command)。脚本校验生成镜像的 SHA-256 和应用偏移，只有一个 USB 串口时自动选择，多个串口时要求选择。
+使用前需安装 Arduino CLI / ESP32 Core 3.3.10 和 esptool 5.3.0。连接微雪 1.75 英寸圆屏的 USB 数据线，在 Finder 中双击根目录 [一键烧录固件.command](一键烧录固件.command)。脚本校验生成镜像的 SHA-256 和应用偏移，只有一个 USB 串口时自动选择，多个串口时要求选择。
 
-默认写入 `0x10000` 的应用升级镜像，不执行整片擦除，适用于已有相同 16 MB / app3M_fat9M_16MB 分区的 MotoNav。首次完整安装可运行 `./一键烧录固件.command --full`，需输入 INSTALL 确认。脚本只支持本仓库的 1.75 英寸板型。
+默认写入 `0x10000` 的应用升级镜像，不执行整片擦除，适用于已有相同 16 MB / app3M_fat9M_16MB 分区的 MotoNav。首次完整安装可运行 `./一键烧录固件.command --full`，需输入 INSTALL 确认。此根目录入口只支持本仓库的 1.75 英寸板型。2.1 设备请使用 `python3 firmware/flash_macos.py --board 21` 并阅读上方注意事项。
 
 `./一键烧录固件.command --check` 仅检查工具、固件和串口，不写入设备。固件镜像与清单位于 `firmware/dist/175/panel0/`；源码仓库不提交这些生成文件，缺少时需先构建并生成清单。HID 配对步骤见 [说明](docs/BLE-HID.md)。
 
