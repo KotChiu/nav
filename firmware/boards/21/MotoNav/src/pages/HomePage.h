@@ -1,5 +1,5 @@
 #pragma once
-// 首页骑手动画和等待画面。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
+// 首页状态与早期启动占位。实际主页采用新的 LVGL 仪表盘。
 // ================= 整屏画面 =================
 
 #define WAIT_READY  0
@@ -10,8 +10,7 @@
 bool onWaitScreen = false;
 bool sliding = false;                       // v5.5 正在拖动/滑动换页：别的画面先别画
 int waitSt = 0;
-int riderPrevF = -1, riderPrevZ = -2;
-bool catForce = false;                      // 首页刚重画：马上画一次
+// Bitmap rider animation removed; idle page is now purposefully static.
 
 // 每 0.1 秒检查一次，样子变了才重画（函数名沿用 v3.6）
 void animateCat() {
