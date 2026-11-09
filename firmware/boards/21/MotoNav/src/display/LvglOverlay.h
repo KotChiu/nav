@@ -1074,6 +1074,9 @@ static void lvglHybridTick() {
   if (lvglOverlayDirty) {
     lvglOverlayDirty = false;
     needFlush = true;
-    frameIsMap = false;
+    // A changing native map HUD must not force the continuous map feed
+    // into the synchronous non-map display path on every speed update.
+    if (!(page == PAGE_HOME && inNav && mapModeActive()))
+      frameIsMap = false;
   }
 }
