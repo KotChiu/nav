@@ -46,7 +46,7 @@ def find_tool():
     raise ValueError("未找到 esptool。请先安装 Arduino ESP32 Core 3.3.10。")
 
 
-def validate_images(board_id, root=ROOT):
+def validate_images(board_id, root=ROOT, qa=False):
     board = BOARDS[board_id]
     source = root / "firmware" / board["source"]
     if not source.exists():
@@ -60,11 +60,17 @@ def validate_images(board_id, root=ROOT):
         version = (root / 'firmware/RELEASE_VERSION').read_text().strip()
         if not re.fullmatch(r'\d+\.\d+\.\d+(?:-[A-Za-z0-9][A-Za-z0-9.-]*)?', version):
             raise ValueError("固件版本标记无效。")
+    if qa and board_id != "21":
+        raise ValueError("QA 自检固件仅支持微雪 2.1，不能烧录到其它板型。")
     folder = root / "firmware/dist" / board["folder"] / "panel0"
+    if qa:
+        folder = folder / "qa-autotest"
     manifests = sorted(folder.glob("*_manifest.json"))
     for path in manifests:
         manifest = json.loads(path.read_text())
-        if manifest.get("firmware") != version or manifest.get("board") != board["name"]:
+        if (manifest.get("firmware") != version or
+                manifest.get("board") != board["name"] or
+                bool(manifest.get("qaEnabled", False)) != qa):
             continue
         images = {}
         for item in manifest.get("files", []):
@@ -100,12 +106,16 @@ def main(argv=None):
     parser.add_argument("--check", action="store_true", help="仅检查工具、固件和串口，不烧录")
     parser.add_argument("--port", help="指定实际 USB 串口，例如 /dev/cu.usbmodem…")
     parser.add_argument("--full", action="store_true", help="首次完整安装，替换引导与分区布局")
+    parser.add_argument("--qa", action="store_true",
+                        help="仅 2.1：显式选择开机自动运行自检的 QA 镜像")
     args = parser.parse_args(argv)
     try:
         tool = find_tool()
-        version, images = validate_images(args.board)
+        version, images = validate_images(args.board, qa=args.qa)
         ports = usb_ports()
         print("MotoNav v" + version + " · " + BOARDS[args.board]["description"], flush=True)
+        if args.qa:
+            print("QA AUTOTEST：该镜像每次启动运行屏幕/触摸测试，约需十几秒；请勿在行车中使用。", flush=True)
         print("工具：" + tool, flush=True)
         print("固件 SHA-256 与应用偏移校验通过。", flush=True)
         if args.check:
