@@ -15,7 +15,7 @@ import zlib
 SCENES = (
     "home", "weather", "music", "companion", "stocks", "settings",
     "nav-straight", "nav-left", "nav-right", "nav-near",
-    "nav-overspeed", "home-offline",
+    "nav-overspeed", "nav-uturn", "nav-arrive", "home-offline",
 )
 SIZE = 480
 
@@ -56,6 +56,9 @@ def main(folder: pathlib.Path) -> None:
         ("nav-left", "nav-right"),
         ("nav-near", "nav-right"),
         ("nav-overspeed", "nav-right"),
+        ("nav-uturn", "nav-straight"),
+        ("nav-arrive", "nav-straight"),
+        ("nav-arrive", "nav-uturn"),
         ("home", "home-offline"),
         ("weather", "home"),
     )
