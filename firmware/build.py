@@ -54,6 +54,8 @@ def main():
     parser.add_argument('--cli', default='arduino-cli')
     parser.add_argument('--jobs', type=int, default=4)
     parser.add_argument('--board', choices=sorted(BOARDS), default='175')
+    parser.add_argument('--raster-surface', choices=('native', 'legacy'), default='native',
+                        help='2.1 framebuffer adapter: new Arduino_GFX plane or Arduino_Canvas rollback')
     args = parser.parse_args()
     if not 1 <= args.jobs <= 32:
         parser.error('--jobs must be between 1 and 32')
@@ -62,13 +64,19 @@ def main():
         ensure_library(args.cli, 'lvgl', '8.3.10')
     version = re.search(r'^#define FW_VERSION "v([^\"]+)"', (source / 'src/core/FirmwareConfig.h').read_text(), re.MULTILINE).group(1)
     build = ROOT / '.build' / 'universal' / args.board
+    if args.board == '21':
+        build = build / args.raster_surface
     output = build / 'output'
     output.mkdir(parents=True, exist_ok=True)
     prefix_map = '-ffile-prefix-map=' + str(Path.home()) + '=/builder'
+    cpp_flags = prefix_map
+    if args.board == '21':
+        cpp_flags += ' -DMOTONAV_USE_RASTER_SURFACE=' + (
+            '1' if args.raster_surface == 'native' else '0')
     subprocess.run([args.cli, 'compile', '--jobs', str(args.jobs), '--libraries', str(ROOT / 'libraries'),
                     '--build-path', str(build / 'build'), '--fqbn', FQBN,
                     '--build-property', 'compiler.c.extra_flags=' + prefix_map,
-                    '--build-property', 'compiler.cpp.extra_flags=' + prefix_map, '--output-dir', str(output), str(source)], check=True)
+                    '--build-property', 'compiler.cpp.extra_flags=' + cpp_flags, '--output-dir', str(output), str(source)], check=True)
     print(package(output, ROOT / 'dist' / args.board / 'panel0', version, args.board))
 
 
