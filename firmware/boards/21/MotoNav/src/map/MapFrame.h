@@ -202,6 +202,19 @@ void updateStats() {
     pendingProf = q;
 #if FPS_SERIAL_DIAGNOSTICS
     Serial.printf("FPSSTAT %s | %s | deg=%d\n",pendingStat.c_str(),q.c_str(),screenDeg);
+    if (lvglMapCanvas.canvas) {
+      static uint32_t previousMapCommits = 0;
+      static uint32_t previousNativeLines = 0;
+      static uint32_t previousNativePolygons = 0;
+      Serial.printf("MAP LVGL canvas=%lu/2s native-lines=%lu polygons=%lu PSRAM-free=%u bytes\n",
+        (unsigned long)(lvglMapCanvas.commits - previousMapCommits),
+        (unsigned long)(lvglMapCanvas.nativeLines - previousNativeLines),
+        (unsigned long)(lvglMapCanvas.nativePolygons - previousNativePolygons),
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+      previousMapCommits = lvglMapCanvas.commits;
+      previousNativeLines = lvglMapCanvas.nativeLines;
+      previousNativePolygons = lvglMapCanvas.nativePolygons;
+    }
 #endif
   } else if (statAt != 0 && lvglUiReady) {
 #if FPS_SERIAL_DIAGNOSTICS
