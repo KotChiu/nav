@@ -129,7 +129,9 @@ void drawMapFrame() {
     drawRingLayer(navDir != "S" && tp < 0, ringActive ? ringShown : 0, isNear ? 14 : 10, isNear ? C_ORANGE : C_YELLOW, over, tp);
   }
   profMark(6);
-  drawMapSpeed(over);
+  // LVGL renders the live speed and limit overlay on the shared map canvas.
+  // The Canvas implementation is retained as a safe fallback before LVGL init.
+  if (!lvglUiReady || !lvglMapHud.root) drawMapSpeed(over);
   profMark(7);
   drawMapLanes();                                       // v3.3 车道（车速下面）
   profMark(8);
