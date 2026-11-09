@@ -344,9 +344,19 @@ static void createLvglOverlay() {
                                       MotoNavUI::SurfaceRaised);
   lv_obj_set_style_border_color(musicPlaceholder,
                                MotoNavUI::color(MotoNavUI::Line), 0);
-  lv_obj_t *musicGlyph = MotoNavUI::label(musicPlaceholder, LV_SYMBOL_AUDIO,
-                                  &lv_font_montserrat_40, MotoNavUI::Mint);
-  lv_obj_center(musicGlyph);
+  // Five quiet waveform bars are vector geometry, not a font-dependent
+  // emoji or private-use glyph that might render as an empty square.
+  const int heights[5] = {24, 45, 67, 45, 24};
+  for (int i = 0; i < 5; ++i) {
+    lv_obj_t *bar = lv_obj_create(musicPlaceholder);
+    lv_obj_remove_style_all(bar);
+    lv_obj_set_size(bar, 7, heights[i]);
+    lv_obj_set_pos(bar, 27 + i * 17, (128 - heights[i]) / 2);
+    lv_obj_set_style_radius(bar, 5, 0);
+    lv_obj_set_style_bg_color(bar, MotoNavUI::color(MotoNavUI::Mint), 0);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
+    MotoNavUI::noInteraction(bar);
+  }
   lv_obj_add_flag(musicPlaceholder, LV_OBJ_FLAG_HIDDEN);
 
   // A precise instrument face replaces the old pixel clock and cartoon.
