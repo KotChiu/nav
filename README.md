@@ -25,7 +25,7 @@
 
 ## 不烧录真机的 LVGL 预览（迁移实验）
 
-2.1 英寸版本现在提供 [基于 LVGL 8.3.10 的 SDL2 桌面模拟器](tools/lvgl-simulator/README.md)。Mac / Linux 可本地编译运行；首页圆环与 ESP32 固件共享原生 LVGL 组件，其他页面当前仍是模拟数据和示例视图，**不等于完整固件 UI 或实机显示效果**。
+2.1 英寸版本提供 [基于 LVGL 8.3.10 的 SDL2 桌面模拟器](tools/lvgl-simulator/README.md)。Mac / Linux 可本地编译运行；**首页圆环、天气主页面和音乐播放状态**与 ESP32 固件共享原生 LVGL 组件。模拟器使用固定示例数据；导航地图、天气详情、中文文字位图及专辑封面仍需后续迁移，**目前不等于完整固件 UI 或实机显示效果**。
 
 ```bash
 cmake -S tools/lvgl-simulator -B build/lvgl-simulator
