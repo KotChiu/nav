@@ -271,7 +271,7 @@ void showPage(int target) {
     case 5: settings(screen); break;
     case 6: badge(screen); break;
   }
-  if (pageIndex != 0 || !navigation) footer(screen);
+  if (pageIndex != 6 && (pageIndex != 0 || !navigation)) footer(screen);
   dirty = true;
 }
 void flush(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *colors) {
