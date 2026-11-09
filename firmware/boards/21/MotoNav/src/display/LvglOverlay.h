@@ -4,6 +4,7 @@
 #include "../../ui/VisualLanguage.h"
 #include "../../ui/LvglSettingsPanel.h"
 #include "../../ui/LvglRideDashboard.h"
+#include "../../ui/LvglWeatherDashboard.h"
 
 static inline lv_color_t lvglColor565(uint16_t color) {
   lv_color_t out;
@@ -385,6 +386,7 @@ static void createLvglOverlay() {
   lv_obj_add_flag(homeHintLabel, LV_OBJ_FLAG_HIDDEN);
 
   MotoNavUI::rideCreate(screen);
+  MotoNavUI::weatherCreate(screen);
 
   stockTitleLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(stockTitleLabel, lv_color_white(), 0);
@@ -561,6 +563,9 @@ static void lvglHybridTick() {
   if (batPct >= 0) snprintf(batteryText, sizeof(batteryText), "%d%%", batPct);
   else snprintf(batteryText, sizeof(batteryText), "--");
   setLvglLabelText(batteryLabel, batteryText);
+  const bool showWeather = page == PAGE_WEATHER && wxDetail == 0 &&
+                      !sliding && !pairOn && !callOn && !fxOn;
+  MotoNavUI::weatherUpdate(showWeather);
   bool showMusic = page == 2 && !sliding && !pairOn && !callOn && !fxOn;
   bool showSettings = page == 3 && !sliding && !pairOn && !callOn && !fxOn;
   bool showRobot = page == 4 && !sliding && !pairOn && !callOn && !fxOn;
