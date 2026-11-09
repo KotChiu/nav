@@ -42,6 +42,7 @@
 #include "src/map/RadarEffects.h"
 #include "src/map/MapFrame.h"
 #include "src/pages/NavigationPage.h"
+#include "src/diagnostics/BoardSelfTest.h"
 #include "src/protocol/CommandReceiver.h"
 #include "src/connectivity/DeviceName.h"
 #include "src/diagnostics/RenderBenchmarks.h"
@@ -119,6 +120,13 @@ void setup() {
   flushSync();
   needFlush = false;
 
+#if MOTONAV_BOARD_QA
+  // Only an explicitly compiled QA firmware runs this at power-on.
+  // Normal images remain boot-fast and untouched. Run BEFORE BLE advertising,
+  // so no live navigation / phone session is present while screens rotate.
+  qaRunBoard();
+#endif
+
 #if FPS_SELFTEST
   runFpsSelfTest();
 #endif
@@ -178,6 +186,9 @@ void setup() {
 
 // 主循环：接收消息、处理输入、调度页面、绘图和推屏。
 void loop() {
+#if MOTONAV_BOARD_QA
+  qaSerialTick();  // QAREPORT/QARUN; disallow a diagnostic during navigation.
+#endif
   touchPoll(); // Sample input before BLE parsing or rendering.
   hidMediaTick();                                      // press/release without blocking navigation
   static uint32_t lyricConnectionEpoch = 0;
