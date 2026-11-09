@@ -5,6 +5,7 @@ on:
     paths:
       - 'tools/lvgl-simulator/**'
       - 'firmware/boards/21/MotoNav/ui/**'
+      - 'firmware/tests/RasterBridgeTest.cpp'
       - 'firmware/boards/21/MotoNav/src/display/LvglOverlay.h'
       - '.github/workflows/lvgl-simulator.yml'
   workflow_dispatch:
@@ -16,6 +17,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install SDL2 and headless display
         run: sudo apt-get update && sudo apt-get install -y libsdl2-dev xvfb
+      - name: Test shared bitmap decoder
+        run: |
+          g++ -std=c++17 -Wall -Wextra -pedantic firmware/tests/RasterBridgeTest.cpp -o /tmp/motonav-raster-test
+          /tmp/motonav-raster-test
       - name: Configure
         run: cmake -S tools/lvgl-simulator -B build/lvgl-simulator -DCMAKE_BUILD_TYPE=Release
       - name: Build
