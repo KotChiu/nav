@@ -116,6 +116,7 @@ final class BleLink: NSObject, ObservableObject {
     }
 
     private func attach(_ p: CBPeripheral) {
+        BadgeBridge.shared.connectionLost()
         isReady = false; txNotifyReady = false
         buildingsSupported = false
         badgeSupported = false
@@ -257,12 +258,13 @@ final class BleLink: NSObject, ObservableObject {
 
     /// 发一份小地图大块数据（地图块 / 路线）。同类型还没发完的旧数据直接作废。
     /// 每片：'M' 类型 编号 总片数(2) 片序号(2) 总字节(4) 偏移(4) + 数据
-    func sendBulk(type: Int, id: Int, data: Data) {
-        guard isReady else { return }
+    @discardableResult
+    func sendBulk(type: Int, id: Int, data: Data) -> Bool {
+        guard isReady else { return false }
         let payload = maxWrite - BULK_HEADER
-        if payload < 100 { return }                     // 没协商到大数据包就不发
+        if payload < 100 { return false }               // BLE MTU too small
         let parts = (data.count + payload - 1) / payload
-        if parts == 0 || parts > 4000 { return }
+        if parts == 0 || parts > 4000 { return false }
         let total = data.count
         var packets: [Data] = []
         for p in 0..<parts {
@@ -278,6 +280,7 @@ final class BleLink: NSObject, ObservableObject {
         bulkQ.replace(type: type, id: id, packets: packets)
         bulkKB += total / 1024
         pump()
+        return true
     }
 
     /// 还有大块数据没发完
@@ -450,6 +453,7 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
     func centralManager(_ c: CBCentralManager, didDisconnectPeripheral p: CBPeripheral, error: Error?) {
         guard p === peripheral else { return }
         isReady = false
+        BadgeBridge.shared.connectionLost()
         bulkQ.reset(); bulkBarrier.reset(); bulkWriteSerial += 1
         buildingsSupported = false
         badgeSupported = false
@@ -498,7 +502,8 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
         guard p === peripheral, ch === rxChar, let part = bulkQ.inFlight else { return }
         traceBulk(part, event: error == nil ? "bulk-write-response" : "bulk-write-error")
         bulkBarrier.reset()
-        _ = bulkQ.complete(success: error == nil)
+        let result = bulkQ.complete(success: error == nil)
+        if part.type == 6 && result == .failed { BadgeBridge.shared.transferFailed(id: part.id) }
         pump()
     }
 
@@ -524,8 +529,14 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
             badgeSupported = true
             return
         }
-        if s == "BDG,SAVED,1" { BadgeBridge.shared.saved(true); return }
-        if s == "BDG,SAVED,0" { BadgeBridge.shared.saved(false); return }
+        if s.hasPrefix("BDG,SAVED,") {
+            let badgeParts = s.split(separator: ",")
+            if badgeParts.count == 4, let id = Int(badgeParts[2]),
+               badgeParts[3] == "1" || badgeParts[3] == "0" {
+                BadgeBridge.shared.didSave(id: id, saved: badgeParts[3] == "1")
+            }
+            return
+        }
         if s == "CAP,BLD,1" {
             if !buildingsSupported { buildingsSupported = true; MapFeeder.shared.onBuildingCapability() }
             return
@@ -546,8 +557,10 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
             bulkQ.acknowledge(type: t, id: id)
             MapFeeder.shared.onAck(type: t, id: id)
             if t == 6 {
-                BadgeBridge.shared.acknowledge(id: id)
-                if parts.count >= 4 { BadgeBridge.shared.saved(parts[3] == "1") }
+                BadgeBridge.shared.acknowledge(
+                    id: id,
+                    saved: parts.count >= 4 && (parts[3] == "1" || parts[3] == "0")
+                      ? (parts[3] == "1") : nil)
             }
             return
         }
