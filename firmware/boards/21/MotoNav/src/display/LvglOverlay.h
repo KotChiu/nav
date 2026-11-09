@@ -317,181 +317,74 @@ static void createLvglOverlay() {
     pageDotObjs[i] = dot;
   }
 
-  settingsCard = lv_obj_create(screen);
-  lv_obj_set_size(settingsCard, 340, 190);
-  lv_obj_set_pos(settingsCard, CX - 170, 120);
-  lv_obj_set_style_radius(settingsCard, 22, 0);
-  lv_obj_set_style_border_width(settingsCard, 1, 0);
-  lv_obj_set_style_border_color(settingsCard, lvglColor565(C_UI_LINE), 0);
-  lv_obj_set_style_bg_opa(settingsCard, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(settingsCard, lvglColor565(C_UI_PANEL), 0);
-  lv_obj_clear_flag(settingsCard, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(settingsCard, LV_OBJ_FLAG_HIDDEN);
+  // Dedicated four-section control center (display / ride / link / about).
+  MotoNavUI::settingsCreate(screen);
 
-  settingsSlider = lv_slider_create(settingsCard);
-  lv_obj_set_size(settingsSlider, 300, 28);
-  lv_obj_set_pos(settingsSlider, 20, 84);
-  lv_slider_set_range(settingsSlider, 5, 180);
-  lv_slider_set_value(settingsSlider, screenBrightness, LV_ANIM_OFF);
-  lv_obj_set_style_radius(settingsSlider, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(settingsSlider, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(settingsSlider, lvglColor565(C_UI_LINE), LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(settingsSlider, LV_OPA_COVER, LV_PART_INDICATOR);
-  lv_obj_set_style_bg_color(settingsSlider, lvglColor565(C_UI_ACCENT), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_color(settingsSlider, lv_color_hex(0xFFFFFF), LV_PART_KNOB);
-  lv_obj_set_style_border_width(settingsSlider, 0, LV_PART_KNOB);
-  lv_obj_set_style_pad_all(settingsSlider, 6, LV_PART_KNOB);
-  lv_obj_add_event_cb(settingsSlider, brightnessEventCb, LV_EVENT_ALL, nullptr);
-  lv_obj_add_flag(settingsSlider, LV_OBJ_FLAG_HIDDEN);
+  musicHeaderLabel = MotoNavUI::label(screen, "NOW PLAYING",
+                        &lv_font_montserrat_20, MotoNavUI::Mint);
+  lv_obj_align(musicHeaderLabel, LV_ALIGN_TOP_MID, 0, 58);
+  lv_obj_set_style_text_letter_space(musicHeaderLabel, 3, 0);
+  lv_obj_add_flag(musicHeaderLabel, LV_OBJ_FLAG_HIDDEN);
+  musicStatusLabel = MotoNavUI::label(screen, "CONNECT YOUR PHONE",
+                        &lv_font_montserrat_20, MotoNavUI::Muted);
+  lv_obj_align(musicStatusLabel, LV_ALIGN_TOP_MID, 0, 275);
+  lv_obj_add_flag(musicStatusLabel, LV_OBJ_FLAG_HIDDEN);
+  musicFooterLabel = MotoNavUI::label(screen, "SWIPE DOWN  /  HOME",
+                        &lv_font_montserrat_16, MotoNavUI::Faint);
+  lv_obj_align(musicFooterLabel, LV_ALIGN_TOP_MID, 0, 402);
+  lv_obj_add_flag(musicFooterLabel, LV_OBJ_FLAG_HIDDEN);
 
-  settingsBrightnessLabel = lv_label_create(settingsCard);
-  lv_obj_set_size(settingsBrightnessLabel, 92, 42);
-  lv_obj_set_style_bg_opa(settingsBrightnessLabel, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(settingsBrightnessLabel, lvglColor565(C_UI_PANEL_2), 0);
-  lv_obj_set_style_radius(settingsBrightnessLabel, 8, 0);
-  lv_obj_set_style_pad_top(settingsBrightnessLabel, 8, 0);
-  lv_obj_set_style_text_color(settingsBrightnessLabel, lv_color_white(), 0);
-  lv_obj_set_style_text_font(settingsBrightnessLabel, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_align(settingsBrightnessLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text_fmt(settingsBrightnessLabel, "%d%%", (screenBrightness * 100 + 92) / 180);
-  lv_obj_set_pos(settingsBrightnessLabel, 124, 132);
-  lv_obj_add_flag(settingsBrightnessLabel, LV_OBJ_FLAG_HIDDEN);
+  // A precise instrument face replaces the old pixel clock and cartoon.
+  homeOrbit[0] = MotoNavUI::arc(screen, 24, 24, 418,
+                              222, 318, MotoNavUI::Mint, 3);
+  homeOrbit[1] = MotoNavUI::arc(screen, 24, 24, 418,
+                              42, 138, MotoNavUI::Line, 2);
+  homeOrbit[2] = MotoNavUI::arc(screen, 44, 44, 378,
+                              154, 206, MotoNavUI::Warm, 2);
+  for (int i = 0; i < 3; i++)
+    lv_obj_add_flag(homeOrbit[i], LV_OBJ_FLAG_HIDDEN);
 
-  settingsTitleLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(settingsTitleLabel, lv_color_white(), 0);
-  lv_obj_set_style_text_font(settingsTitleLabel, &lv_font_montserrat_28, 0);
-  lv_label_set_text(settingsTitleLabel, "Settings");
-  lv_obj_align(settingsTitleLabel, LV_ALIGN_TOP_MID, 0, 52);
-  lv_obj_add_flag(settingsTitleLabel, LV_OBJ_FLAG_HIDDEN);
-
-  settingsSubLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(settingsSubLabel, lvglColor565(C_UI_SUB), 0);
-  lv_obj_set_style_text_font(settingsSubLabel, &lv_font_montserrat_20, 0);
-  lv_label_set_text(settingsSubLabel, "Display brightness");
-  lv_obj_align(settingsSubLabel, LV_ALIGN_TOP_MID, 0, 132);
-  lv_obj_add_flag(settingsSubLabel, LV_OBJ_FLAG_HIDDEN);
-
-  settingsHintLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(settingsHintLabel, lvglColor565(C_UI_DIM), 0);
-  lv_obj_set_style_text_font(settingsHintLabel, &lv_font_montserrat_16, 0);
-  lv_label_set_text(settingsHintLabel, "Swipe down for home");
-  lv_obj_align(settingsHintLabel, LV_ALIGN_TOP_MID, 0, 400);
-  lv_obj_add_flag(settingsHintLabel, LV_OBJ_FLAG_HIDDEN);
-
-  homeTitleLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(homeTitleLabel, lv_color_white(), 0);
-  lv_obj_set_style_text_font(homeTitleLabel, &lv_font_montserrat_20, 0);
-  lv_label_set_text(homeTitleLabel, "MOTONAV");
-  lv_obj_align(homeTitleLabel, LV_ALIGN_TOP_MID, 0, 57);
-  lv_obj_set_style_text_letter_space(homeTitleLabel, 3, 0);
+  homeTitleLabel = MotoNavUI::label(screen, "MOTONAV",
+                    &lv_font_montserrat_20, MotoNavUI::Mint);
+  lv_obj_align(homeTitleLabel, LV_ALIGN_TOP_MID, 0, 66);
+  lv_obj_set_style_text_letter_space(homeTitleLabel, 4, 0);
   lv_obj_add_flag(homeTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
-  homeStatusLabel = lv_label_create(screen);
-  lv_obj_set_style_text_font(homeStatusLabel, &lv_font_montserrat_20, 0);
-  configureTransparentLabel(homeStatusLabel, 220, 30);
-  lv_obj_align(homeStatusLabel, LV_ALIGN_TOP_MID, 0, 203);
-  lv_obj_add_flag(homeStatusLabel, LV_OBJ_FLAG_HIDDEN);
-
-
-  homeHintLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(homeHintLabel, lvglColor565(C_UI_DIM), 0);
-  lv_obj_set_style_text_font(homeHintLabel, &lv_font_montserrat_16, 0);
-  lv_label_set_text(homeHintLabel, "SWIPE LEFT FOR WEATHER");
-  lv_obj_align(homeHintLabel, LV_ALIGN_TOP_MID, 0, 376);
-  lv_obj_add_flag(homeHintLabel, LV_OBJ_FLAG_HIDDEN);
-
-  watchTimeLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(watchTimeLabel, lv_color_white(), 0);
-  lv_obj_set_style_text_font(watchTimeLabel, &motonav_watch_digits, 0);
-  configureTransparentLabel(watchTimeLabel, 340, 82);
-  lv_label_set_text(watchTimeLabel, "00:00");
-  lv_obj_align(watchTimeLabel, LV_ALIGN_TOP_MID, 0, 116);
-  lv_obj_add_flag(watchTimeLabel, LV_OBJ_FLAG_HIDDEN);
-
-  watchDateLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(watchDateLabel, lvglColor565(C_UI_SUB), 0);
-  lv_obj_set_style_text_font(watchDateLabel, &lv_font_montserrat_16, 0);
-  configureTransparentLabel(watchDateLabel, 240, 28);
-  lv_label_set_text(watchDateLabel, "WAITING FOR PHONE TIME");
-  lv_obj_align(watchDateLabel, LV_ALIGN_TOP_MID, 0, 89);
+  watchDateLabel = MotoNavUI::label(screen, "SYNC PHONE TO SET TIME",
+                    &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_align(watchDateLabel, LV_ALIGN_TOP_MID, 0, 130);
   lv_obj_add_flag(watchDateLabel, LV_OBJ_FLAG_HIDDEN);
 
-  watchTempLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(watchTempLabel, lv_color_white(), 0);
-  lv_obj_set_style_text_font(watchTempLabel, &lv_font_montserrat_40, 0);
-  configureTransparentLabel(watchTempLabel, 120, 52);
-  lv_label_set_text(watchTempLabel, "--°");
-  lv_obj_align(watchTempLabel, LV_ALIGN_TOP_MID, 0, 257);
-  lv_obj_add_flag(watchTempLabel, LV_OBJ_FLAG_HIDDEN);
+  watchTimeLabel = MotoNavUI::label(screen, "--:--",
+                    &lv_font_montserrat_48, MotoNavUI::Text);
+  lv_obj_align(watchTimeLabel, LV_ALIGN_TOP_MID, 0, 164);
+  lv_obj_set_style_text_letter_space(watchTimeLabel, -1, 0);
+  lv_obj_add_flag(watchTimeLabel, LV_OBJ_FLAG_HIDDEN);
 
-  watchForecastLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(watchForecastLabel, lvglColor565(C_UI_SUB), 0);
-  lv_obj_set_style_text_font(watchForecastLabel, &lv_font_montserrat_20, 0);
-  configureTransparentLabel(watchForecastLabel, 260, 34);
-  lv_label_set_text(watchForecastLabel, "WEATHER FROM PHONE");
-  lv_obj_align(watchForecastLabel, LV_ALIGN_TOP_MID, 0, 308);
-  lv_obj_add_flag(watchForecastLabel, LV_OBJ_FLAG_HIDDEN);
+  homeStatusChip = MotoNavUI::panel(screen, 132, 237, 202, 40, 20,
+                     MotoNavUI::SurfaceRaised);
+  lv_obj_add_flag(homeStatusChip, LV_OBJ_FLAG_HIDDEN);
+  homeStatusLabel = MotoNavUI::label(homeStatusChip, "PHONE OFFLINE",
+                    &lv_font_montserrat_16, MotoNavUI::Warm);
+  lv_obj_center(homeStatusLabel);
 
-  robotHalo = lv_obj_create(screen);
-  lv_obj_set_size(robotHalo, 290, 290);
-  lv_obj_set_pos(robotHalo, CX - 145, 86);
-  lv_obj_set_style_radius(robotHalo, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_opa(robotHalo, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(robotHalo, 2, 0);
-  lv_obj_set_style_border_color(robotHalo, lvglColor565(C_UI_LINE), 0);
-  lv_obj_clear_flag(robotHalo, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(robotHalo, LV_OBJ_FLAG_HIDDEN);
+  homeWeatherCard = MotoNavUI::panel(screen, 81, 291, 304, 85, 23);
+  lv_obj_add_flag(homeWeatherCard, LV_OBJ_FLAG_HIDDEN);
+  watchTempLabel = MotoNavUI::label(homeWeatherCard, "--°",
+                    &lv_font_montserrat_40, MotoNavUI::Text);
+  lv_obj_set_pos(watchTempLabel, 24, 14);
+  watchForecastLabel = MotoNavUI::label(homeWeatherCard, "WEATHER FROM PHONE",
+                    &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_set_size(watchForecastLabel, 175, 49);
+  lv_label_set_long_mode(watchForecastLabel, LV_LABEL_LONG_DOT);
+  lv_obj_set_pos(watchForecastLabel, 119, 30);
 
-  robotBody = lv_obj_create(screen);
-  lv_obj_set_size(robotBody, 224, 238);
-  lv_obj_set_pos(robotBody, CX - 112, 112);
-  lv_obj_set_style_radius(robotBody, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_opa(robotBody, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(robotBody, lv_color_hex(0xF9FAF7), 0);
-  lv_obj_set_style_bg_grad_color(robotBody, lv_color_hex(0xD8E2E1), 0);
-  lv_obj_set_style_bg_grad_dir(robotBody, LV_GRAD_DIR_VER, 0);
-  lv_obj_set_style_border_width(robotBody, 0, 0);
-  lv_obj_set_style_shadow_width(robotBody, 0, 0);
-  lv_obj_clear_flag(robotBody, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(robotBody, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(robotBody, robotTapEventCb, LV_EVENT_ALL, nullptr);
-  lv_obj_add_flag(robotBody, LV_OBJ_FLAG_HIDDEN);
+  homeHintLabel = MotoNavUI::label(screen, "SWIPE  /  EXPLORE",
+                    &lv_font_montserrat_16, MotoNavUI::Faint);
+  lv_obj_align(homeHintLabel, LV_ALIGN_TOP_MID, 0, 400);
+  lv_obj_add_flag(homeHintLabel, LV_OBJ_FLAG_HIDDEN);
 
-  robotFace = lv_obj_create(robotBody);
-  lv_obj_set_size(robotFace, 160, 100);
-  lv_obj_align(robotFace, LV_ALIGN_TOP_MID, 0, 64);
-  lv_obj_set_style_bg_opa(robotFace, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(robotFace, 0, 0);
-  lv_obj_set_style_pad_all(robotFace, 0, 0);
-  lv_obj_clear_flag(robotFace, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_clear_flag(robotFace, LV_OBJ_FLAG_CLICKABLE);
-
-  for (int i = 0; i < 2; i++) {
-    robotEyes[i] = lv_obj_create(robotFace);
-    lv_obj_set_size(robotEyes[i], 28, 50);
-    lv_obj_set_pos(robotEyes[i], i == 0 ? 37 : 95, 25);
-    lv_obj_set_style_radius(robotEyes[i], LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_opa(robotEyes[i], LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(robotEyes[i], lv_color_hex(0x11171B), 0);
-    lv_obj_set_style_border_width(robotEyes[i], 0, 0);
-    lv_obj_clear_flag(robotEyes[i], LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(robotEyes[i], LV_OBJ_FLAG_CLICKABLE);
-  }
-
-  robotTitleLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(robotTitleLabel, lvglColor565(C_UI_SUB), 0);
-  lv_obj_set_style_text_font(robotTitleLabel, &lv_font_montserrat_16, 0);
-  lv_label_set_text(robotTitleLabel, "TAP TO CHANGE / HOLD TO SLEEP");
-  lv_obj_align(robotTitleLabel, LV_ALIGN_TOP_MID, 0, 48);
-  lv_obj_add_flag(robotTitleLabel, LV_OBJ_FLAG_HIDDEN);
-
-  robotMoodLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(robotMoodLabel, lvglColor565(C_UI_ACCENT), 0);
-  lv_obj_set_style_text_font(robotMoodLabel, &lv_font_montserrat_20, 0);
-  configureOpaqueLabel(robotMoodLabel, 340, 34);
-  lv_label_set_text(robotMoodLabel, "READY TO RIDE");
-  lv_obj_align(robotMoodLabel, LV_ALIGN_TOP_MID, 0, 386);
-  lv_obj_add_flag(robotMoodLabel, LV_OBJ_FLAG_HIDDEN);
+  MotoNavUI::rideCreate(screen);
 
   stockTitleLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(stockTitleLabel, lv_color_white(), 0);
