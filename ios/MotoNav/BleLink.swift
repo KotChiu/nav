@@ -545,7 +545,10 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
         if parts.first == "K", parts.count >= 3, let t = Int(parts[1]), let id = Int(parts[2]) {
             bulkQ.acknowledge(type: t, id: id)
             MapFeeder.shared.onAck(type: t, id: id)
-            if t == 6 { BadgeBridge.shared.acknowledge(id: id) }
+            if t == 6 {
+                BadgeBridge.shared.acknowledge(id: id)
+                if parts.count >= 4 { BadgeBridge.shared.saved(parts[3] == "1") }
+            }
             return
         }
         if parts.first == "S", parts.count >= 4 {
