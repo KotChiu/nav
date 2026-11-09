@@ -2,6 +2,7 @@ import Foundation
 import Compression
 import UIKit
 import MediaPlayer
+import Combine
 
 /// 专辑封面推送到圆屏（bulk type 5）。
 /// 来源优先级：App 模式直读 nowPlayingItem.artwork → HID 模式本地曲库匹配（标题+歌手）→ iTunes 搜索 API 兜底。
