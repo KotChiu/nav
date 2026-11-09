@@ -75,6 +75,7 @@ static inline int styleIdx() { return (nightOn && themeIdx == ST_PAPER) ? ST_NEO
 #define C_WATER  (TH.water)
 #define C_ROUTE  (TH.route)
 #define C_ROUTE2 (TH.route2)
+static inline uint16_t mapHudColor565() { return TH.hud; }
 
 static inline int16_t rd16(const uint8_t *p) { return (int16_t)(p[0] | (p[1] << 8)); }
 static inline uint16_t rdu16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
