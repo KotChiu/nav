@@ -153,6 +153,17 @@ void drawWeather() {
   onWaitScreen = false;
   frameIsMap = false;
   gfx->fillScreen(C_UI_BG);
+  if (lvglUiReady) {
+    // Share the real LVGL weather layout with the desktop simulator.
+    // Keep the phone-rendered Chinese location/wind bitmaps as Canvas assets
+    // until the BLE text-image path becomes an LVGL image source.
+    if (wxHave) {
+      drawTextImg(3, 56, 0xFF);
+      drawTextImg(4, 232, 0xC0);
+    }
+    needFlush = true;
+    return;
+  }
   if (!wxHave) {
     drawWxIcon(1, CX, 190, 60);
     printCentered(bleConnected ? "LOADING..." : "NO PHONE", CX, 290, 3, C_UI_SUB);
