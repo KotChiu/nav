@@ -238,6 +238,10 @@ static void qaRunBoard() {
   }
   qaResult("LVGL_MAP_CANVAS", geometry ? "PASS" : "FAIL",
            (unsigned long)lvglMapCanvas.nativePolygons);
+  qaResult("FRAME_ISOLATION", geometry &&
+           motonavFramePointersIndependent(gfx->getFramebuffer(),
+             lvglMapCanvasPixels(), fbBuf[1], flushSrc) ? "PASS" : "FAIL",
+           geometry ? 1UL : 0UL);
 
   qaTouchCount = qaTouchTargets(label);
   qaResult("TOUCH_FOUR_DOTS", qaTouchCount == 4 ? "PASS" : "MANUAL",
@@ -270,6 +274,36 @@ static void qaRunBoard() {
   Serial.println("QA_END,NORMAL_BOOT");
 }
 
+// Passive, real BLE / route observation. These are intentionally NOT
+// declared PASS until a phone actually connects and sends a route.
+static bool qaSawBle = false, qaSawNav = false, qaSawMap = false;
+static void qaRuntimeTick() {
+  const uint32_t now = millis();
+  static uint32_t sampled = 0;
+  const bool linked = bleConnected && bleAuthed;
+  if (linked && !qaSawBle) {
+    qaSawBle = true;
+    Serial.println("QA_RUNTIME,BLE_AUTH,OBSERVED,1");
+  }
+  if (linked && inNav && !qaSawNav) {
+    qaSawNav = true;
+    Serial.println("QA_RUNTIME,NAVIGATION,OBSERVED,1");
+  }
+  if (linked && inNav && mapModeActive() && !qaSawMap) {
+    qaSawMap = true;
+    Serial.println("QA_RUNTIME,MAP_STREAM,OBSERVED,1");
+  }
+  if (now - sampled >= 10000) {
+    sampled = now;
+    Serial.printf("QA_RUNTIME,telemetry,ble=%d,nav=%d,map=%d,"
+                  "free_psram=%lu,last_rx_age_ms=%lu,rotation=%d\n",
+                  linked, inNav, inNav && mapModeActive(),
+                  (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+                  linked ? (unsigned long)(now-lastRxMs) : 0UL,
+                  screenDeg);
+  }
+}
+
 static void qaSerialTick() {
   static char command[18] = {};
   static unsigned used = 0;
@@ -279,6 +313,8 @@ static void qaSerialTick() {
       command[used] = 0;
       if (!strcmp(command, "QA?") || !strcmp(command, "QAREPORT")) {
         qaPrintSaved();
+        Serial.printf("QA_RUNTIME_STATUS,ble=%d,nav=%d,map=%d\n",
+                      qaSawBle, qaSawNav, qaSawMap);
       } else if (!strcmp(command, "QARUN")) {
         if (bleConnected || inNav || callOn || pairOn || sliding || fxOn ||
             touchDown) Serial.println("QA_REJECT,BUSY");
@@ -294,4 +330,5 @@ static void qaSerialTick() {
 #else
 static inline void qaRunBoard() {}
 static inline void qaSerialTick() {}
+static inline void qaRuntimeTick() {}
 #endif
