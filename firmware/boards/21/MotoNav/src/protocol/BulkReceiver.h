@@ -6,7 +6,7 @@ void handleBulk(const uint8_t *d, int n) {
   int type = d[1], id = d[2];
   int parts = d[3] | (d[4] << 8), seq = d[5] | (d[6] << 8);
   uint32_t total = (uint32_t)rd32(d + 7), off = (uint32_t)rd32(d + 11);
-  if (type < 1 || type > 5) return;
+  if (type < 1 || type > MotoNavBadge::BULK_TYPE) return;
   Bulk &b = bulks[type];
   if (!b.buf || total == 0 || total > b.cap || parts == 0 || parts > 4096 || seq >= parts) return;
   if (id != b.id || total != b.total || parts != b.parts) {     // 新的一份：从头开始收
@@ -16,6 +16,8 @@ void handleBulk(const uint8_t *d, int n) {
   if (b.done) { pendingAck = "K," + String(type) + "," + String(id); return; }   // 重复的：再确认一次
   uint32_t len = n - 15;
   if (off >= total) return;
+  // Badge photos are CRC-checked; never silently truncate one of their pieces.
+  if (type == MotoNavBadge::BULK_TYPE && (!len || len > total - off)) return;
   if (off + len > total) len = total - off;
   if (!(b.mask[seq >> 3] & (1 << (seq & 7)))) {
     memcpy(b.buf + off, d + 15, len);
@@ -32,7 +34,13 @@ void handleBulk(const uint8_t *d, int n) {
     } else if (type == 4) {
       parseGhost(b.buf, total);                        // v4.4 原路线
     } else if (type == 5) {
-      parseCover(b.buf, total);                        // v7.12.10-cover 音乐封面（失败也确认，不重发）
+      parseCover(b.buf, total);                        // v7.12.10-cover 音乐封面
+    } else if (type == MotoNavBadge::BULK_TYPE) {
+      if (!parseBadge(b.buf, total)) {
+        // CRC/geometry failure: no ACK. Same id can retry all fragments.
+        b.done = false; b.got = 0; memset(b.mask, 0, sizeof(b.mask));
+        return;
+      }
     } else {
       if (!parseRaster(b.buf,total)) {
         // 没有成功解码就不回“已确认”，并允许相同编号完整重发。
