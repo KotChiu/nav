@@ -3,6 +3,7 @@
 #include <lvgl.h>
 #include "../../resources/WatchDigits.c"
 #include "../../ui/LvglHomeChrome.h"
+#include "../../ui/LvglWeatherView.h"
 
 static inline lv_color_t lvglColor565(uint16_t color) {
   lv_color_t out;
@@ -11,6 +12,7 @@ static inline lv_color_t lvglColor565(uint16_t color) {
 }
 
 static MotoNavHomeChrome lvglHomeChrome;
+static MotoNavWeatherView lvglWeatherView;
 static lv_disp_draw_buf_t lvglDrawBuf;
 static lv_disp_drv_t lvglDispDrv;
 static lv_indev_t *lvglPointer = nullptr;
@@ -343,6 +345,7 @@ static void createLvglOverlay() {
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
   // Home ring is now a native LVGL layer and does not rely on Canvas pixels.
   motonavHomeChromeCreate(lvglHomeChrome, screen, CX, C_UI_ACCENT, C_UI_ACCENT2);
+  motonavWeatherViewCreate(lvglWeatherView, screen);
 
   for (int i = 0; i < 3; i++) {
     musicButtons[i] = makeMusicButton(i);
@@ -734,6 +737,30 @@ static void lvglHybridTick() {
   if (batPct >= 0) snprintf(batteryText, sizeof(batteryText), "BAT %d%%", batPct);
   else snprintf(batteryText, sizeof(batteryText), "BAT --");
   setLvglLabelText(batteryLabel, batteryText);
+  // Weather main page uses a shared LVGL view; QWeather bitmap detail pages
+  // remain on the original Canvas until their image assets are ported.
+  bool showWeather = page == PAGE_WEATHER && (!wxHave || wxDetail == 0) &&
+                     !sliding && !pairOn && !callOn && !fxOn;
+  motonavWeatherViewVisible(lvglWeatherView, showWeather);
+  if (showWeather) {
+    MotoNavWeatherModel weather;
+    weather.available = wxHave;
+    weather.connected = bleConnected && bleAuthed;
+    weather.hourly = wxHourly;
+    weather.icon = wxIcon;
+    weather.temperature = wxTemp;
+    weather.forecastCount = wxN;
+    weather.aqi = wxExtra ? wxAQI : -1;
+    weather.alertCount = wxExtra ? wxAlerts : 0;
+    weather.updated = wxTime.c_str();
+    for (int i = 0; i < 6; ++i) {
+      weather.forecastHourOrWeek[i] = wxWk[i];
+      weather.forecastIcon[i] = wxFi[i];
+      weather.forecastHigh[i] = wxFh[i];
+      weather.forecastLowOrRain[i] = wxFl[i];
+    }
+    motonavWeatherViewUpdate(lvglWeatherView, weather);
+  }
   bool showMusic = page == 2 && !sliding && !pairOn && !callOn && !fxOn;
   bool showSettings = page == 3 && !sliding && !pairOn && !callOn && !fxOn;
   bool showRobot = page == 4 && !sliding && !pairOn && !callOn && !fxOn;
