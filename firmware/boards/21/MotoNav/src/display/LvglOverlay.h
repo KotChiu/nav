@@ -4,6 +4,7 @@
 #include "../../resources/WatchDigits.c"
 #include "../../ui/LvglHomeChrome.h"
 #include "../../ui/LvglWeatherView.h"
+#include "../../ui/LvglMusicStatusView.h"
 
 static inline lv_color_t lvglColor565(uint16_t color) {
   lv_color_t out;
@@ -13,6 +14,7 @@ static inline lv_color_t lvglColor565(uint16_t color) {
 
 static MotoNavHomeChrome lvglHomeChrome;
 static MotoNavWeatherView lvglWeatherView;
+static MotoNavMusicStatusView lvglMusicView;
 static lv_disp_draw_buf_t lvglDrawBuf;
 static lv_disp_drv_t lvglDispDrv;
 static lv_indev_t *lvglPointer = nullptr;
@@ -346,6 +348,7 @@ static void createLvglOverlay() {
   // Home ring is now a native LVGL layer and does not rely on Canvas pixels.
   motonavHomeChromeCreate(lvglHomeChrome, screen, CX, C_UI_ACCENT, C_UI_ACCENT2);
   motonavWeatherViewCreate(lvglWeatherView, screen);
+  motonavMusicStatusCreate(lvglMusicView, screen);
 
   for (int i = 0; i < 3; i++) {
     musicButtons[i] = makeMusicButton(i);
@@ -761,7 +764,13 @@ static void lvglHybridTick() {
     }
     motonavWeatherViewUpdate(lvglWeatherView, weather);
   }
-  bool showMusic = page == 2 && !sliding && !pairOn && !callOn && !fxOn;
+  bool showMusic = page == PAGE_MUSIC && !sliding && !pairOn && !callOn && !fxOn;
+  motonavMusicStatusVisible(lvglMusicView, showMusic);
+  if (showMusic) {
+    motonavMusicStatusUpdate(lvglMusicView, coverValid && coverImg,
+                             musicLyricsShownLVGL, musicStatusLVGL.c_str(),
+                             musicFooterLVGL.c_str(), musicAck == 4);
+  }
   bool showSettings = page == 3 && !sliding && !pairOn && !callOn && !fxOn;
   bool showRobot = page == 4 && !sliding && !pairOn && !callOn && !fxOn;
   bool showStock = page == 5 && !sliding && !pairOn && !callOn && !fxOn;
