@@ -207,24 +207,53 @@ final class BadgeBridge: ObservableObject {
                 }
                 self.pendingId = id
                 self.status = "BLE 传输中（约 \(packet.count / 1024) KB），等待圆屏确认…"
-                BleLink.shared.sendBulk(type: 6, id: id, data: packet)
+                guard BleLink.shared.sendBulk(type: 6, id: id, data: packet) else {
+                    self.pendingId = nil
+                    self.sending = false
+                    self.status = "蓝牙队列尚未就绪，未开始上传"
+                    return
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 120) { [weak self] in
+                    guard let self = self, self.pendingId == id else { return }
+                    self.pendingId = nil
+                    self.sending = false
+                    self.status = "等待设备确认超时，可能未上传成功，请检查后重试"
+                }
             }
         }
     }
 
-    func acknowledge(id: Int) {
+    func acknowledge(id: Int, saved: Bool?) {
+        guard pendingId == id else { return } // ignore stale/reordered ACKs
+        if let saved = saved {
+            didSave(id: id, saved: saved)
+        } else {
+            status = "已收到图片，等待存储确认…"
+        }
+    }
+
+    func didSave(id: Int, saved: Bool) {
+        guard pendingId == id else { return } // old uploads cannot confirm a new one
+        pendingId = nil
+        sending = false
+        status = saved
+          ? "图片已上传并保存到设备，断开手机仍可显示。"
+          : "图片已在设备内存显示，但未保存成功，重启后可能丢失。"
+    }
+
+    func transferFailed(id: Int) {
         guard pendingId == id else { return }
         pendingId = nil
         sending = false
-        status = "图片已显示，正在确认设备存储状态…"
+        status = "蓝牙分片发送失败，请保持连接并重新上传"
     }
 
-    func saved(_ yes: Bool) {
+    func connectionLost() {
+        guard sending else { return }
         pendingId = nil
-        status = yes
-          ? "图片已上传并保存到设备，断开手机仍可显示。"
-          : "图片已上传到设备内存，但设备存储未挂载，重启后可能丢失。"
+        serial = (serial + 1) & 0xFF // invalidate pending off-main image encoding
         sending = false
+        status = "连接已断开，上传未确认；重新连接后可重试"
     }
 
     private static func crc32(_ bytes: [UInt8]) -> UInt32 {
