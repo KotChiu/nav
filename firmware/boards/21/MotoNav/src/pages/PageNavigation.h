@@ -1,4 +1,5 @@
 #pragma once
+#include "../../ui/TransitionPolicy.h"
 // 音乐页面、手势换页和数据中断提示。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
 // ---- v5.5 跟手换页 ----
 // 触摸坐标和画面方向相反时改成 1（拖动时画面往手指反方向走就是反了）
@@ -30,6 +31,12 @@ void slideBuffersInit() {
   }
 }
 
+// Native LVGL status mirrors the actual player protocol state. Bitmap
+// lyrics, Chinese title/artist and cover art stay on Canvas temporarily.
+String musicStatusLVGL;
+String musicFooterLVGL;
+bool musicLyricsShownLVGL = false;
+
 // v7.8 音乐页：歌名/歌手图片栏 5/6；#Z,有会话,播放中,按钮位掩码。
 // v7.12.10-cover 收到封面（bulk type 5）时改为封面圆盘布局：圆盘 r=64 居上，歌名/歌手/按钮下移，不放歌词。
 void drawMusic() {
@@ -38,7 +45,9 @@ void drawMusic() {
   onWaitScreen = false;
   frameIsMap = false;
   bool coverShow = coverValid && coverImg;
-  if (coverShow) {
+  // The LVGL image owns the visible cover once its PSRAM buffer is ready.
+  // Preserve the original direct-framebuffer path on allocation failure.
+  if (coverShow && (!lvglUiReady || !lvglCoverAssetReady)) {
     aaDisc(CX, 110, 67, C_UI_PANEL_2);                 // 封面底环（半径 67，贴图半径 64，留 3px 环）
     uint16_t *fb = gfx->getFramebuffer();
     int cy = 110, cx0 = CX - 64, cy0 = cy - 64;
@@ -62,17 +71,21 @@ void drawMusic() {
         dst[i] = src[u];
       }
     }
-  } else printCentered("MUSIC", CX, 65, 4, C_UI_ACCENT);
+  } else if (!lvglUiReady) printCentered("MUSIC", CX, 65, 4, C_UI_ACCENT);
   bool linked = bleConnected && bleAuthed;
   if (hidMusicMode && linked && !appleMedia.available) {
     printCentered("PHONE MEDIA KEYS", CX, coverShow ? 194 : 158, 2, C_WHITE);
     printCentered("OPEN MUSIC APP ON PHONE", CX, coverShow ? 220 : 210, 2, C_UI_SUB);
   } else if (linked) {
-    drawTextImg(5, coverShow ? 194 : 158, 0xFF);
-    drawTextImg(6, coverShow ? 240 : 210, 0xBB);
+    if (!lvglUiReady || !lvglTextAssetReady[5])
+      drawTextImg(5, coverShow ? 194 : 158, 0xFF);
+    if (!lvglUiReady || !lvglTextAssetReady[6])
+      drawTextImg(6, coverShow ? 240 : 210, 0xBB);
   } else printCentered("PHONE OFFLINE", CX, coverShow ? 205 : 170, 3, C_UI_SUB);
   bool showLyrics = linked && hidMusicMode && musicLyrics && appleMedia.available && imgs[12].showW > 0 && !coverShow;
-  if (showLyrics) drawTextImg(12, 242, 0xDD);
+  if (showLyrics && (!lvglUiReady || !lvglTextAssetReady[12]))
+    drawTextImg(12, 242, 0xDD);
+  musicLyricsShownLVGL = showLyrics;
   const char *feedback[] = {"", "SENT", "PHONE RECEIVED", "DONE", "NO RESPONSE", "NO PLAYER", "HID SENT", "HID NOT READY", "HID SEND FAILED", "AMS SENT", "AMS SEND FAILED", "AMS QUEUED"};
   String state = linked && musicHave ? (musicPlaying ? "PLAYING" : "PAUSED") : "NO PLAYER";
   if (hidMusicMode) {
@@ -80,7 +93,9 @@ void drawMusic() {
       : !appleMedia.playback.known ? "STATE UNKNOWN" : appleMedia.playback.state == 1 ? "PLAYING" : appleMedia.playback.state == 0 ? "PAUSED" : "SEEKING";
   }
   if (musicAck > 0 && musicAck <= 11) state = feedback[musicAck];
-  printCentered(state, CX, showLyrics ? 272 : coverShow ? 276 : 257, 2, musicAck == 4 ? C_UI_ACCENT2 : C_UI_SUB);
+  musicStatusLVGL = state;
+  if (!lvglUiReady)
+    printCentered(state, CX, showLyrics ? 272 : coverShow ? 276 : 257, 2, musicAck == 4 ? C_UI_ACCENT2 : C_UI_SUB);
   for (int i = 0; !lvglUiReady && i < 3; i++) {
     int x = CX + (i - 1) * 100, y = coverShow ? 360 : 335;
     bool enabled = hidMusicMode ? (hidMediaReady() || appleMedia.controlReady(i)) : linked && musicHave;
@@ -107,9 +122,13 @@ void drawMusic() {
       double elapsed = appleMedia.playback.elapsed + appleMedia.playback.rate * (millis() - appleMedia.playbackAt) / 1000.0;
       int sec = (int)constrain(elapsed, 0.0, duration), total = (int)duration;
       char time[32]; snprintf(time, sizeof(time), "%d:%02d / %d:%02d", sec/60, sec%60, total/60, total%60);
-      printCentered(time, CX, coverShow ? 410 : 392, 2, C_UI_SUB);
-    }
-  } else printCentered("SWIPE LEFT TO RETURN", CX, coverShow ? 410 : 402, 2, C_UI_SUB);
+      musicFooterLVGL = time;
+      if (!lvglUiReady) printCentered(time, CX, coverShow ? 410 : 392, 2, C_UI_SUB);
+    } else musicFooterLVGL = "";
+  } else {
+    musicFooterLVGL = "SWIPE LEFT TO RETURN";
+    if (!lvglUiReady) printCentered(musicFooterLVGL, CX, coverShow ? 410 : 402, 2, C_UI_SUB);
+  }
   drawPageDots();
   needFlush = true;
 }
@@ -123,6 +142,11 @@ float dragP = 0, dragV = 0;                 // 新页面已经进来多少像素
 unsigned long dragT = 0;
 unsigned long dragFrameAt = 0;
 bool slideSettling = false;
+// The LVGL snapshot layer uses any completed non-navigation page snapshots.
+// Navigation-active swipes remain on the legacy compositor until road QA.
+static bool lvglSwipeTransition = false;
+static bool panelSwipeTransition = false;
+static int lastPanelSwipePosition = -1;
 bool slideSettleGo = false;
 float slideSettleFrom = 0, slideSettleTo = 0;
 unsigned long slideSettleAt = 0, slideSettleFrameAt = 0;
@@ -155,6 +179,7 @@ void renderPage(int p) {
 
 // 准备滑动：存下屏幕上的旧画面，在画布上画好目标页面存起来
 bool slidePrepare(int target) {
+  const uint32_t prepareAt = micros();
   const size_t BYTES = (size_t)LCD_WIDTH * LCD_HEIGHT * 2;
   slideBuffersInit();
   if (!slideOld || !slideNew) return false;
@@ -173,6 +198,15 @@ bool slidePrepare(int target) {
     page = previous;
   }
   memcpy(slideNew, gfx->getFramebuffer(), BYTES);
+  const bool nativeSwipe = motonavNativeSwipeAllowed(page, target, inNav, lvglUiReady);
+  panelSwipeTransition = nativeSwipe && panelSlideAvailable();
+  lastPanelSwipePosition = -1;
+  static bool reportedPanelSwipe = false;
+  if (panelSwipeTransition && !reportedPanelSwipe) {
+    reportedPanelSwipe = true;
+    Serial.printf("SLIDE panel-direct prepare=%luus\n", (unsigned long)(micros() - prepareAt));
+  }
+  lvglSwipeTransition = nativeSwipe && !panelSwipeTransition && lvglSwipeBegin(slideOld, slideNew);
   sliding = true;
   lvglClearDirtyArea();
   needFlush = false; frameIsMap = false;
@@ -180,10 +214,26 @@ bool slidePrepare(int target) {
 }
 
 // 合成一帧：新页面已经进来 p 像素（盖在上面），旧页面往同方向退 30%、变暗，交界处一道阴影
-void slideCompose(int p) {
+bool slideCompose(int p) {
   const int W = LCD_WIDTH, H = LCD_HEIGHT;
   if (p < 0) p = 0;
   if (p > (dragHoriz ? W : H)) p = dragHoriz ? W : H;
+  if (panelSwipeTransition) {
+    if (p == lastPanelSwipePosition) return true;
+    // Keep sampling touch while the worker is busy; the next attempt uses the
+    // newest position instead of building a queue of stale frames.
+    if (!tryFlushPanelSlide(slideOld, slideNew, p, dragHoriz, dragVisualSign)) return false;
+    lastPanelSwipePosition = p;
+    return true;
+  }
+  if (lvglSwipeTransition && lvglSwipePaint(p, dragHoriz, dragVisualSign)) {
+    // Only LVGL image objects move: zero per-row memcpy on this path.
+    flushSetFullFrame();
+    flushAsync();
+    needFlush = false;
+    frameIsMap = false;
+    return true;
+  }
   uint16_t *fb = gfx->getFramebuffer();
   if (dragHoriz) {
     for (int y = 0; y < H; y++) {
@@ -226,11 +276,16 @@ void slideCompose(int p) {
   flushSetFullFrame();
   flushAsync();
   needFlush = false; frameIsMap = false;
+  return true;
 }
 
 // 换页完成
 void slideCommit() {
   const size_t BYTES = (size_t)LCD_WIDTH * LCD_HEIGHT * 2;
+  if (lvglSwipeTransition) lvglSwipeFinish();
+  lvglSwipeTransition = false;
+  panelSwipeTransition = false;
+  forceFullFlush = true;
   sliding = false; dragging = false;
   page = dragTarget;
   pageAt = millis();
@@ -258,6 +313,10 @@ void slideCommit() {
 
 // 没换成：回到原页面
 void slideCancel() {
+  if (lvglSwipeTransition) lvglSwipeFinish();
+  lvglSwipeTransition = false;
+  panelSwipeTransition = false;
+  forceFullFlush = true;
   sliding = false; dragging = false;
   renderPage(page);
   if (lvglUiReady) lvglHybridTick();
@@ -285,11 +344,16 @@ void slideTick() {
   if (!slideSettling) return;
   unsigned long now = millis();
   float t = min(1.0f, (now - slideSettleAt) / (float)slideSettleMs);
-  if (t < 1 && slideSettleFrameAt && now - slideSettleFrameAt < 32) return;
-  slideSettleFrameAt = now;
-  float e = 1 - (1 - t) * (1 - t) * (1 - t);
-  slideCompose((int)lroundf(slideSettleFrom + (slideSettleTo - slideSettleFrom) * e));
-  if (t < 1) return;
+  if (t < 1) {
+    if (!panelSwipeTransition && slideSettleFrameAt && now - slideSettleFrameAt < 32) return;
+    const float remaining = 1 - t;
+    const float e = 1 - remaining * remaining * (panelSwipeTransition ? 1 : remaining);
+    if (slideCompose((int)lroundf(slideSettleFrom + (slideSettleTo - slideSettleFrom) * e)))
+      slideSettleFrameAt = now;
+    return;
+  }
+  // The normal page flush presents the endpoint once, after the last preview.
+  if (!panelSwipeTransition) slideCompose((int)slideSettleTo);
   slideSettling = false;
   if (slideSettleGo) slideCommit();
   else slideCancel();
@@ -339,9 +403,8 @@ void dragMove(int dx, int dy, unsigned long now) {
   dragP = p; dragT = now;
   // The RGB panel can show at most one new frame per VSYNC. Coalesce faster
   // touch samples while retaining the latest position for release velocity.
-  if (dragFrameAt == 0 || now - dragFrameAt >= 20) {
-    dragFrameAt = now;
-    slideCompose((int)p);
+  if (panelSwipeTransition || dragFrameAt == 0 || now - dragFrameAt >= 20) {
+    if (slideCompose((int)p)) dragFrameAt = now;
   }
 }
 
@@ -352,12 +415,16 @@ void dragEnd() {
   bool go = dragP > 48 || (dragV > 0.35f && dragP > 24);
   if (dragV < -0.35f) go = false;                       // 往回甩：取消
   float target = go ? full : 0;
-  slideStartSettle(dragP, target, 160, go);
+  slideStartSettle(min(dragP, (float)full), target, 160, go);
 }
 
 // 来电等情况：直接放弃拖动
 void dragAbort() {
   if (!dragging && !slideSettling) return;
+  if (lvglSwipeTransition) lvglSwipeFinish();
+  lvglSwipeTransition = false;
+  panelSwipeTransition = false;
+  forceFullFlush = true;
   sliding = false; dragging = false; slideSettling = false;
   renderPage(page);
   if (lvglUiReady) lvglHybridTick();

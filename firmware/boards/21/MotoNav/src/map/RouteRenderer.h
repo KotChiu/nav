@@ -124,7 +124,8 @@ void drawRouteCurved(float a, float b, float cx, float cy, float sc, float cs, f
     float ua = fmaxf(a, (float)s), ub = fminf(b, (float)e);
     int m = 0, cls = -1;
     auto proj = [&](float x, float y) {
-      tmpX[m] = CX + sc * ((x - cx) * cs - (y - cy) * sn); tmpY[m] = MAP_PY - sc * ((x - cx) * sn + (y - cy) * cs); m++;
+      motonavProjectWorld(x, y, cx, cy, sc, cs, sn, CX, MAP_PY,
+                          tmpX[m], tmpY[m]); m++;
     };
     float x, y;
     routePt(ua, x, y); proj(x, y);
@@ -156,13 +157,16 @@ void drawRouteRange(float a, float b, float cx, float cy, float sc, float cs, fl
       int m = 0;
       float x, y;
       routePt(ua, x, y);
-      tmpX[m] = CX + sc * ((x - cx) * cs - (y - cy) * sn); tmpY[m] = MAP_PY - sc * ((x - cx) * sn + (y - cy) * cs); m++;
+      motonavProjectWorld(x, y, cx, cy, sc, cs, sn, CX, MAP_PY,
+                          tmpX[m], tmpY[m]); m++;
       for (int k = (int)floorf(ua) + 1; k < ub; k++) {
         float dx = routeX[k] - cx, dy = routeY[k] - cy;
-        tmpX[m] = CX + sc * (dx * cs - dy * sn); tmpY[m] = MAP_PY - sc * (dx * sn + dy * cs); m++;
+        motonavProjectDelta(dx, dy, sc, cs, sn, CX, MAP_PY,
+                            tmpX[m], tmpY[m]); m++;
       }
       routePt(ub, x, y);
-      tmpX[m] = CX + sc * ((x - cx) * cs - (y - cy) * sn); tmpY[m] = MAP_PY - sc * ((x - cx) * sn + (y - cy) * cs); m++;
+      motonavProjectWorld(x, y, cx, cy, sc, cs, sn, CX, MAP_PY,
+                          tmpX[m], tmpY[m]); m++;
       if (m >= 2) mapPolyline(tmpX, tmpY, m, pass == 0 ? w0 : w1, pass == 0 ? c0 : c1, true);
     }
   }
@@ -203,7 +207,8 @@ void drawGhost(float cx, float cy, float sc, float cs, float sn, float viewR, fl
     int s = bi * RB_STEP, e = min(ghostN - 1, s + RB_STEP), m = 0;
     for (int k = s; k <= e; k++) {
       float dx = ghostX[k] - cx, dy = ghostY[k] - cy;
-      tmpX[m] = CX + sc * (dx * cs - dy * sn); tmpY[m] = MAP_PY - sc * (dx * sn + dy * cs); m++;
+      motonavProjectDelta(dx, dy, sc, cs, sn, CX, MAP_PY,
+                            tmpX[m], tmpY[m]); m++;
     }
     if (m >= 2) mapPolyline(tmpX, tmpY, m, w, styleIdx()==ST_MINIMAL ? 0x8410 : 0xFD20, true);
   }

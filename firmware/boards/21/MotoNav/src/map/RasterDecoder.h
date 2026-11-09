@@ -231,6 +231,7 @@ bool parseRaster(const uint8_t *p, uint32_t len) {
 // 载荷：'C''V''R' 版本(1)=1 宽(1) 高(1) + zlib 压缩的 RGB565（小端）。宽高 0 表示清除封面。
 tinfl_decompressor *coverInflater = nullptr;
 void parseCover(const uint8_t *p, uint32_t len) {
+  ++coverImageRevision; // Decoder reuses the same RGB565 allocation.
   coverValid = false;
   musicDirty = true;                                    // 无论成败都让音乐页刷新一次
   if (len < 6 || p[0] != 'C' || p[1] != 'V' || p[2] != 'R' || p[3] != 1) return;

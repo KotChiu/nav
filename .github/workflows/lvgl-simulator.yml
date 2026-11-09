@@ -1,0 +1,74 @@
+name: LVGL desktop simulator
+
+on:
+  pull_request:
+    paths:
+      - 'tools/lvgl-simulator/**'
+      - 'firmware/boards/21/MotoNav/ui/**'
+      - 'firmware/tests/RasterBridgeTest.cpp'
+      - 'firmware/tests/PageSlideGeometryTest.cpp'
+      - 'firmware/tests/MapProjectionTest.cpp'
+      - 'firmware/tests/FrameOwnershipTest.cpp'
+      - 'firmware/tests/TransitionPolicyTest.cpp'
+      - 'firmware/tests/TurnCueGeometryTest.cpp'
+      - 'firmware/tests/NavigationCueModelTest.cpp'
+      - 'firmware/tests/Rgb565PlaneTest.cpp'
+      - 'firmware/tests/BadgePacketTest.cpp'
+      - 'firmware/boards/21/MotoNav/src/display/LvglOverlay.h'
+      - '.github/workflows/lvgl-simulator.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL2 and headless display
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev xvfb
+      - name: Test shared bitmap decoder
+        run: |
+          g++ -std=c++17 -Wall -Wextra -pedantic firmware/tests/RasterBridgeTest.cpp -o /tmp/motonav-raster-test
+          /tmp/motonav-raster-test
+      - name: Verify LVGL swipe transition geometry
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror firmware/tests/PageSlideGeometryTest.cpp -o /tmp/motonav-slide-geometry
+          /tmp/motonav-slide-geometry
+      - name: Verify Canvas/LVGL map projection parity
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror firmware/tests/MapProjectionTest.cpp -o /tmp/motonav-map-projection
+          /tmp/motonav-map-projection
+      - name: Verify framebuffer ownership and LVGL swipe rollout
+        run: |
+          for test in FrameOwnershipTest TransitionPolicyTest TurnCueGeometryTest NavigationCueModelTest Rgb565PlaneTest; do
+            g++ -std=c++17 -Wall -Wextra -Werror -pedantic "firmware/tests/${test}.cpp" -o "/tmp/${test}"
+            "/tmp/${test}"
+          done
+      - name: Check QA packaging and non-destructive flash selector
+        run: |
+          python3 -m py_compile firmware/build.py firmware/flash_macos.py tools/hardware-qa/collect.py
+          python3 -m unittest discover -s firmware/tests -p 'test_flash_macos.py' -v
+      - name: Configure
+        run: cmake -S tools/lvgl-simulator -B build/lvgl-simulator -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build/lvgl-simulator --parallel 4
+      - name: Smoke test
+        run: xvfb-run -a ctest --test-dir build/lvgl-simulator --output-on-failure
+      - name: Render all mocked pages and critical navigation states
+        run: |
+          mkdir -p build/motonav-visual
+          xvfb-run -a ./build/lvgl-simulator/motonav-lvgl-simulator --smoke-test \
+            --capture-dir build/motonav-visual
+          python3 tools/lvgl-simulator/verify_captures.py build/motonav-visual
+      - name: Publish simulator gallery for offline UI review
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: motonav-lvgl-visual-gallery
+          path: |
+            build/motonav-visual/index.html
+            build/motonav-visual/*.png
+          retention-days: 14

@@ -10,6 +10,22 @@ void drawMapFrame() {
   unsigned long t = millis();
   lastMapDraw = t;
   frameIsMap = true;
+  // Native LVGL map Canvas owns a dedicated PSRAM RGB565 buffer. Old map
+  // primitives and the new LVGL vector operations can safely share it while
+  // the display's canonical framebuffer remains untouched until LVGL paints.
+  // A screen-level traffic-light overlay is still Canvas-based: fall back
+  // until it too becomes a native LVGL widget, so it cannot be overpainted.
+  const bool trafficOverlay = (bleConnected && bleAuthed) &&
+    (trafficLightLab.valid(t) || trafficLightFrame.valid(t) ||
+     (trafficLightPreviewUntil &&
+      (int32_t)(trafficLightPreviewUntil - t) > 0));
+  uint16_t *logicalFrame = gfx->getFramebuffer();
+  const bool usingMapCanvas = lvglUiReady && logicalFrame &&
+    !trafficOverlay && !staleShown && !sliding &&
+    !pairOn && !callOn && !fxOn &&
+    lvglMapCanvasStartFrame() && lvglMapCanvasPixels();
+  if (usingMapCanvas) gfx->setFramebuffer(lvglMapCanvasPixels());
+  else lvglMapCanvasFallback();
   // 位置：按车速和转弯速度往前推算（v6.7 沿弧线，再加一点提前量），让画面连续移动、少“慢半拍”
   float cx, cy, hPred;
   predictPose(t, leadMs / 1000.0f, cx, cy, hPred);
@@ -61,8 +77,8 @@ void drawMapFrame() {
     const uint8_t *pp = mapShow + featOff[i];
     for (int k = 0; k < np; k++) {
       float dx = rd16(pp + 4 * k) - lx, dy = rd16(pp + 4 * k + 2) - ly;
-      tmpX[k] = CX + sc * (dx * cs - dy * sn);
-      tmpY[k] = MAP_PY - sc * (dx * sn + dy * cs);
+      motonavProjectDelta(dx, dy, sc, cs, sn, CX, MAP_PY,
+                          tmpX[k], tmpY[k]);
     }
     uint8_t cls = featCls[i];
     if (cls & 0x80) {
@@ -126,10 +142,19 @@ void drawMapFrame() {
     bool isNear = navDist <= STAGE_NEAR_M;
     // v7.4 平时外圈是行程环；出现转弯倒计时就换成倒计时环（盖掉行程环）
     float tp = ringActive ? -1 : tripFrac();
-    drawRingLayer(navDir != "S" && tp < 0, ringActive ? ringShown : 0, isNear ? 14 : 10, isNear ? C_ORANGE : C_YELLOW, over, tp);
+    if (usingMapCanvas && lvglNativeCueSupported() && !cruiseOn)
+      // Preserve outer black mask/overspeed rim; the native LVGL arc owns
+      // the colored trip/distance indicator when explicitly enabled.
+      drawRingLayer(false, 0, isNear ? 14 : 10,
+                    isNear ? C_ORANGE : C_YELLOW, over, -1);
+    else
+      drawRingLayer(navDir != "S" && tp < 0, ringActive ? ringShown : 0,
+                    isNear ? 14 : 10, isNear ? C_ORANGE : C_YELLOW, over, tp);
   }
   profMark(6);
-  drawMapSpeed(over);
+  // LVGL renders the live speed and limit overlay on the shared map canvas.
+  // The Canvas implementation is retained as a safe fallback before LVGL init.
+  if (!lvglUiReady || !lvglMapHud.root) drawMapSpeed(over);
   profMark(7);
   drawMapLanes();                                       // v3.3 车道（车速下面）
   profMark(8);
@@ -139,6 +164,12 @@ void drawMapFrame() {
   drawNavHints(300);                                    // v5.0 重新规划中 / 更快路线 / GPS 信号弱
   drawBattery(CX - 16, 18, false);                         // v6.8 电量（车速上方）；v7.2 带黑底
   profMark(10);
+  // Return the renderer to the *canonical* logical frame before any
+  // LVGL timers, transport snapshots or page transitions run.
+  if (usingMapCanvas) {
+    gfx->setFramebuffer(logicalFrame);
+    lvglMapCanvasEndFrame();
+  }
   // v2.9 小地图里不画顶部的蓝牙小圆点（会和 N 标记重叠；能收到地图就说明连着）
   needFlush = true;
   mapFrames++;
@@ -171,6 +202,19 @@ void updateStats() {
     pendingProf = q;
 #if FPS_SERIAL_DIAGNOSTICS
     Serial.printf("FPSSTAT %s | %s | deg=%d\n",pendingStat.c_str(),q.c_str(),screenDeg);
+    if (lvglMapCanvas.canvas) {
+      static uint32_t previousMapCommits = 0;
+      static uint32_t previousNativeLines = 0;
+      static uint32_t previousNativePolygons = 0;
+      Serial.printf("MAP LVGL canvas=%lu/2s native-lines=%lu polygons=%lu PSRAM-free=%u bytes\n",
+        (unsigned long)(lvglMapCanvas.commits - previousMapCommits),
+        (unsigned long)(lvglMapCanvas.nativeLines - previousNativeLines),
+        (unsigned long)(lvglMapCanvas.nativePolygons - previousNativePolygons),
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+      previousMapCommits = lvglMapCanvas.commits;
+      previousNativeLines = lvglMapCanvas.nativeLines;
+      previousNativePolygons = lvglMapCanvas.nativePolygons;
+    }
 #endif
   } else if (statAt != 0 && lvglUiReady) {
 #if FPS_SERIAL_DIAGNOSTICS

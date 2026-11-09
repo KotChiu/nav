@@ -40,7 +40,7 @@ Arduino_ESP32RGBPanel *board21Rgb = new Arduino_ESP32RGBPanel(
   LCD_DATA0, LCD_DATA1, LCD_DATA2, LCD_DATA3, LCD_DATA4,
   1, 50, 8, 10,
   1, 8, 3, 8,
-  0, 12 * 1000 * 1000, false, 0, 0, PANEL_WIDTH * 10);
+  0, 12 * 1000 * 1000, false, 0, 0, PANEL_WIDTH * 10, true);
 Board21Panel *panel = new Board21Panel(board21Rgb);
 PortScale portScale;
 #define FLUSH_RECT_MAX 12
@@ -55,6 +55,17 @@ void flushLogicalFrame(const uint16_t *fb, bool fullFrame,
 // v2.2：可以切换画布内存的画布，用来做双缓冲
 bool lvglCanvasRepainted = false;
 extern volatile bool forceFullFlush;
+
+// Experimental code-complete removal of the Arduino_Canvas *class* from the
+// UI renderer. Legacy raster algorithms are still used through Arduino_GFX
+// methods; LVGL owns the map/page visual layers. Both variants compile in PR.
+#ifndef MOTONAV_USE_RASTER_SURFACE
+#define MOTONAV_USE_RASTER_SURFACE 1
+#endif
+#if MOTONAV_USE_RASTER_SURFACE
+#include "../../ui/LvglRasterSurface.h"
+using SwapCanvas = MotoNavRasterSurface;
+#else
 class SwapCanvas : public Arduino_Canvas {
 public:
   SwapCanvas(int16_t w, int16_t h, Arduino_G *out) : Arduino_Canvas(w, h, out) {}
@@ -69,6 +80,7 @@ public:
     if (_framebuffer) flushLogicalFrame(_framebuffer);
   }
 };
+#endif
 SwapCanvas *gfx = new SwapCanvas(LCD_WIDTH, LCD_HEIGHT, panel);
 bool needFlush = false;
 bool frameIsMap = false;          // v2.2 这一帧是小地图（整帧重画，可以异步刷屏）
@@ -229,6 +241,11 @@ struct TextImg {
   int recvId; uint16_t recvW; uint8_t recvH; uint8_t recvParts; uint32_t recvMask;
 };
 TextImg imgs[IMG_SLOTS];
+// Incremented by the bitmap receiver on replacement/clear. Bitmap sources
+// alternate between two buffers, so pointer identity alone is not a revision.
+uint32_t textImageRevision[IMG_SLOTS] = {};
+bool lvglTextAssetReady[IMG_SLOTS] = {};
+bool lvglCoverAssetReady = false;
 AppleMediaClient appleMedia;
 volatile uint32_t mediaConnectionEpoch = 0;
 uint32_t lyricImageGeneration = 0; uint16_t lyricImageTitleRevision = 0, lyricImageArtistRevision = 0;
@@ -241,6 +258,7 @@ bool musicHave = false, musicPlaying = false;
 uint16_t *coverImg = nullptr;              // PSRAM：COVER_PX*COVER_PX RGB565
 int coverW = 0, coverH = 0;
 bool coverValid = false;
+uint32_t coverImageRevision = 0;
 int musicActions = 0;
 int musicPressed = -1, musicAck = 0;
 unsigned long musicAckUntil = 0;

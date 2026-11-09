@@ -230,8 +230,7 @@ void drawVignette(float r0, float r1, int maxDark) {
 
 // ================= v6.1 风格特效 =================
 static inline void projXY(float x, float y, float cx, float cy, float sc, float cs, float sn, float &px, float &py) {
-  px = CX + sc * ((x - cx) * cs - (y - cy) * sn);
-  py = MAP_PY - sc * ((x - cx) * sn + (y - cy) * cs);
+  motonavProjectWorld(x, y, cx, cy, sc, cs, sn, CX, MAP_PY, px, py);
 }
 
 // 蓝图：跟着地图走的网格，每 50 米一条线

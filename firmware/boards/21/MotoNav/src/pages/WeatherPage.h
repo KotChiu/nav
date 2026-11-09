@@ -121,7 +121,7 @@ bool drawWeatherExtra() {
   gfx->fillScreen(C_UI_BG);
   if (wxDetail == 1) {
     printCentered("RAIN / AIR", CX, 55, 3, C_UI_ACCENT);
-    drawTextImg(7, 105, 0xFF);
+    if (!lvglUiReady || !lvglTextAssetReady[7]) drawTextImg(7, 105, 0xFF);
     int peak = 0;
     for (int i=0; i<wxRainN; ++i) peak = max(peak, wxRain[i]);
     if (wxRainN > 0) {
@@ -133,13 +133,13 @@ bool drawWeatherExtra() {
       printCentered("NEXT 2H  MAX " + String(peak / 100.0f, 2) + " mm/5m", CX, 240, 2, C_UI_SUB);
     } else printCentered("RAIN DATA UNAVAILABLE", CX, 190, 2, C_UI_SUB);
     uint16_t airColor = wxAQI < 0 ? C_UI_SUB : C_UI_ACCENT;
-    drawTextImg(8, 285, 0xFF);
+    if (!lvglUiReady || !lvglTextAssetReady[8]) drawTextImg(8, 285, 0xFF);
     printCentered(wxAQI < 0 ? "AQI --" : "AQI " + String(wxAQI), CX, 335, 3, airColor);
   } else {
     printCentered(wxAlerts > 0 ? "WEATHER ALERT" : "ALERT STATUS", CX, 65, 3, wxLevel >= 3 ? C_ORANGE : C_UI_ACCENT);
-    drawTextImg(9, 125, 0xFF);
-    drawTextImg(10, 200, 0xDC);
-    drawTextImg(11, 270, 0xDC);
+    if (!lvglUiReady || !lvglTextAssetReady[9]) drawTextImg(9, 125, 0xFF);
+    if (!lvglUiReady || !lvglTextAssetReady[10]) drawTextImg(10, 200, 0xDC);
+    if (!lvglUiReady || !lvglTextAssetReady[11]) drawTextImg(11, 270, 0xDC);
     if (wxAlerts > 1) printCentered(String(wxAlerts) + " ALERTS - DETAILS ON PHONE", CX, 330, 1, C_UI_SUB);
     printCentered("MAY BE DELAYED - CHECK OFFICIAL", CX, 365, 1, C_UI_SUB);
   }
@@ -153,6 +153,17 @@ void drawWeather() {
   onWaitScreen = false;
   frameIsMap = false;
   gfx->fillScreen(C_UI_BG);
+  if (lvglUiReady) {
+    // Share the real LVGL weather layout with the desktop simulator.
+    // Packed BLE Chinese labels now have native LVGL image adapters.
+    // Canvas remains a fallback for images that fail PSRAM allocation.
+    if (wxHave) {
+      if (!lvglTextAssetReady[3]) drawTextImg(3, 56, 0xFF);
+      if (!lvglTextAssetReady[4]) drawTextImg(4, 232, 0xC0);
+    }
+    needFlush = true;
+    return;
+  }
   if (!wxHave) {
     drawWxIcon(1, CX, 190, 60);
     printCentered(bleConnected ? "LOADING..." : "NO PHONE", CX, 290, 3, C_UI_SUB);

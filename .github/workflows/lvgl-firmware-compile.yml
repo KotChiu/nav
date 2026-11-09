@@ -1,0 +1,50 @@
+name: LVGL 2.1 firmware compile
+
+on:
+  pull_request:
+    paths:
+      - 'firmware/boards/21/**'
+      - 'firmware/libraries/**'
+      - 'firmware/build.py'
+      - '.github/workflows/lvgl-firmware-compile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-21:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Cache ESP32 Arduino core and libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.arduino15
+            ~/Arduino/libraries
+          key: esp32s3-3.3.10-lvgl-8.3.10-v1
+      - name: Install exact ESP32 core
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.3.10 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+      - name: Compile 2.1 native LVGL framebuffer path without flashing
+        run: python3 firmware/build.py --board 21 --jobs 2 --raster-surface native
+      - name: Compile Arduino_Canvas fallback without flashing
+        run: python3 firmware/build.py --board 21 --jobs 2 --raster-surface legacy
+      - name: Compile opt-in 2.1 hardware QA firmware
+        run: python3 firmware/build.py --board 21 --jobs 2 --raster-surface native --qa
+      - name: Publish 2.1 QA auto-test firmware (not hardware tested)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MotoNav-2.1-QA-AUTOTEST-NOT-DEVICE-TESTED
+          path: firmware/dist/21/panel0/qa-autotest/
+          if-no-files-found: error
+          retention-days: 14

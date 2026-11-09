@@ -26,6 +26,12 @@ void drawMapLights(float cx, float cy, float sc, float cs, float sn) {
 
 // 转向箭头 + 距离（浮在底部）；离路口 150 米内变大，车道放在半透明深色底上
 void drawMapBadge() {
+  if (lvglMapCanvasActive() && lvglNativeCueSupported() && !cruiseOn) {
+    // A reusable LVGL vector arrow and distance label now own this area.
+    // Keep the legacy trip ETA row and all unsupported turns (U/A) unchanged.
+    if (tripOn && (navDir == "S" || navDist > MAP_NEAR_M)) drawTripLine(404);
+    return;
+  }
   if (cruiseOn) {                                      // v4.8 巡航：底部只写个“巡航”标记
     printOutlined("CRUISE", CX, 392, 2, C_CYAN);
     return;
