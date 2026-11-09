@@ -18,8 +18,8 @@ ST7701S RGB 显示的初始化、DMA、VSYNC、背光、480×480 物理缓冲由
 | 中文天气/音乐与歌词位图 | `ui/LvglRasterAssets.h` 将灰度位图转换成 LVGL image，已有槽位 3/4/5/6/12 | 资源分配失败时保留 Canvas 回退；实机 PSRAM 验证 |
 | **本轮：天气详情中文位图** | 新接入槽位 7/8（降雨/空气），9/10/11（预警）及对应 tint/y 位置 | 降雨条图、预警说明仍由 Canvas 画；无字图/空字图/切换详情需要实测 |
 | 音乐封面 | `MotoNavCoverAsset` 支持圆形 RGB565 封面及旧路径回退 | 实机内存、缩放、层叠/透明 |
-| 导航地图/图形 | Canvas 路径保持不变 | 核心大迁移，必须独立实施 |
-| 滑动切页 | 旧的帧快照与逐像素合成 | 需要先定义 LVGL 与 Canvas 缓冲所有权 |
+| 导航地图与 HUD | **新增** `ui/LvglNavigationHud.h`：地图上的速度、限速牌、摄像头距离使用和 PC 共享的 LVGL 控件；真实值来自 ESP32 导航状态 | 地图底图、多边形、路线、红绿灯、车道、转向提示、进度环仍使用 Canvas，需要后续迁移 |
+| 滑动切页 | **新增** `ui/LvglPageSlide.h`：设置/互动角色/股票之间的滑动复用原有两张 PSRAM 快照，LVGL 两张 image 移动代替逐行 memcpy | 含导航、天气、音乐的混合绘制仍走旧合成器；需要 2.1 实机测试帧率、PSRAM、触摸、旋转 |
 
 ## 本轮变更
 
@@ -27,6 +27,17 @@ ST7701S RGB 显示的初始化、DMA、VSYNC、背光、480×480 物理缓冲由
 - `WeatherPage.h`：天气详情页优先展示已经准备好的 LVGL 字图，未准备好时沿用 Canvas 画法。QWeather 原始雨量柱状图、提醒文本保留。
 - `TextBitmapReceiver.h`：槽位 7–11 收到新图或清除时，同步标记天气页面 dirty；拒绝分片号越界、空 payload、错误 offset/超出图片总长及空接收缓冲，避免非法位移与越界写入；保持手机 BLE 包格式不变。
 - `RasterBridgeTest.cpp`：单元测试 4-bit 灰度转换、透明像素、裁剪尺寸、专辑封面圆形裁切；新增 GitHub Actions 运行命令。
+
+## 本轮后续变更：导航 HUD 与原生页面滑动
+
+- `LvglNavigationHud.h` 使用 LVGL label、圆形限速牌与动态颜色，接入 `LvglOverlay.h`；`MapFrame.h` 在 LVGL 已启动时不再重复绘制旧速度 HUD，未启动时保留 Canvas 回退。状态包括实时车速、超速颜色、限速及摄像头距离。
+- `MapState.h` 通过 accessor 把白天/夜间地图主题色提供给 LVGL 层，避免把地图内部宏硬编码进先于地图初始化的头文件中。
+- `LvglPageSlide.h` + `PageSlideGeometry.h` 解耦滑动几何计算与显示实现。真机设置、互动角色、股票三页的相互滑动只移动 LVGL 对象，不再逐行 memcpy；两张原有 PSRAM 快照仍复用。混合绘制页**没有**启用此路径，避免地图突然空白。
+- `LvglOverlay.h` 保持地图正常的异步刷新节奏；LVGL HUD 更新不会强制把地图变成同步刷新。
+- 桌面模拟器在导航预览中使用相同 `LvglNavigationHud`，并接入原生滑动层；数据及道路仍是模拟的。
+- `PageSlideGeometryTest.cpp` 验证正反方向与横竖滑动全过程无缝覆盖；SDL2 冒烟检查创建导航 HUD 和原生滑动层。
+
+**仍未完成**：统一的 LVGL 地图图元/底图、路线与转向覆盖，触摸到刷新端到端性能与安全验收，彻底去除 Canvas，物理 RGB DMA/PSRAM 的专有适配层。当前为功能迁移的一部分，不可直接宣称全部 LVGL 迁移完成。
 
 ## 验证标准
 
