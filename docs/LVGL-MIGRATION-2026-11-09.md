@@ -25,7 +25,7 @@ ST7701S RGB 显示的初始化、DMA、VSYNC、背光、480×480 物理缓冲由
 
 - `LvglOverlay.h`：共享 LVGL 位图资产由 5 个扩为 10 个，覆盖手机推送的天气详情中文字图。根据 `wxDetail` 和当前页面显示相应槽位，不在其他页面泄露。
 - `WeatherPage.h`：天气详情页优先展示已经准备好的 LVGL 字图，未准备好时沿用 Canvas 画法。QWeather 原始雨量柱状图、提醒文本保留。
-- `TextBitmapReceiver.h`：槽位 7–11 收到新图或清除时，同步标记天气页面 dirty，避免内容滞留。
+- `TextBitmapReceiver.h`：槽位 7–11 收到新图或清除时，同步标记天气页面 dirty；拒绝分片号越界、空 payload、错误 offset/超出图片总长及空接收缓冲，避免非法位移与越界写入；保持手机 BLE 包格式不变。
 - `RasterBridgeTest.cpp`：单元测试 4-bit 灰度转换、透明像素、裁剪尺寸、专辑封面圆形裁切；新增 GitHub Actions 运行命令。
 
 ## 验证标准
