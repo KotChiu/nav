@@ -49,6 +49,10 @@ void handleBulk(const uint8_t *d, int n) {
       }
     }
     pendingAck = "K," + String(type) + "," + String(id);
+    // Badge ACK can carry persistence status in the same notification;
+    // legacy mobile clients that parse only K,type,id remain compatible.
+    if (type == MotoNavBadge::BULK_TYPE)
+      pendingAck += badgeStored ? ",1" : ",0";
     navDirty = true;
   }
 }
