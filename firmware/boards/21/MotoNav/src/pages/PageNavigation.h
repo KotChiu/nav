@@ -61,19 +61,22 @@ void drawMusic() {
         dst[i] = src[u];
       }
     }
-  } else {
+  } else if (!lvglUiReady) {
     drawThemeRing();
     printCentered("MUSIC", CX, 76, 3, C_UI_SUB);
     gfx->drawFastHLine(CX - 24, 116, 48, C_UI_LINE);
   }
   bool linked = bleConnected && bleAuthed;
   if (hidMusicMode && linked && !appleMedia.available) {
-    printCentered("PHONE MEDIA KEYS", CX, coverShow ? 194 : 158, 2, C_WHITE);
-    printCentered("OPEN MUSIC APP ON PHONE", CX, coverShow ? 220 : 210, 2, C_UI_SUB);
+    if (!lvglUiReady) {
+      printCentered("PHONE MEDIA KEYS", CX, coverShow ? 194 : 158, 2, C_WHITE);
+      printCentered("OPEN MUSIC APP ON PHONE", CX, coverShow ? 220 : 210, 2, C_UI_SUB);
+    }
   } else if (linked) {
     drawTextImg(5, coverShow ? 194 : 158, 0xFF);
     drawTextImg(6, coverShow ? 240 : 210, 0xBB);
-  } else printCentered("PHONE OFFLINE", CX, coverShow ? 205 : 170, 3, C_UI_SUB);
+  } else if (!lvglUiReady)
+    printCentered("PHONE OFFLINE", CX, coverShow ? 205 : 170, 3, C_UI_SUB);
   bool showLyrics = linked && hidMusicMode && musicLyrics && appleMedia.available && imgs[12].showW > 0 && !coverShow;
   if (showLyrics) drawTextImg(12, 242, 0xDD);
   const char *feedback[] = {"", "SENT", "PHONE RECEIVED", "DONE", "NO RESPONSE", "NO PLAYER", "HID SENT", "HID NOT READY", "HID SEND FAILED", "AMS SENT", "AMS SEND FAILED", "AMS QUEUED"};
@@ -83,7 +86,9 @@ void drawMusic() {
       : !appleMedia.playback.known ? "STATE UNKNOWN" : appleMedia.playback.state == 1 ? "PLAYING" : appleMedia.playback.state == 0 ? "PAUSED" : "SEEKING";
   }
   if (musicAck > 0 && musicAck <= 11) state = feedback[musicAck];
-  printCentered(state, CX, showLyrics ? 272 : coverShow ? 276 : 257, 2, musicAck == 4 ? C_UI_ACCENT2 : C_UI_SUB);
+  if (!lvglUiReady)
+    printCentered(state, CX, showLyrics ? 272 : coverShow ? 276 : 257, 2,
+                  musicAck == 4 ? C_UI_ACCENT2 : C_UI_SUB);
   for (int i = 0; !lvglUiReady && i < 3; i++) {
     int x = CX + (i - 1) * 100, y = coverShow ? 360 : 335;
     bool enabled = hidMusicMode ? (hidMediaReady() || appleMedia.controlReady(i)) : linked && musicHave;
@@ -110,9 +115,10 @@ void drawMusic() {
       double elapsed = appleMedia.playback.elapsed + appleMedia.playback.rate * (millis() - appleMedia.playbackAt) / 1000.0;
       int sec = (int)constrain(elapsed, 0.0, duration), total = (int)duration;
       char time[32]; snprintf(time, sizeof(time), "%d:%02d / %d:%02d", sec/60, sec%60, total/60, total%60);
-      printCentered(time, CX, coverShow ? 410 : 392, 2, C_UI_SUB);
+      if (!lvglUiReady) printCentered(time, CX, coverShow ? 410 : 392, 2, C_UI_SUB);
     }
-  } else printCentered("SWIPE DOWN FOR HOME", CX, coverShow ? 410 : 402, 1, C_UI_SUB);
+  } else if (!lvglUiReady)
+    printCentered("SWIPE DOWN FOR HOME", CX, coverShow ? 410 : 402, 1, C_UI_SUB);
   drawPageDots();
   needFlush = true;
 }
