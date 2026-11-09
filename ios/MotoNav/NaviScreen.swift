@@ -64,6 +64,7 @@ struct AMapDriveViewRep: UIViewRepresentable {
 struct NaviScreen: View {
     @ObservedObject var navi = NaviBridge.shared
     @ObservedObject var settings = Settings.shared
+    @ObservedObject var map = MapFeeder.shared
     @StateObject private var drive = DriveViewController()
     @Environment(\.dismiss) private var dismiss
     @State private var confirmClose = false
@@ -86,6 +87,21 @@ struct NaviScreen: View {
                     }
                     .padding(14)
                     .background(RoundedRectangle(cornerRadius: 14).fill(Color.black.opacity(0.85)))
+                    .padding(.horizontal, 16)
+                }
+                // Background prefetch keeps running during the ride; show it so
+                // the gradually appearing street/building detail is explained.
+                if settings.mapOn && map.offlineProgress.total > 0 && !map.offlineProgress.complete {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.down.circle")
+                        Text(map.offlineStatus)
+                            .lineLimit(2)
+                        Spacer(minLength: 0)
+                    }
+                    .font(.caption)
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.75)))
+                    .foregroundColor(.white)
                     .padding(.horizontal, 16)
                 }
                 if !navi.showArrived {

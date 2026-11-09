@@ -64,6 +64,7 @@ enum QWeatherRequestError: LocalizedError {
         case .http(let status):
             switch status {
             case 401, 403: return "HTTP \(status)，请检查 Key 和服务权限"
+            case 402: return "HTTP 402，当日请求额度已用尽（次日重置）"
             case 429: return "HTTP 429，请求额度或频率受限"
             default: return "HTTP \(status)"
             }

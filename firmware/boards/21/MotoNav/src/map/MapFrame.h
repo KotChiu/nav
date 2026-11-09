@@ -1,4 +1,66 @@
 #pragma once
+
+static void drawPlaceLabels(float cx, float cy, float sc, float cs, float sn) {
+  if (placeLabels.frame != posFrame) return;
+  if (rerouteAt || fasterAt) obsAdd(40, 293, LCD_WIDTH - 40, 327);
+  if (gpsWeak) obsAdd(CX - 148, 130, CX - 108, 170);
+  uint16_t *const framebuffer = gfx->getFramebuffer();
+  if (!framebuffer) return;
+  constexpr int radius = 192, padX = 10, padY = 5;
+  int drawn = 0;
+  for (int i = 0; i < placeLabels.count && drawn < 2; i++) {
+    const auto &label = placeLabels.labels[i];
+    const float dx = label.x - cx, dy = label.y - cy;
+    const float px = CX + sc * (dx * cs - dy * sn);
+    const float py = MAP_PY - sc * (dx * sn + dy * cs);
+    if (sq(px - CX) + sq(py - CX) > radius * radius) continue;
+    const int x = lroundf(px), y = lroundf(py);
+    const int w = label.width + 2 * padX, h = label.height + 2 * padY;
+    const bool markerPresent = obsOverlap(x - 3, y - 3, x + 3, y + 3);
+    // Reuse the destination marker when it already identifies this place.
+    const bool atDestination = routeN >= 2 && routeFrame == posFrame &&
+      sq(label.x - routeX[routeN - 1]) + sq(label.y - routeY[routeN - 1]) < sq(14.0f / sc);
+    if (markerPresent && !atDestination) continue;
+    const int gap = markerPresent ? 26 : 10;
+    int top = -1, left = 0;
+    for (int candidate : {y - h - gap, y + gap}) {
+      const int edgeY = max(abs(candidate - CX), abs(candidate + h - CX));
+      if (edgeY >= radius) continue;
+      const int half = (int)sqrtf(radius * radius - edgeY * edgeY);
+      if (2 * half < w) continue;
+      const int start = constrain(x - w / 2, CX - half, CX + half - w);
+      if (obsOverlap(start - 3, candidate - 3, start + w + 3, candidate + h + 3)) continue;
+      top = candidate;
+      left = start;
+      break;
+    }
+    if (top < 0) continue;
+    const int edge = top > y ? top : top + h - 1;
+    if (!markerPresent) {
+      const int stemX = constrain(x, left + 9, left + w - 10);
+      if (!obsOverlap(min(x, stemX), min(y, edge), max(x, stemX) + 1, max(y, edge) + 1)) {
+        gfx->drawLine(x, y, stemX, edge, C_WHITE);
+      }
+      aaDisc(x, y, 4, C_BLACK);
+      aaDisc(x, y, 2, C_WHITE);
+      obsAdd(x - 4, y - 4, x + 4, y + 4);
+    }
+    obsAdd(left - 3, top - 3, left + w + 3, top + h + 3);
+    gfx->fillRoundRect(left, top, w, h, 9, C_BLACK);
+    gfx->drawRoundRect(left, top, w, h, 9, C_UI_SUB);
+    const int stride = PlaceLabels::stride(label.width, placeLabels.version);
+    for (int row = 0; row < label.height; row++) {
+      const uint8_t *const glyph = label.pixels + row * stride;
+      uint16_t *const dst = framebuffer + (top + padY + row) * LCD_WIDTH + left + padX;
+      for (int col = 0; col < label.width; col++) {
+        const uint8_t alpha = PlaceLabels::coverage(glyph, col, placeLabels.version);
+        if (alpha) dst[col] = greyColor(alpha, 255);
+      }
+    }
+    drawn++;
+  }
+}
+
 // 地图帧组合及帧率统计。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
 // v5.8 分步计时（微秒累计，每 2 秒发一次）
 #define PROF_N 11
@@ -113,6 +175,20 @@ void drawMapFrame() {
   if (styleIdx() == ST_COMPASS) drawCompassRose(viewHdg);   // v6.1 罗盘刻度
   else if (!dragon) drawNorth(viewHdg);                              // v2.9 北向标记
   if (!dragon && !cleanOn) drawCamIcons(cx, cy, sc, cs, sn);       // v3.8 电子眼图标（v4.9 清爽模式不画）
+  // Current/next road text is the real navigation string supplied by the
+  // phone (slot 0), not a fabricated POI label. Composite above map geometry
+  // and below the fixed speed/lane/turn HUD so those controls retain priority.
+  if (!cruiseOn && !staleShown && imgs[0].show && imgs[0].showW > 0 && imgs[0].showH > 0) {
+    const int roadLabelY = 154;
+    const int labelLeft = CX - imgs[0].showW / 2 - 10;
+    const int labelTop = roadLabelY - 5;
+    const int labelWidth = imgs[0].showW + 20;
+    const int labelHeight = imgs[0].showH + 10;
+    gfx->fillRoundRect(labelLeft, labelTop, labelWidth, labelHeight, 10, C_BLACK);
+    drawTextImg(0, roadLabelY, 255);
+    obsAdd(labelLeft, labelTop, labelLeft + labelWidth, labelTop + labelHeight);
+  }
+  if (!cruiseOn && !staleShown) drawPlaceLabels(cx, cy, sc, cs, sn);
   profMark(5);
   unsigned long tMapDone = millis();                   // v2.6 统计：画地图用时
   mapMsAcc += tMapDone - t;
@@ -137,7 +213,9 @@ void drawMapFrame() {
   profMark(9);
   hasCam = saveCam; tripOn = saveTrip;
   drawNavHints(300);                                    // v5.0 重新规划中 / 更快路线 / GPS 信号弱
-  drawBattery(CX - 16, 18, false);                         // v6.8 电量（车速上方）；v7.2 带黑底
+  // v7.14: no status strip on the map. The battery icon at (CX-16, 18) sat on
+  // top of the north-marker ring and the progress ring; the bluetooth dot
+  // overlapped the N badge. Battery is shown on the idle pages only.
   profMark(10);
   // v2.9 小地图里不画顶部的蓝牙小圆点（会和 N 标记重叠；能收到地图就说明连着）
   needFlush = true;

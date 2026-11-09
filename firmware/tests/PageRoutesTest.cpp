@@ -3,15 +3,16 @@
 
 int main() {
   // Rows: right, left, down, up. -1 means that edge has no destination.
-  const int expected[6][4] = {
+  const int expected[7][4] = {
     {-1, PAGE_WEATHER, -1, -1},
     {PAGE_HOME, PAGE_MUSIC, PAGE_HOME, -1},
     {PAGE_WEATHER, PAGE_COMPANION, PAGE_HOME, -1},
-    {PAGE_STOCKS, -1, PAGE_HOME, -1},
+    {PAGE_STOCKS, PAGE_PHOTO, PAGE_HOME, -1},
     {PAGE_MUSIC, PAGE_STOCKS, PAGE_HOME, -1},
     {PAGE_COMPANION, PAGE_SETTINGS, PAGE_HOME, -1},
+    {PAGE_SETTINGS, -1, PAGE_HOME, -1},
   };
-  for (int page = PAGE_HOME; page <= PAGE_STOCKS; ++page) {
+  for (int page = PAGE_HOME; page <= PAGE_PHOTO; ++page) {
     assert(pageForSwipe(page, true, 1) == expected[page][0]);
     assert(pageForSwipe(page, true, -1) == expected[page][1]);
     assert(pageForSwipe(page, false, 1) == expected[page][2]);

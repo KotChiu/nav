@@ -162,3 +162,60 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         }
     }
 }
+
+/// A separate SDK request keeps navigation labels out of the interactive search UI.
+final class MapPlaceSearch: NSObject {
+    struct Place {
+        let name: String
+        let lat: Double
+        let lng: Double
+    }
+
+    private var api: AMapSearchAPI?
+    private var request: AMapPOIAroundSearchRequest?
+    private var completion: (([Place]) -> Void)?
+
+    override init() {
+        super.init()
+        class_addProtocol(MapPlaceSearch.self, AMapSearchDelegate.self)
+    }
+
+    func nearby(lat: Double, lng: Double, completion: @escaping ([Place]) -> Void) {
+        cancel()
+        api = AMapSearchAPI()
+        api?.delegate = (self as AnyObject) as? AMapSearchDelegate
+        let request = AMapPOIAroundSearchRequest()
+        request.location = AMapGeoPoint.location(withLatitude: lat, longitude: lng)
+        request.radius = 650
+        // Useful riding landmarks: fuel, parks, major buildings, hospitals and transit.
+        request.types = "010100|110000|120000|090100|150000"
+        request.sortrule = 0
+        request.offset = 24
+        self.request = request
+        self.completion = completion
+        api?.aMapPOIAroundSearch(request)
+    }
+
+    func cancel() {
+        request = nil
+        completion = nil
+        api?.delegate = nil
+        api?.cancelAllRequests()
+        api = nil
+    }
+
+    @objc(onPOISearchDone:response:)
+    func placesReceived(_ request: AMapPOISearchBaseRequest, response: AMapPOISearchResponse) {
+        let places = (response.pois ?? []).compactMap { poi -> Place? in
+            guard let location = poi.location, let name = poi.name else { return nil }
+            return Place(name: name, lat: location.latitude, lng: location.longitude)
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.request === request else { return }
+            let done = self.completion
+            self.request = nil
+            self.completion = nil
+            done?(places)
+        }
+    }
+}

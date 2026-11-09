@@ -26,8 +26,13 @@ void drawBattery(int x0, int y0, bool backing = false) {
 }
 
 void drawStatus() {
+  // Navigation HUD owns the whole top edge (speed, N marker, camera badge,
+  // progress ring). The legacy status strip used to erase a black rectangle
+  // there and drew a second battery on top of the ring, so it is skipped
+  // while navigating. Battery is shown on the idle/home pages instead.
+  if (inNav) return;
   gfx->fillRect(CX - 9, 21, 9 + 14 + 24 + 2 + 5 + 18 + 4, 19, C_BLACK);   // v7.2 先擦掉旧的（只重画状态栏时用）
-  aaDisc(CX, 30, 7, bleConnected ? C_GREEN : C_GREY);
+  aaDisc(CX, 30, 7, bleConnected ? C_GREEN : C_GREY);   // 绿点 = 蓝牙已连接，灰点 = 未连接
   drawBattery(CX + 14, 24);                               // v6.8 电量（蓝牙小圆点右边）
   needFlush = true;
 }

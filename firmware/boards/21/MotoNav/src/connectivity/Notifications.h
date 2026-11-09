@@ -6,8 +6,12 @@ void sendPendingAck() {
   static const uint16_t uAt[3] = {300, 1500, 4000};
   if (authNotifies < 3 && millis() - bleAuthAt > uAt[authNotifies]) {
     authNotifies++;
+    txChar->setValue((uint8_t *)"CAP,PHOTO,1", 11); txChar->notify();
+    txChar->setValue((uint8_t *)"CAP,MAPZ,1", 10); txChar->notify();
+    txChar->setValue((uint8_t *)"CAP,POI,2", 9); txChar->notify();
     txChar->setValue((uint8_t *)"U,1", 3);
     txChar->notify();
+    txChar->setValue((uint8_t *)"CAP,POI,1", 9); txChar->notify();
     txChar->setValue((uint8_t *)"CAP,HID,1", 9); txChar->notify();
     txChar->setValue((uint8_t *)"CAP,LYR,1", 9); txChar->notify();
     pendingHidStatus = String("HID,") + (hidMusicMode ? 1 : 0) + "," + (hidMediaReady() ? 1 : 0);

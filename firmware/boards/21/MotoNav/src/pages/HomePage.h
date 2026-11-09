@@ -95,18 +95,23 @@ void drawPageDots() {
   }
 }
 
+// Low-contrast dial edge and a separate weather surface on the home screen.
+void drawThemeRing() {
+  for (int quadrant = 0; quadrant < 4; quadrant++) {
+    const int start = 15 + quadrant * 90;
+    gfx->fillArc(CX, CX, 210, 209, start, start + 60, C_UI_LINE);
+  }
+}
+
 void drawWaiting(int st) {
   waitSt = st;
   if (sliding) return;                                                 // v5.5 正在滑动：滑完再画
   if (page == 2) { onWaitScreen = false; musicDirty = true; return; }
   if (page == 1) { onWaitScreen = false; wxDirty = true; return; }   // v5.3 正在看天气：先不画首页，滑回来时再画
-  if (page >= 3 && page <= 5) { onWaitScreen = false; needFlush = true; return; }
+  if (page >= 3 && page <= 6) { onWaitScreen = false; needFlush = true; return; }
   gfx->fillScreen(C_UI_BG);
-  for (int quadrant = 0; quadrant < 4; quadrant++) {
-    float start = 18 + quadrant * 90;
-    gfx->fillArc(CX, CX, 211, 208, start, start + 54, C_UI_ACCENT);
-  }
-  aaDisc(CX, 27, 5, C_UI_ACCENT2);
+  drawThemeRing();
+  if (lvglUiReady) gfx->fillRoundRect(CX - 126, 252, 252, 91, 21, C_UI_PANEL);
   onWaitScreen = true;
   if (st == WAIT_LOST) drawRedRing();
   if (!lvglUiReady) {

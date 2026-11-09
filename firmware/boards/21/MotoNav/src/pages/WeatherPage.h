@@ -119,6 +119,7 @@ void parseWeatherExtra(const String &m) {
 bool drawWeatherExtra() {
   if (!wxExtra || wxDetail == 0) return false;
   gfx->fillScreen(C_UI_BG);
+  drawThemeRing();                          // keep the dial ring on the detail view
   if (wxDetail == 1) {
     printCentered("RAIN / AIR", CX, 55, 3, C_UI_ACCENT);
     drawTextImg(7, 105, 0xFF);
@@ -153,6 +154,7 @@ void drawWeather() {
   onWaitScreen = false;
   frameIsMap = false;
   gfx->fillScreen(C_UI_BG);
+  drawThemeRing();                          // weather must not erase the dial ring
   if (!wxHave) {
     drawWxIcon(1, CX, 190, 60);
     printCentered(bleConnected ? "LOADING..." : "NO PHONE", CX, 290, 3, C_UI_SUB);
@@ -161,23 +163,25 @@ void drawWeather() {
     needFlush = true;
     return;
   }
-  // 地名 · 天气
-  drawTextImg(3, 56, 0xFF);
+  printCentered("WEATHER", CX, 52, 2, C_UI_SUB);
+  drawTextImg(3, 79, 0xFF);
   // 大图标 + 温度
   drawWxIcon(wxIcon, CX - 78, 165, 58);
   drawTemp(wxTemp, CX + 82, 135, 8, C_WHITE);
-  // 风 · 湿度
-  drawTextImg(4, 232, 0xC0);
+  // Separate live conditions from the forecast without enclosing every value.
+  drawTextImg(4, 223, 0xCC);
+  gfx->drawFastHLine(CX - 110, 269, 220, C_UI_LINE);
   if (wxHourly) {
     if (wxN <= 0) {
       printCentered("HOURLY UNAVAILABLE", CX, 322, 2, C_UI_SUB);
       printCentered("CHECK PHONE WEATHER DETAILS", CX, 354, 1, C_UI_SUB);
     }
     // v5.6 接下来几个小时：几点 / 图标 / 温度 / 降雨概率（≥10% 才显示）
-    for (int i = 0; i < wxN && i < 6; i++) {
-      int x = CX + (int)((i - (wxN - 1) / 2.0f) * 76);
+    const int visible = min(wxN, 6);
+    for (int i = 0; i < visible; i++) {
+      int x = CX + (int)((i - (visible - 1) / 2.0f) * 59);
       char hh[8]; snprintf(hh, sizeof(hh), "%02d:00", wxWk[i]);
-      printCentered(hh, x, 280, 2, C_UI_SUB);
+      printCentered(hh, x, 280, visible == 6 ? 1 : 2, C_UI_SUB);
       drawWxIcon(wxFi[i], x, 322, 19);
       String t = String(wxFh[i]);
       printCentered(t, x - 4, 348, 2, C_WHITE);

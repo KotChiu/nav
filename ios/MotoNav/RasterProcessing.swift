@@ -1,6 +1,6 @@
 import Foundation
 
-/// Protocol-compatible with Android RasterPacket: 1200², 2 m/pixel, bounded RLE.
+/// Bounded RLE for a 2.4 km square. Palette maps may use coarser samples.
 enum RasterPacket {
     static let size = 1200, flag = 0x4000
     static func u16(_ b: [UInt8], _ p: Int) -> Int { Int(b[p]) | Int(b[p + 1]) << 8 }
@@ -12,13 +12,25 @@ enum RasterPacket {
     }
     static func valid(_ data: Data, frame: Int, x: Int, y: Int) -> Bool {
         let b = [UInt8](data)
-        guard b.count >= 17, b.count <= 480000, u16(b, 0) == frame, i32(b, 2) == x, i32(b, 6) == y,
-              u16(b, 10) == size, u16(b, 12) == size, [2000, 2000 | flag, 2000 | 0x8000].contains(u16(b, 14)) else { return false }
-        let customPalette = u16(b, 14) & 0x8000 != 0
+        guard b.count >= 17, b.count <= 480_000, u16(b, 0) == frame,
+              i32(b, 2) == x, i32(b, 6) == y else { return false }
+        let width = u16(b, 10), height = u16(b, 12), format = u16(b, 14)
+        let customPalette = format & 0x8000 != 0
+        let building = format == (2000 | flag)
+        let mm = format & 0x3fff
+        guard width == height else { return false }
+        switch (width, mm) {
+        case (size, 2000):
+            guard format == 2000 || building || format == (2000 | 0x8000) else { return false }
+        case (800, 3000), (600, 4000):
+            guard format == (mm | 0x8000) else { return false }
+        default:
+            return false
+        }
         guard !customPalette || b.count >= 49 else { return false }
+        let pixelCount = width * height
         var pos = customPalette ? 48 : 16, pixels = 0
-        let building = u16(b, 14) == (2000 | flag)
-        while pos < b.count && pixels < size * size {
+        while pos < b.count && pixels < pixelCount {
             let v = Int(b[pos]); pos += 1
             if v & 15 > (customPalette ? 15 : building ? 7 : 3) { return false }
             var run = (v >> 4) + 1
@@ -26,10 +38,10 @@ enum RasterPacket {
                 guard pos < b.count else { return false }
                 run = 16 + Int(b[pos]); pos += 1
             }
-            guard run <= size * size - pixels else { return false }
+            guard run <= pixelCount - pixels else { return false }
             pixels += run
         }
-        return pixels == size * size && pos == b.count
+        return pixels == pixelCount && pos == b.count
     }
     static func valid(_ data: Data) -> Bool {
         let b = [UInt8](data)
@@ -50,7 +62,7 @@ enum RasterPacket {
     static func decode(_ data: Data) -> [UInt8]? {
         guard valid(data) else { return nil }
         let b = [UInt8](data)
-        var out = [UInt8](repeating: 0, count: size * size), p = u16(b, 14) & 0x8000 != 0 ? 48 : 16, k = 0
+        var out = [UInt8](repeating: 0, count: u16(b, 10) * u16(b, 12)), p = u16(b, 14) & 0x8000 != 0 ? 48 : 16, k = 0
         while p < b.count {
             let v = b[p]; p += 1
             var run = Int(v >> 4) + 1
@@ -173,7 +185,9 @@ enum AmapBuildings {
     static func carry(_ incoming: Data, known: Data?) -> Data {
         guard let known = known, RasterPacket.valid(incoming), RasterPacket.valid(known), RasterPacket.isBuilding(known) else { return incoming }
         let a = [UInt8](incoming), b = [UInt8](known)
-        guard RasterPacket.u16(a, 0) == RasterPacket.u16(b, 0) else { return incoming }
+        let format = RasterPacket.u16(a, 14)
+        guard RasterPacket.u16(a, 0) == RasterPacket.u16(b, 0),
+              format == 2000 || format == (2000 | RasterPacket.flag) else { return incoming }
         let ox = Int(floor(Double(RasterPacket.i32(a, 2) - RasterPacket.i32(b, 2) + 1) / 2))
         let oy = Int(floor(Double(RasterPacket.i32(b, 6) - RasterPacket.i32(a, 6) + 1) / 2))
         let n = RasterPacket.size

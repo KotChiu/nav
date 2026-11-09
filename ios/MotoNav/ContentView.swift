@@ -121,6 +121,27 @@ struct ContentView: View {
         }
     }
 
+    /// Pre-departure hint: how many of the route's offline map blocks are ready.
+    private var offlinePrepareBanner: some View {
+        let p = map.offlineProgress
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.down.circle").foregroundColor(Self.cyan)
+                Text("沿线底图准备中 \(p.base)/\(p.total) 块")
+                    .font(.subheadline).bold().foregroundColor(.white)
+                Spacer()
+                Text("\(Int(Double(p.base) / Double(max(1, p.total)) * 100))%")
+                    .font(.caption).foregroundColor(Self.sub)
+            }
+            ProgressView(value: Double(p.base), total: Double(max(1, p.total))).tint(Self.cyan)
+            Text(map.offlineStatus)
+                .font(.caption).foregroundColor(Self.sub)
+        }
+        .padding(12).background(Self.card)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Self.stroke, lineWidth: 1))
+        .cornerRadius(12)
+    }
+
     // MARK: 标题
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -296,6 +317,11 @@ struct ContentView: View {
                         }
                     }
                 }
+                // Warn at the decision point, not buried in Settings: the dial
+                // map is only complete once the along-route blocks are cached.
+                if navi.routeReady && settings.mapOn && map.offlineProgress.total > 0 && !map.offlineProgress.complete {
+                    offlinePrepareBanner
+                }
                 HStack(spacing: 12) {
                     PillButton(title: "开始导航", color: ContentView.pink, enabled: navi.routeReady) {
                         navi.start(emulate: false); showNavi = true
@@ -338,7 +364,7 @@ struct ContentView: View {
         shareStatus = ""
         History.shared.add(p)
         if needAmapKey() { return }
-        navi.plan(toLat: p.lat, lng: p.lng)
+        navi.plan(toLat: p.lat, lng: p.lng, name: p.name)
     }
 
     /// 读剪贴板里的高德分享链接，还原路线后按它规划
@@ -484,6 +510,7 @@ struct ContentView: View {
     private var displayCard: some View {
         CardView {
             Text("圆屏显示").foregroundColor(.white).bold()
+            PhotoTransferView()
             Toggle("路程进度环", isOn: $settings.progressRing).foregroundColor(.white).tint(Self.pink)
             Picker("预判", selection: $settings.leadMs) {
                 Text("关闭").tag(0); Text("0.3秒").tag(300); Text("0.6秒").tag(600)

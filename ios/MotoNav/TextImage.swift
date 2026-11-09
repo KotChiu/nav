@@ -5,7 +5,25 @@ import UIKit
 /// 把中文文字画成 4 位灰度小图片（16 级灰度，两个像素占一个字节，高 4 位是左边那个），发给圆屏显示。
 /// 圆屏没有中文字库，用手机的字体画好再发过去（和安卓版格式一样）。
 enum TextImage {
-    struct Img { let w: Int; let h: Int; let data: Data }
+    struct Img {
+        let w: Int
+        let h: Int
+        let data: Data
+
+        /// Large map glyphs use four coverage levels to keep BLE payloads small.
+        var twoBitData: Data {
+            let source = [UInt8](data), sourceStride = (w + 1) / 2, stride = (w + 3) / 4
+            var packed = [UInt8](repeating: 0, count: stride * h)
+            for y in 0..<h {
+                for x in 0..<w {
+                    let pair = source[y * sourceStride + x / 2]
+                    let coverage = x.isMultiple(of: 2) ? pair >> 4 : pair & 15
+                    packed[y * stride + x / 4] |= ((coverage + 2) / 5) << (6 - 2 * (x % 4))
+                }
+            }
+            return Data(packed)
+        }
+    }
 
     /// maxW：最大宽度（像素）；文字太长先缩小字号，还放不下就截断加省略号
     static func render(_ text: String, maxW: Int, size: CGFloat, minSize: CGFloat = 16) -> Img? {

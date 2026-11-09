@@ -14,7 +14,6 @@
 uint16_t *slideOld = nullptr, *slideNew = nullptr;
 int16_t chordHalf[LCD_HEIGHT];   // 每一行在圆里的半宽（圆外不用算）
 bool chordReady = false;
-int lastSlideSx = -1, lastSlideSy = 0;      // 上次进天气页的方向（自动回去时反着滑）
 void drawNavFrame();
 
 void slideBuffersInit() {
@@ -62,7 +61,11 @@ void drawMusic() {
         dst[i] = src[u];
       }
     }
-  } else printCentered("MUSIC", CX, 65, 4, C_UI_ACCENT);
+  } else {
+    drawThemeRing();
+    printCentered("MUSIC", CX, 76, 3, C_UI_SUB);
+    gfx->drawFastHLine(CX - 24, 116, 48, C_UI_LINE);
+  }
   bool linked = bleConnected && bleAuthed;
   if (hidMusicMode && linked && !appleMedia.available) {
     printCentered("PHONE MEDIA KEYS", CX, coverShow ? 194 : 158, 2, C_WHITE);
@@ -109,7 +112,7 @@ void drawMusic() {
       char time[32]; snprintf(time, sizeof(time), "%d:%02d / %d:%02d", sec/60, sec%60, total/60, total%60);
       printCentered(time, CX, coverShow ? 410 : 392, 2, C_UI_SUB);
     }
-  } else printCentered("SWIPE LEFT TO RETURN", CX, coverShow ? 410 : 402, 2, C_UI_SUB);
+  } else printCentered("SWIPE DOWN FOR HOME", CX, coverShow ? 410 : 402, 1, C_UI_SUB);
   drawPageDots();
   needFlush = true;
 }
@@ -119,14 +122,17 @@ bool dragging = false;
 int dragTarget = 0, dragSign = 1;
 bool dragHoriz = true;
 int dragVisualSign = 1;
-float dragP = 0, dragV = 0;                 // 新页面已经进来多少像素；速度（像素/毫秒）
+float dragP = 0, dragV = 0, dragOffset = 0;                 // 新页面已经进来多少像素；速度（像素/毫秒）
 unsigned long dragT = 0;
 unsigned long dragFrameAt = 0;
 bool slideSettling = false;
+static bool panelSwipeTransition = false;
+static int lastPanelSwipePosition = -1;
 bool slideSettleGo = false;
 float slideSettleFrom = 0, slideSettleTo = 0;
 unsigned long slideSettleAt = 0, slideSettleFrameAt = 0;
 int slideSettleMs = 0;
+int slideShownP = 0;
 
 uint16_t *shownFrame() {
   if (fbBuf[1] && flushSrc) return flushSrc;
@@ -148,6 +154,7 @@ void renderPage(int p) {
   else if (p == 3) drawSettings();
   else if (p == 4) drawRobotPage();
   else if (p == 5) drawStockPage();
+  else if (p == PAGE_PHOTO) drawPhotoPage();
   else if (inNav) drawNavFrame();
   else drawWaiting(bleConnected ? WAIT_READY : WAIT_NOLINK);
   page = keep; sliding = ks;
@@ -173,17 +180,29 @@ bool slidePrepare(int target) {
     page = previous;
   }
   memcpy(slideNew, gfx->getFramebuffer(), BYTES);
+  panelSwipeTransition = panelSlideAvailable();
+  lastPanelSwipePosition = -1;
   sliding = true;
   lvglClearDirtyArea();
   needFlush = false; frameIsMap = false;
   return true;
 }
 
-// 合成一帧：新页面已经进来 p 像素（盖在上面），旧页面往同方向退 30%、变暗，交界处一道阴影
-void slideCompose(int p) {
+// Both pages translate with the finger; only the visible circular rows are copied.
+bool slideCompose(int p) {
   const int W = LCD_WIDTH, H = LCD_HEIGHT;
   if (p < 0) p = 0;
   if (p > (dragHoriz ? W : H)) p = dragHoriz ? W : H;
+  slideShownP = p;
+  if (panelSwipeTransition) {
+    if (p == lastPanelSwipePosition) return true;
+    // The worker composes directly into the inactive scanout buffer. If it
+    // is still busy, keep sampling touch and submit the newest position next.
+    if (!tryFlushPanelSlide(slideOld, slideNew, p, dragHoriz, dragVisualSign))
+      return false;
+    lastPanelSwipePosition = p;
+    return true;
+  }
   uint16_t *fb = gfx->getFramebuffer();
   if (dragHoriz) {
     for (int y = 0; y < H; y++) {
@@ -196,12 +215,11 @@ void slideCompose(int p) {
         int split = constrain(p, xa, xb);
         if (split > xa) memcpy(row + xa, n + (W - p) + xa, (split - xa) * 2);
         if (xb > split) memcpy(row + split, o + (split - p), (xb - split) * 2);
-        if (p > xa && p < xb) row[p - 1] = C_UI_DIM;
+        // No seam line between pages: the two snapshots butt up directly.
       } else {                                          // 新页面从右边进来
         int split = constrain(W - p, xa, xb);
         if (split > xa) memcpy(row + xa, o + (xa + p), (split - xa) * 2);
         if (xb > split) memcpy(row + split, n + (split - (W - p)), (xb - split) * 2);
-        if (W - p > xa && W - p < xb) row[W - p] = C_UI_DIM;
       }
     }
   } else {
@@ -216,9 +234,7 @@ void slideCompose(int p) {
         : (dragVisualSign > 0 ? y - p : y + p);
       const uint16_t *src = (newPage ? slideNew : slideOld) + (size_t)sy * W;
       memcpy(row + xa, src + xa, (xb - xa) * 2);
-      if (p > 0 && p < H && (y == p - 1 || y == H - p)) {
-        for (int x = xa; x < xb; x++) row[x] = C_UI_DIM;
-      }
+      // No horizontal seam either; keep the transition edge clean.
     }
   }
   // A transition changes nearly every pixel; a stale partial-flush region
@@ -226,11 +242,14 @@ void slideCompose(int p) {
   flushSetFullFrame();
   flushAsync();
   needFlush = false; frameIsMap = false;
+  return true;
 }
 
 // 换页完成
 void slideCommit() {
   const size_t BYTES = (size_t)LCD_WIDTH * LCD_HEIGHT * 2;
+  panelSwipeTransition = false;
+  forceFullFlush = true;
   sliding = false; dragging = false;
   page = dragTarget;
   pageAt = millis();
@@ -239,10 +258,11 @@ void slideCommit() {
   if (page == 2) {
     onWaitScreen = false; musicDirty = true; pendingEvt = "T,M,Q";
   } else if (page == 1) {
-    lastSlideSx = dragHoriz ? dragVisualSign : 0; lastSlideSy = dragHoriz ? 0 : dragVisualSign;
     onWaitScreen = false;
     wxDirty = false;
     if (!wxHave || millis() - wxAt > 15UL * 60 * 1000) { pendingEvt = "T,W"; wxAskAt = millis(); }
+  } else if (page == PAGE_PHOTO) {
+    onWaitScreen = false;
   } else if (page >= 3 && page <= 5) {
     onWaitScreen = false;
     if (page == PAGE_STOCKS) pendingEvt = "T,S";
@@ -258,12 +278,14 @@ void slideCommit() {
 
 // 没换成：回到原页面
 void slideCancel() {
+  panelSwipeTransition = false;
+  forceFullFlush = true;
   sliding = false; dragging = false;
   renderPage(page);
   if (lvglUiReady) lvglHybridTick();
   if (page == 2) musicDirty = true;
   else if (page == 1) wxDirty = false;
-  else if (page >= 3 && page <= 5) needFlush = true;
+  else if (page >= 3 && page <= PAGE_PHOTO) needFlush = true;
   else if (inNav) navDirty = true;
   else { onWaitScreen = true; catForce = true; }
   needFlush = true;
@@ -285,11 +307,16 @@ void slideTick() {
   if (!slideSettling) return;
   unsigned long now = millis();
   float t = min(1.0f, (now - slideSettleAt) / (float)slideSettleMs);
-  if (t < 1 && slideSettleFrameAt && now - slideSettleFrameAt < 32) return;
-  slideSettleFrameAt = now;
-  float e = 1 - (1 - t) * (1 - t) * (1 - t);
-  slideCompose((int)lroundf(slideSettleFrom + (slideSettleTo - slideSettleFrom) * e));
-  if (t < 1) return;
+  if (t < 1) {
+    if (!panelSwipeTransition && slideSettleFrameAt && now - slideSettleFrameAt < 32) return;
+    const float remaining = 1 - t;
+    const float e = 1 - remaining * remaining * (panelSwipeTransition ? 1 : remaining);
+    const int position = (int)lroundf(slideSettleFrom + (slideSettleTo - slideSettleFrom) * e);
+    if (slideCompose(position)) slideSettleFrameAt = now;
+    return;
+  }
+  // The normal page flush presents the endpoint once, after the last preview.
+  if (!panelSwipeTransition) slideCompose((int)slideSettleTo);
   slideSettling = false;
   if (slideSettleGo) slideCommit();
   else slideCancel();
@@ -309,15 +336,22 @@ void touchVectorToCanvas(float &dx, float &dy) {
 
 // 手指在拖：(dx, dy) = 从按下到现在的位移
 void dragMove(int dx, int dy, unsigned long now) {
-  if (slideSettling) return;
   float vx = dx, vy = dy;
   touchVectorToCanvas(vx, vy);
   dx = (int)lroundf(vx); dy = (int)lroundf(vy);
+  if (slideSettling) {
+    // Catch the last displayed frame so a second touch can reverse the swipe.
+    slideSettling = false;
+    dragging = true;
+    touchGestureAxis = dragHoriz ? 1 : 2;
+    dragP = dragOffset = slideShownP;
+    dragV = 0; dragT = now; dragFrameAt = 0;
+  }
   if (!touchGestureAxis) {
     if (max(abs(dx), abs(dy)) < 12) return;
     touchGestureAxis = abs(dx) >= abs(dy) ? 1 : 2;
   }
-  if (page == PAGE_STOCKS && touchGestureAxis == 2) return;
+  if (!dragging && page == PAGE_STOCKS && touchGestureAxis == 2) return;
   if (!dragging) {
     int threshold = page == 2 ? 20 : DRAG_START;
     if (abs(dx) < threshold && abs(dy) < threshold) return;
@@ -329,39 +363,42 @@ void dragMove(int dx, int dy, unsigned long now) {
     if (dragTarget < 0 || !slidePrepare(dragTarget)) return;
     dragging = true;
     if (lvglUiReady) lvglCancelPendingPress();
-    dragP = 0; dragV = 0; dragT = now;
+    dragP = 0; dragOffset = 0; dragV = 0; dragT = now;
     dragFrameAt = 0;
   }
-  float p = (dragHoriz ? dx : dy) * dragSign;
-  if (p < 0) p = 0;
+  const float full = dragHoriz ? LCD_WIDTH : LCD_HEIGHT;
+  float p = constrain(dragOffset + (dragHoriz ? dx : dy) * dragSign, 0.0f, full);
   float dt = now - dragT;
   if (dt > 0) dragV = dragV * 0.5f + ((p - dragP) / dt) * 0.5f;
   dragP = p; dragT = now;
   // The RGB panel can show at most one new frame per VSYNC. Coalesce faster
   // touch samples while retaining the latest position for release velocity.
-  if (dragFrameAt == 0 || now - dragFrameAt >= 20) {
-    dragFrameAt = now;
-    slideCompose((int)p);
+  if (panelSwipeTransition || dragFrameAt == 0 || now - dragFrameAt >= 20) {
+    if (slideCompose((int)p)) dragFrameAt = now;
   }
 }
 
-// 松手：拖过 30% 或者往前甩出去 → 顺势滑完；否则弹回
+// Complete a deliberate drag or a fast flick; a reverse flick cancels it.
 void dragEnd() {
   if (!dragging) return;
   int full = dragHoriz ? LCD_WIDTH : LCD_HEIGHT;
-  bool go = dragP > 48 || (dragV > 0.35f && dragP > 24);
-  if (dragV < -0.35f) go = false;                       // 往回甩：取消
-  float target = go ? full : 0;
-  slideStartSettle(dragP, target, 160, go);
+  const float velocity = millis() - dragT < 90 ? dragV : 0;
+  bool go = dragP >= full * 0.22f || (velocity > 0.35f && dragP > 24);
+  if (velocity < -0.35f) go = false;
+  const float target = go ? full : 0;
+  const int duration = constrain((int)(fabsf(target - dragP) * 0.34f), 70, go ? 150 : 110);
+  slideStartSettle(min(dragP, (float)full), target, duration, go);
 }
 
 // 来电等情况：直接放弃拖动
 void dragAbort() {
   if (!dragging && !slideSettling) return;
+  panelSwipeTransition = false;
+  forceFullFlush = true;
   sliding = false; dragging = false; slideSettling = false;
   renderPage(page);
   if (lvglUiReady) lvglHybridTick();
-  if (page == 2) musicDirty = true; else if (page == 1) wxDirty = true; else if (page >= 3 && page <= 5) needFlush = true; else if (inNav) navDirty = true;
+  if (page == 2) musicDirty = true; else if (page == 1) wxDirty = true; else if (page >= 3 && page <= PAGE_PHOTO) needFlush = true; else if (inNav) navDirty = true;
 }
 
 // 将触摸点换算到画布坐标，按钮使用较大的点按范围。
@@ -401,15 +438,12 @@ void musicTap(int x, int y) {
   musicAck = 1; musicAckUntil = millis() + 2500; musicDirty = true;
 }
 
-// 自动换页（导航中看天气超时 / 快到路口）：整段动画
-void showPageAnimated(int target, int sx, int sy) {
-  if (page == target) return;
-  dragHoriz = sx != 0 || sy == 0;
-  dragSign = dragHoriz ? (sx ? sx : 1) : sy;
-  dragVisualSign = dragSign;
-  dragTarget = target;
-  if (!slidePrepare(target)) { page = target; renderPage(target); needFlush = true; return; }
-  slideStartSettle(0, dragHoriz ? LCD_WIDTH : LCD_HEIGHT, 420, true);
+// Put the maneuver back on screen as soon as it takes priority.
+void returnToNavigation() {
+  if (lvglUiReady) lvglCancelPendingPress();
+  page = PAGE_HOME;
+  pageAt = millis();
+  navDirty = true;
 }
 
 // 音乐页在路口前回导航，其余时候保持显示，便于连续切歌。
@@ -421,7 +455,7 @@ void musicTick() {
   }
   if (page != 2 || callOn || pairOn || sliding) return;
   if (inNav && !cruiseOn && navDir != "S" && navDir.length() && navDist > 0 && navDist < 200 && millis() - pageAt > 3000) {
-    showPageAnimated(0, 1, 0);
+    returnToNavigation();
     return;
   }
   if (musicDirty) { musicDirty = false; drawMusic(); }
@@ -438,7 +472,7 @@ void weatherTick() {
   if (page != 1 || callOn || sliding) return;
   // 导航中：看 15 秒自动回去；快到路口也立刻回去
   if (inNav && (now - pageAt > 15000 || (navDir != "S" && navDir.length() && navDist > 0 && navDist < 200))) {
-    showPageAnimated(0, -lastSlideSx, -lastSlideSy);   // 按进来的方向反着滑回去
+    returnToNavigation();
     return;
   }
   // 还没数据或数据旧了：30 秒再要一次

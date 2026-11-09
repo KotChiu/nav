@@ -56,8 +56,9 @@ void dimRect(int x, int y, int w, int h, int r, int keep) {
 void drawMapSpeed(bool over) {
   if (speedKmh < 0) return;
   int sx = hasCam ? CX - 40 : CX;
-  printOutlined(String(speedKmh), sx, 44, 4, over ? C_RED : TH.hud);
-  printOutlined("km/h", sx, 80, 1, over ? 0xFC10 : TH.hud);
+  gfx->fillRoundRect(sx - 54, 35, 108, 59, 18, C_UI_PANEL);
+  printCentered(String(speedKmh), sx, 44, 4, over ? 0xFC10 : C_UI_TEXT);
+  printCentered("km/h", sx, 80, 1, C_UI_SUB);
   if (hasCam) {
     const int bx = CX + 52, by = 60;
     aaDisc(bx, by, 27, C_BLACK);

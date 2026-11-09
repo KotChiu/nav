@@ -189,8 +189,7 @@ void drawNavHints(int bannerY) {
   if (rerouteAt && now - rerouteAt > 20000) rerouteAt = 0;        // 最多显示 20 秒
   if (fasterAt && now - fasterAt > 30000) fasterAt = 0;           // 更快路线提示 30 秒
   if (rerouteAt) {
-    String dots = String("...").substring(0, 1 + (now / 400) % 3);
-    drawBanner("REROUTING" + dots, bannerY, C_ORANGE);
+    drawBanner("REROUTING", bannerY, C_ORANGE);
   } else if (fasterAt) {
     drawBanner("FASTER ROUTE  -" + String(fasterMin) + "min", bannerY, C_GREEN);
   }

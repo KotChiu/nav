@@ -2,6 +2,7 @@
 
 #include <lvgl.h>
 #include "../../resources/WatchDigits.c"
+#include "../../CompanionFace.h"
 
 static inline lv_color_t lvglColor565(uint16_t color) {
   lv_color_t out;
@@ -32,12 +33,9 @@ static lv_obj_t *settingsTitleLabel = nullptr;
 static lv_obj_t *settingsSubLabel = nullptr;
 static lv_obj_t *settingsHintLabel = nullptr;
 static lv_obj_t *settingsCard = nullptr;
-static lv_obj_t *homeActions[2] = {};
 static lv_obj_t *homeTitleLabel = nullptr;
 static lv_obj_t *homeStatusLabel = nullptr;
-static lv_obj_t *homeDeviceLabel = nullptr;
 static lv_obj_t *homeHintLabel = nullptr;
-static lv_obj_t *homeStatusDot = nullptr;
 static lv_obj_t *watchTimeLabel = nullptr;
 static lv_obj_t *watchDateLabel = nullptr;
 static lv_obj_t *watchTempLabel = nullptr;
@@ -49,11 +47,14 @@ static lv_obj_t *robotFace = nullptr;
 static lv_obj_t *robotEyes[2] = {nullptr, nullptr};
 static lv_obj_t *robotTitleLabel = nullptr;
 static lv_obj_t *robotMoodLabel = nullptr;
-static unsigned long robotLastAnimAt = 0;
-static unsigned long robotReactUntil = 0;
-static bool robotLastBlink = false;
-static bool robotLastOnline = false;
-static bool robotLastReacting = false;
+static uint32_t robotLastAnimAt = 0;
+static uint32_t robotVisibleTime = 0;
+static uint32_t robotSampleAt = 0;
+static uint32_t robotManualAt = 0;
+static CompanionFace::Expression robotExpression = CompanionFace::Calm;
+static bool robotWasVisible = false;
+static bool robotLongPressed = false;
+static int robotPoseKey = -1;
 static String robotLastMood;
 static lv_obj_t *batteryLabel = nullptr;
 static lv_obj_t *stockTitleLabel = nullptr;
@@ -171,9 +172,19 @@ static void musicButtonEventCb(lv_event_t *event) {
 }
 
 static void robotTapEventCb(lv_event_t *event) {
-  if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
-  robotReactUntil = millis() + 2200;
-  robotLastAnimAt = 0;
+  const lv_event_code_t code = lv_event_get_code(event);
+  if (code == LV_EVENT_PRESSED) robotLongPressed = false;
+  else if (code == LV_EVENT_LONG_PRESSED) {
+    robotLongPressed = true;
+    robotExpression = robotExpression == CompanionFace::Sleepy
+      ? CompanionFace::Calm : CompanionFace::Sleepy;
+    robotManualAt = robotVisibleTime;
+    robotPoseKey = -1;
+  } else if (code == LV_EVENT_CLICKED && !robotLongPressed) {
+    robotExpression = CompanionFace::next(robotExpression);
+    robotManualAt = robotVisibleTime;
+    robotPoseKey = -1;
+  }
 }
 
 static void saveBrightness() {
@@ -204,9 +215,9 @@ static lv_obj_t *makeMusicButton(int index) {
   lv_obj_set_size(button, 86, 86);
   lv_obj_set_style_radius(button, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_border_width(button, 1, 0);
-  lv_obj_set_style_border_color(button, lvglColor565(C_UI_ACCENT), 0);
+  lv_obj_set_style_border_color(button, lvglColor565(C_UI_LINE), 0);
   lv_obj_set_style_bg_color(button, lvglColor565(C_UI_PANEL_2), 0);
-  lv_obj_set_style_bg_color(button, lvglColor565(C_UI_ACCENT), LV_STATE_PRESSED);
+  lv_obj_set_style_bg_color(button, lvglColor565(0x4BAE), LV_STATE_PRESSED);
   lv_obj_set_style_shadow_width(button, 0, 0);
   lv_obj_clear_flag(button, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_event_cb(button, musicButtonEventCb, LV_EVENT_CLICKED, (void *)(intptr_t)index);
@@ -226,6 +237,15 @@ static void configureOpaqueLabel(lv_obj_t *label, int width, int height) {
   lv_obj_set_style_pad_all(label, 0, 0);
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+}
+
+// Watch-face / home labels float over the dial drawn by drawWaiting(). An
+// opaque background punches a black rectangle into it, so these stay
+// transparent. drawWaiting() is repainted whenever their text changes, which
+// erases the old glyphs (direct_mode has no background clear of its own).
+static void configureTransparentLabel(lv_obj_t *label, int width, int height) {
+  configureOpaqueLabel(label, width, height);
+  lv_obj_set_style_bg_opa(label, LV_OPA_TRANSP, 0);
 }
 
 #define STOCK_NAME_W 180
@@ -329,12 +349,6 @@ static void updateStockChartCanvas(int index) {
   lv_obj_invalidate(stockChartCanvases[index]);
 }
 
-static void homeActionEvent(lv_event_t *event) {
-  if (lv_event_get_code(event) != LV_EVENT_CLICKED || sliding) return;
-  int target = (int)(intptr_t)lv_event_get_user_data(event);
-  showPageAnimated(target, -1, 0);
-}
-
 static void createLvglOverlay() {
   lv_obj_t *screen = lv_scr_act();
   lv_obj_set_style_bg_opa(screen, LV_OPA_TRANSP, 0);
@@ -357,7 +371,7 @@ static void createLvglOverlay() {
   settingsCard = lv_obj_create(screen);
   lv_obj_set_size(settingsCard, 340, 190);
   lv_obj_set_pos(settingsCard, CX - 170, 120);
-  lv_obj_set_style_radius(settingsCard, 8, 0);
+  lv_obj_set_style_radius(settingsCard, 22, 0);
   lv_obj_set_style_border_width(settingsCard, 1, 0);
   lv_obj_set_style_border_color(settingsCard, lvglColor565(C_UI_LINE), 0);
   lv_obj_set_style_bg_opa(settingsCard, LV_OPA_COVER, 0);
@@ -415,89 +429,58 @@ static void createLvglOverlay() {
   lv_obj_align(settingsHintLabel, LV_ALIGN_TOP_MID, 0, 400);
   lv_obj_add_flag(settingsHintLabel, LV_OBJ_FLAG_HIDDEN);
 
-  for (int i = 0; i < 2; ++i) {
-    homeActions[i] = lv_btn_create(screen);
-    lv_obj_set_size(homeActions[i], 142, 56);
-    lv_obj_set_pos(homeActions[i], CX - 150 + i * 158, 352);
-    lv_obj_set_style_radius(homeActions[i], 8, 0);
-    lv_obj_set_style_bg_color(homeActions[i], lvglColor565(C_UI_PANEL), 0);
-    lv_obj_set_style_border_width(homeActions[i], 1, 0);
-    lv_obj_set_style_border_color(homeActions[i], lvglColor565(C_UI_ACCENT), 0);
-    lv_obj_set_style_shadow_width(homeActions[i], 0, 0);
-    lv_obj_add_event_cb(homeActions[i], homeActionEvent, LV_EVENT_CLICKED,
-                        (void *)(intptr_t)(i ? PAGE_MUSIC : PAGE_WEATHER));
-    lv_obj_t *label = lv_label_create(homeActions[i]);
-    lv_label_set_text(label, i ? LV_SYMBOL_AUDIO "  MUSIC" : "WEATHER");
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(label, lvglColor565(C_UI_TEXT), 0);
-    lv_obj_center(label);
-    lv_obj_add_flag(homeActions[i], LV_OBJ_FLAG_HIDDEN);
-  }
   homeTitleLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(homeTitleLabel, lv_color_white(), 0);
   lv_obj_set_style_text_font(homeTitleLabel, &lv_font_montserrat_20, 0);
-  lv_label_set_text(homeTitleLabel, "MOTO / NAV");
-  lv_obj_align(homeTitleLabel, LV_ALIGN_TOP_MID, 0, 52);
+  lv_label_set_text(homeTitleLabel, "MOTONAV");
+  lv_obj_align(homeTitleLabel, LV_ALIGN_TOP_MID, 0, 57);
+  lv_obj_set_style_text_letter_space(homeTitleLabel, 3, 0);
   lv_obj_add_flag(homeTitleLabel, LV_OBJ_FLAG_HIDDEN);
-
-  homeStatusDot = lv_obj_create(screen);
-  lv_obj_set_size(homeStatusDot, 12, 12);
-  lv_obj_set_style_radius(homeStatusDot, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_border_width(homeStatusDot, 0, 0);
-  lv_obj_clear_flag(homeStatusDot, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_align(homeStatusDot, LV_ALIGN_TOP_MID, -91, 207);
-  lv_obj_add_flag(homeStatusDot, LV_OBJ_FLAG_HIDDEN);
 
   homeStatusLabel = lv_label_create(screen);
   lv_obj_set_style_text_font(homeStatusLabel, &lv_font_montserrat_20, 0);
-  configureOpaqueLabel(homeStatusLabel, 220, 30);
-  lv_obj_align(homeStatusLabel, LV_ALIGN_TOP_MID, 14, 198);
+  configureTransparentLabel(homeStatusLabel, 220, 30);
+  lv_obj_align(homeStatusLabel, LV_ALIGN_TOP_MID, 0, 203);
   lv_obj_add_flag(homeStatusLabel, LV_OBJ_FLAG_HIDDEN);
 
-  homeDeviceLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(homeDeviceLabel, lvglColor565(C_UI_SUB), 0);
-  lv_obj_set_style_text_font(homeDeviceLabel, &lv_font_montserrat_16, 0);
-  configureOpaqueLabel(homeDeviceLabel, 300, 28);
-  lv_obj_align(homeDeviceLabel, LV_ALIGN_TOP_MID, 0, 330);
-  lv_obj_add_flag(homeDeviceLabel, LV_OBJ_FLAG_HIDDEN);
 
   homeHintLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(homeHintLabel, lvglColor565(C_UI_DIM), 0);
   lv_obj_set_style_text_font(homeHintLabel, &lv_font_montserrat_16, 0);
-  lv_label_set_text(homeHintLabel, "");
-  lv_obj_align(homeHintLabel, LV_ALIGN_TOP_MID, 0, 420);
+  lv_label_set_text(homeHintLabel, "SWIPE LEFT FOR WEATHER");
+  lv_obj_align(homeHintLabel, LV_ALIGN_TOP_MID, 0, 376);
   lv_obj_add_flag(homeHintLabel, LV_OBJ_FLAG_HIDDEN);
 
   watchTimeLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(watchTimeLabel, lv_color_white(), 0);
   lv_obj_set_style_text_font(watchTimeLabel, &motonav_watch_digits, 0);
-  configureOpaqueLabel(watchTimeLabel, 340, 82);
+  configureTransparentLabel(watchTimeLabel, 340, 82);
   lv_label_set_text(watchTimeLabel, "00:00");
-  lv_obj_align(watchTimeLabel, LV_ALIGN_TOP_MID, 0, 108);
+  lv_obj_align(watchTimeLabel, LV_ALIGN_TOP_MID, 0, 116);
   lv_obj_add_flag(watchTimeLabel, LV_OBJ_FLAG_HIDDEN);
 
   watchDateLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(watchDateLabel, lvglColor565(C_UI_SUB), 0);
   lv_obj_set_style_text_font(watchDateLabel, &lv_font_montserrat_16, 0);
-  configureOpaqueLabel(watchDateLabel, 240, 28);
+  configureTransparentLabel(watchDateLabel, 240, 28);
   lv_label_set_text(watchDateLabel, "WAITING FOR PHONE TIME");
-  lv_obj_align(watchDateLabel, LV_ALIGN_TOP_MID, 0, 76);
+  lv_obj_align(watchDateLabel, LV_ALIGN_TOP_MID, 0, 89);
   lv_obj_add_flag(watchDateLabel, LV_OBJ_FLAG_HIDDEN);
 
   watchTempLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(watchTempLabel, lv_color_white(), 0);
   lv_obj_set_style_text_font(watchTempLabel, &lv_font_montserrat_40, 0);
-  configureOpaqueLabel(watchTempLabel, 120, 52);
+  configureTransparentLabel(watchTempLabel, 120, 52);
   lv_label_set_text(watchTempLabel, "--°");
-  lv_obj_align(watchTempLabel, LV_ALIGN_TOP_MID, 89, 240);
+  lv_obj_align(watchTempLabel, LV_ALIGN_TOP_MID, 0, 257);
   lv_obj_add_flag(watchTempLabel, LV_OBJ_FLAG_HIDDEN);
 
   watchForecastLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(watchForecastLabel, lvglColor565(C_UI_SUB), 0);
   lv_obj_set_style_text_font(watchForecastLabel, &lv_font_montserrat_20, 0);
-  configureOpaqueLabel(watchForecastLabel, 310, 34);
+  configureTransparentLabel(watchForecastLabel, 260, 34);
   lv_label_set_text(watchForecastLabel, "WEATHER FROM PHONE");
-  lv_obj_align(watchForecastLabel, LV_ALIGN_TOP_MID, 0, 304);
+  lv_obj_align(watchForecastLabel, LV_ALIGN_TOP_MID, 0, 308);
   lv_obj_add_flag(watchForecastLabel, LV_OBJ_FLAG_HIDDEN);
 
   robotHalo = lv_obj_create(screen);
@@ -505,8 +488,8 @@ static void createLvglOverlay() {
   lv_obj_set_pos(robotHalo, CX - 145, 86);
   lv_obj_set_style_radius(robotHalo, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_opa(robotHalo, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(robotHalo, 3, 0);
-  lv_obj_set_style_border_color(robotHalo, lvglColor565(C_UI_ACCENT), 0);
+  lv_obj_set_style_border_width(robotHalo, 2, 0);
+  lv_obj_set_style_border_color(robotHalo, lvglColor565(C_UI_LINE), 0);
   lv_obj_clear_flag(robotHalo, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(robotHalo, LV_OBJ_FLAG_HIDDEN);
 
@@ -522,7 +505,7 @@ static void createLvglOverlay() {
   lv_obj_set_style_shadow_width(robotBody, 0, 0);
   lv_obj_clear_flag(robotBody, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(robotBody, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(robotBody, robotTapEventCb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_event_cb(robotBody, robotTapEventCb, LV_EVENT_ALL, nullptr);
   lv_obj_add_flag(robotBody, LV_OBJ_FLAG_HIDDEN);
 
   robotFace = lv_obj_create(robotBody);
@@ -549,7 +532,7 @@ static void createLvglOverlay() {
   robotTitleLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(robotTitleLabel, lvglColor565(C_UI_SUB), 0);
   lv_obj_set_style_text_font(robotTitleLabel, &lv_font_montserrat_16, 0);
-  lv_label_set_text(robotTitleLabel, "COMPANION");
+  lv_label_set_text(robotTitleLabel, "TAP TO CHANGE / HOLD TO SLEEP");
   lv_obj_align(robotTitleLabel, LV_ALIGN_TOP_MID, 0, 48);
   lv_obj_add_flag(robotTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
@@ -670,10 +653,12 @@ static void lvglHybridInit() {
 
   createLvglOverlay();
   batteryLabel = lv_label_create(lv_scr_act());
-  configureOpaqueLabel(batteryLabel, 130, 22);
+  // Percent only (no "BAT" prefix). Centered in the gap between the four
+  // status arcs at 12 o'clock, so it never covers the ring.
+  configureOpaqueLabel(batteryLabel, 64, 22);
   lv_obj_set_style_text_font(batteryLabel, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(batteryLabel, lv_color_white(), 0);
-  lv_obj_set_pos(batteryLabel, CX - 65, 24);
+  lv_obj_set_pos(batteryLabel, CX - 32, 24);
   lvglLastPage = -1;
   lvglLastSliding = false;
   lvglUiReady = true;
@@ -725,16 +710,22 @@ static void setLvglTextColor(lv_obj_t *obj, lv_color_t color) {
 static void lvglHybridTick() {
   if (!lvglUiReady) return;
 
-  setLvglHidden(batteryLabel, pairOn || callOn || fxOn || (page == PAGE_HOME && inNav));
+  // Navigation keeps the top edge clear for the ring / N marker / speed HUD,
+  // so the battery readout only shows on idle pages. No readout when no
+  // battery is attached (batPct < 0).
+  setLvglHidden(batteryLabel, batPct < 0 || pairOn || callOn || fxOn || inNav || page == PAGE_PHOTO);
   char batteryText[24];
-  if (batPct >= 0) snprintf(batteryText, sizeof(batteryText), "BAT %d%%", batPct);
-  else snprintf(batteryText, sizeof(batteryText), "BAT --");
+  if (batPct >= 0) snprintf(batteryText, sizeof(batteryText), "%d%%", batPct);
+  else snprintf(batteryText, sizeof(batteryText), "--");
   setLvglLabelText(batteryLabel, batteryText);
   bool showMusic = page == 2 && !sliding && !pairOn && !callOn && !fxOn;
   bool showSettings = page == 3 && !sliding && !pairOn && !callOn && !fxOn;
   bool showRobot = page == 4 && !sliding && !pairOn && !callOn && !fxOn;
   bool showStock = page == 5 && !sliding && !pairOn && !callOn && !fxOn;
   bool showHome = page == 0 && !inNav && !sliding && !pairOn && !callOn && !fxOn && !staleShown;
+  static bool lastShowHome = false;
+  const bool homeJustShown = showHome && !lastShowHome;
+  lastShowHome = showHome;
   bool infoDots = page >= 3 && page <= 5;
   bool showDots = false;
   int buttonY = (coverValid && coverImg) ? 360 : 335;
@@ -745,11 +736,12 @@ static void lvglHybridTick() {
     setLvglPos(musicButtons[i], x, buttonY - 43);
     setLvglHidden(musicButtons[i], !showMusic);
     bool enabled = hidMusicMode ? (hidMediaReady() || appleMedia.controlReady(i)) : (bleConnected && bleAuthed && musicHave);
-    setLvglBgColor(musicButtons[i], lvglColor565(enabled ? C_UI_PANEL_2 : C_UI_PANEL));
+    const bool primary = enabled && i == 1;
+    setLvglBgColor(musicButtons[i], lvglColor565(primary ? C_UI_ACCENT : enabled ? C_UI_PANEL_2 : C_UI_PANEL));
     const char *symbol = i == 0 ? LV_SYMBOL_PREV : i == 2 ? LV_SYMBOL_NEXT
       : (musicPlaying ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
     setLvglLabelText(musicButtonLabels[i], symbol);
-    setLvglTextColor(musicButtonLabels[i], lvglColor565(enabled ? C_UI_TEXT : C_UI_SUB));
+    setLvglTextColor(musicButtonLabels[i], lvglColor565(primary ? C_UI_BG : enabled ? C_UI_TEXT : C_UI_SUB));
   }
 
   setLvglHidden(settingsSlider, !showSettings);
@@ -767,25 +759,22 @@ static void lvglHybridTick() {
     setLvglLabelText(settingsBrightnessLabel, brightness);
   }
 
-  for (int i = 0; i < 2; ++i) setLvglHidden(homeActions[i], !showHome);
+  bool homeTextChanged = false;
   setLvglHidden(homeTitleLabel, !showHome);
-  setLvglHidden(homeStatusDot, !showHome);
   setLvglHidden(homeStatusLabel, !showHome);
-  setLvglHidden(homeDeviceLabel, true);
-  setLvglHidden(homeHintLabel, true);
+  setLvglHidden(homeHintLabel, !showHome);
   if (showHome) {
     const char *status = waitSt == WAIT_LOST ? "Link lost" : ((bleConnected && bleAuthed) ? "Ready" : "No link");
     uint32_t statusColor = waitSt == WAIT_LOST ? C_UI_ACCENT2
       : ((bleConnected && bleAuthed) ? C_UI_ACCENT : C_UI_SUB);
-    if (setLvglLabelText(homeStatusLabel, status)) {
-      lv_obj_align(homeStatusLabel, LV_ALIGN_TOP_MID, 14, 198);
-    }
+    if (setLvglLabelText(homeStatusLabel, status)) homeTextChanged = true;
     setLvglTextColor(homeStatusLabel, lvglColor565(statusColor));
-    setLvglBgColor(homeStatusDot, lvglColor565(statusColor));
   }
 
-  setLvglHidden(watchTimeLabel, !showHome);
+  setLvglHidden(watchTimeLabel, !showHome || !clockNowEpoch());
   setLvglHidden(watchDateLabel, !showHome);
+  // Temperature + forecast stay on the watch face, but are transparent and
+  // pulled in from the dial edge so they never sit on the theme ring.
   setLvglHidden(watchTempLabel, !showHome);
   setLvglHidden(watchForecastLabel, !showHome);
   if (showHome) {
@@ -800,13 +789,13 @@ static void lvglHybridTick() {
         snprintf(timeText, sizeof(timeText), "%02d:%02d", local.tm_hour, local.tm_min);
         snprintf(dateText, sizeof(dateText), "%s %02d %s", WX_WEEK[local.tm_wday ? local.tm_wday : 7],
                  local.tm_mday, months[local.tm_mon % 12]);
-        setLvglLabelText(watchTimeLabel, timeText);
-        setLvglLabelText(watchDateLabel, dateText);
+        if (setLvglLabelText(watchTimeLabel, timeText)) homeTextChanged = true;
+        if (setLvglLabelText(watchDateLabel, dateText)) homeTextChanged = true;
       }
     }
     char temperature[16];
     snprintf(temperature, sizeof(temperature), wxHave ? "%d°" : "--°", wxTemp);
-    setLvglLabelText(watchTempLabel, temperature);
+    if (setLvglLabelText(watchTempLabel, temperature)) homeTextChanged = true;
     char forecast[36];
     if (wxHave && !wxHourly && wxN > 0)
       snprintf(forecast, sizeof(forecast), "%s %d°   |   %s %d°",
@@ -814,47 +803,57 @@ static void lvglHybridTick() {
     else if (wxHave && wxHourly && wxN > 0)
       snprintf(forecast, sizeof(forecast), "NEXT HOUR  %d°", wxFh[0]);
     else snprintf(forecast, sizeof(forecast), "WEATHER FROM PHONE");
-    setLvglLabelText(watchForecastLabel, forecast);
+    if (setLvglLabelText(watchForecastLabel, forecast)) homeTextChanged = true;
   }
+
+  // Transparent labels have no background to clear old glyphs in direct_mode,
+  // and switching back from another page must not leave its pixels behind.
+  // Repaint the canvas (black + status arcs) before LVGL redraws the text;
+  // fillScreen() also invalidates every visible widget for us.
+  if ((homeTextChanged || homeJustShown) && showHome && !sliding) drawWaiting(waitSt);
 
   setLvglHidden(robotHalo, !showRobot);
   setLvglHidden(robotBody, !showRobot);
   setLvglHidden(robotTitleLabel, !showRobot);
   setLvglHidden(robotMoodLabel, !showRobot);
   if (showRobot) {
-    unsigned long now = millis();
-    if (now - robotLastAnimAt >= 100) {
+    const uint32_t now = millis();
+    if (!robotWasVisible) {
+      robotWasVisible = true;
+      robotSampleAt = now;
+      robotPoseKey = -1;
+    }
+    robotVisibleTime += now - robotSampleAt;
+    robotSampleAt = now;
+    if (now - robotLastAnimAt >= 80 || robotPoseKey < 0) {
       robotLastAnimAt = now;
-      bool online = bleConnected && bleAuthed;
-      bool reacting = (int32_t)(robotReactUntil - now) > 0;
-      bool blink = (now % (online ? 4800UL : 6200UL)) < (online ? 170UL : 450UL);
-      if (blink != robotLastBlink || online != robotLastOnline || reacting != robotLastReacting) {
-        robotLastBlink = blink;
-        robotLastOnline = online;
-        int eyeHeight = blink ? 5 : reacting ? 58 : 50;
-        int eyeY = blink ? 48 : reacting ? 21 : 25;
-        for (int i = 0; i < 2; i++) {
-          lv_obj_set_height(robotEyes[i], eyeHeight);
-          lv_obj_set_y(robotEyes[i], eyeY);
-          lv_obj_set_width(robotEyes[i], reacting ? 33 : 28);
-          lv_obj_set_x(robotEyes[i], i == 0 ? reacting ? 33 : 37 : 95);
-        }
+      // Slow idle variation; a tapped expression remains for at least 12s.
+      if (robotVisibleTime - robotManualAt > 12000 && robotExpression != CompanionFace::Sleepy) {
+        static const CompanionFace::Expression idle[] = {
+          CompanionFace::Calm, CompanionFace::Curious, CompanionFace::Happy, CompanionFace::Calm};
+        robotExpression = idle[(robotVisibleTime / 8000) % 4];
       }
-      String mood = reacting ? "HELLO!" : online ? "READY TO RIDE" : "WAITING FOR PHONE";
-      if (mood != robotLastMood || reacting != robotLastReacting) {
-        robotLastMood = mood;
-        robotLastReacting = reacting;
-        lv_label_set_text(robotMoodLabel, robotLastMood.c_str());
-        lv_obj_set_style_text_color(robotMoodLabel,
-          lvglColor565(reacting ? C_UI_ACCENT2 : online ? C_UI_ACCENT : C_UI_SUB), 0);
+      const bool blink = robotVisibleTime % 4800 < 160;
+      const bool lookRight = robotVisibleTime % 7000 > 5600;
+      const int key = static_cast<int>(robotExpression) * 4 + (blink ? 1 : 0) + (lookRight ? 2 : 0);
+      if (key != robotPoseKey) {
+        robotPoseKey = key;
+        const CompanionFace::Pose pose = CompanionFace::pose(robotExpression, blink, lookRight);
+        for (int i = 0; i < 2; i++) {
+          lv_obj_set_pos(robotEyes[i], pose.eye[i].x, pose.eye[i].y);
+          lv_obj_set_size(robotEyes[i], pose.eye[i].w, pose.eye[i].h);
+        }
+        String mood = String(pose.name) + " / TAP TO CHANGE";
+        if (mood != robotLastMood) {
+          robotLastMood = mood;
+          lv_label_set_text(robotMoodLabel, robotLastMood.c_str());
+        }
       }
     }
   } else {
+    robotWasVisible = false;
     robotLastAnimAt = 0;
-    robotLastBlink = false;
-    robotLastOnline = false;
-    robotLastReacting = false;
-    robotLastMood = "";
+    robotPoseKey = -1;
   }
 
   setLvglHidden(stockList, !showStock);

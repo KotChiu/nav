@@ -5,6 +5,8 @@ void resetNavState() {
   if (idlePowerOffNavigationActive(true, inNav, cruiseOn, navDir == "A"))
     idlePowerOffReset(&idlePowerOffTimer, millis());
   inNav = false;
+  placeLabels.clear();
+  bulks[7].id = -1;
   tripOn = false; lightDist = -1;                       // v3.1
   mapCamN = 0;                                          // v3.5
   ghostN = 0;                                           // v4.4
@@ -372,6 +374,8 @@ void handleText(const String &m) {
     }
     return;
   }
+  if (m == "#PHOTO?") { pendingAck="CAP,PHOTO,1"; return; }
+  if (m == "#PHOTO,CLEAR") { photoValid=false; photoDirty=true; photoCancelledId=bulks[6].id; bulks[6].done=false; bulks[6].got=0; memset(bulks[6].mask,0,sizeof(bulks[6].mask)); pendingAck="PHOTO,CLEARED"; return; }
   if (m.startsWith("#STK,")) {
     int comma = m.indexOf(',', 5);
     if (comma < 0) return;

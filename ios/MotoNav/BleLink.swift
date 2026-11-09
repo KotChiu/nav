@@ -18,6 +18,8 @@ final class BleLink: NSObject, ObservableObject {
     private let IMG_HEADER = 10
     private let BULK_HEADER = 15
 
+    @Published private(set) var photoSupported = false
+    @Published var photoTransferStatus = ""
     @Published var status = "未连接"
     @Published private(set) var mediaLyricsSupported = false
     @Published private(set) var mediaLyricsActive = false
@@ -115,6 +117,9 @@ final class BleLink: NSObject, ObservableObject {
     }
 
     private func attach(_ p: CBPeripheral) {
+        photoSupported = false
+        placeLabelVersion = 0
+        compressedMapsSupported = false
         isReady = false; txNotifyReady = false
         buildingsSupported = false
         mediaHIDSupported = false; mediaHIDReady = false; mediaHIDMode = false; mediaLyricsSupported = false; mediaLyricsActive = false; mediaAMSControls = 0; verified = false; buildingProbe.reset()
@@ -253,6 +258,13 @@ final class BleLink: NSObject, ObservableObject {
         pump()
     }
 
+    private(set) var placeLabelVersion = 0
+    var placeLabelsSupported: Bool { placeLabelVersion > 0 }
+    private(set) var compressedMapsSupported = false
+    func cancelPlaceLabels() { bulkQ.cancel(type: 7) }
+
+    func cancelPhotoTransfer() { bulkQ.cancel(type: 6) }
+
     /// 发一份小地图大块数据（地图块 / 路线）。同类型还没发完的旧数据直接作废。
     /// 每片：'M' 类型 编号 总片数(2) 片序号(2) 总字节(4) 偏移(4) + 数据
     func sendBulk(type: Int, id: Int, data: Data) {
@@ -280,6 +292,7 @@ final class BleLink: NSObject, ObservableObject {
 
     /// 还有大块数据没发完
     var bulkPending: Bool { bulkQ.hasData }
+    func bulkPending(type: Int, id: Int) -> Bool { bulkQ.contains(type: type, id: id) }
     @Published var bulkKB = 0                         // 累计发了多少 KB 地图数据（调试用）
 
     private func enqueue(_ key: String, _ data: Data) {
@@ -400,7 +413,10 @@ final class BleLink: NSObject, ObservableObject {
 extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
     func centralManagerDidUpdateState(_ c: CBCentralManager) {
         if c.state != .poweredOn {
-            isReady = false; txNotifyReady = false; buildingsSupported = false; mediaHIDSupported = false; mediaHIDReady = false; mediaHIDMode = false; mediaLyricsSupported = false; mediaLyricsActive = false; mediaAMSControls = 0; verified = false; buildingProbe.reset()
+            photoSupported = false
+            placeLabelVersion = 0
+            compressedMapsSupported = false
+        isReady = false; txNotifyReady = false; buildingsSupported = false; mediaHIDSupported = false; mediaHIDReady = false; mediaHIDMode = false; mediaLyricsSupported = false; mediaLyricsActive = false; mediaAMSControls = 0; verified = false; buildingProbe.reset()
         MusicBridge.shared.resetAMS()
         }
         switch c.state {
@@ -437,6 +453,9 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
         status = "连接失败，重试中…"
         mediaHIDSupported = false; mediaHIDReady = false; mediaHIDMode = false; mediaLyricsSupported = false; mediaLyricsActive = false; mediaAMSControls = 0; verified = false; buildingProbe.reset(); txNotifyReady = false
         MusicBridge.shared.resetAMS()
+        photoSupported = false
+        placeLabelVersion = 0
+        compressedMapsSupported = false
         isReady = false
         connectionRetries+=1
         retryAfter=ProcessInfo.processInfo.systemUptime+(connectionRetries>=3 ? 30 : 2)
@@ -447,6 +466,9 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
 
     func centralManager(_ c: CBCentralManager, didDisconnectPeripheral p: CBPeripheral, error: Error?) {
         guard p === peripheral else { return }
+        photoSupported = false
+        placeLabelVersion = 0
+        compressedMapsSupported = false
         isReady = false
         bulkQ.reset(); bulkBarrier.reset(); bulkWriteSerial += 1
         buildingsSupported = false
@@ -508,6 +530,20 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
         if s == "U,1", !verified {
             verified = true; buildingProbe.reset(); requestBuildingCapability(); Settings.shared.pushAll(); MapFeeder.shared.resendAll(); StockBridge.shared.sendLatest(); return
         }
+        if s == "CAP,MAPZ,1" { compressedMapsSupported = true; return }
+        if s == "CAP,POI,1" || s == "CAP,POI,2" {
+            let version = s.hasSuffix("2") ? 2 : 1
+            if version > placeLabelVersion {
+                placeLabelVersion = version
+                MapFeeder.shared.onPlaceCapability()
+            }
+            return
+        }
+        if s == "CAP,PHOTO,1" { photoSupported = true; return }
+        if s.hasPrefix("PHOTO,") {
+            if s == "PHOTO,BUSY" || s == "PHOTO,ERROR" || s == "PHOTO,CLEARED" { bulkQ.cancel(type: 6) }
+            photoTransferStatus = s == "PHOTO,ERROR" ? "圆屏图片接收失败，请重新发送" : s == "PHOTO,CLEARED" ? "圆屏图片已清除" : s == "PHOTO,BUSY" ? "圆屏正在导航或巡航，请结束后发送" : s; return }
+        if s.hasPrefix("K,6,") { photoTransferStatus = "圆屏已接收图片" }
         if s == "CAP,HID,1" {
             mediaHIDSupported = true
             sendOnce("#AMS?")

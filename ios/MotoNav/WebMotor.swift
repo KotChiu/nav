@@ -191,7 +191,10 @@ final class WebMotorSession: ObservableObject {
         roadSent = ""; footerSent = ""; startedAt = Date(); tripMeters = 0; tripMax = 0; previousFix = nil
         announced = ""; status = simulate ? "模拟导航" : "定位导航"; token = UUID()
         UIApplication.shared.isIdleTimerDisabled = true
-        MapFeeder.shared.onNaviStart(); BleLink.shared.send("C")
+        let places = ([route.request.end] + route.request.vias).map {
+            MapPlaceSearch.Place(name: $0.name, lat: $0.lat, lng: $0.lng)
+        }
+        MapFeeder.shared.onNaviStart(places: places); BleLink.shared.send("C")
         MapFeeder.shared.prepareRoute(key: route.id.uuidString, coords: route.coords)
         WebRouteMetadata.shared.load(route)
         let sessionToken=token
@@ -300,7 +303,7 @@ final class WebMotorSession: ObservableObject {
         if off <= 60 { BleLink.shared.send("\(step.dir),\(distance)") }
         if roadSent != step.instruction {
             roadSent = step.instruction
-            if let img = TextImage.render(String((step.instruction.isEmpty ? step.road : step.instruction).prefix(160)),maxW:290,size:26,minSize:18) { BleLink.shared.sendImage(slot:0,w:img.w,h:img.h,data:img.data) }
+            if let img = TextImage.render(String((step.instruction.isEmpty ? step.road : step.instruction).prefix(160)),maxW:290,size:31,minSize:28) { BleLink.shared.sendImage(slot:0,w:img.w,h:img.h,data:img.data) }
         }
         let seconds = route.steps.contains(where:{$0.duration>0}) ? Int(Double(step.duration)*fraction)+route.steps.dropFirst(stepIndex+1).reduce(0){$0+max(0,$1.duration)} : Int(Double(route.seconds)*Double(remaining)/max(1,Double(route.totalMeters)))
         remainingSeconds=seconds

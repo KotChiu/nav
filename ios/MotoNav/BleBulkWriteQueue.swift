@@ -11,6 +11,9 @@ struct BleBulkWriteQueue {
     var hasData: Bool { inFlight != nil || !parts.isEmpty }
     var canStart: Bool { inFlight == nil && !parts.isEmpty }
     var queuedCount: Int { parts.count }
+    func contains(type: Int, id: Int) -> Bool {
+        (inFlight?.type == type && inFlight?.id == id) || parts.contains { $0.type == type && $0.id == id }
+    }
     mutating func replace(type: Int, id: Int, packets: [Data]) {
         parts.removeAll { $0.type == type }
         latest[type] = id; acknowledged.removeValue(forKey: type)
@@ -34,6 +37,10 @@ struct BleBulkWriteQueue {
         acknowledged[type] = id
         parts.removeAll { $0.type == type && $0.id == id }
         // An application K can arrive before the ATT callback; still wait for that callback.
+    }
+    mutating func cancel(type: Int) {
+        parts.removeAll { $0.type == type }; latest.removeValue(forKey: type); acknowledged.removeValue(forKey: type)
+        // Keep the ATT in-flight slot until its callback, but never retry it.
     }
     mutating func reset() { parts.removeAll(); latest.removeAll(); acknowledged.removeAll(); inFlight = nil }
 }

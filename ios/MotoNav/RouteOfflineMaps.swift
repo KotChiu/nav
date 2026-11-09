@@ -12,55 +12,95 @@ final class MapWorkToken {
 
 final class RouteOfflineMaps {
     let style: Int
+    let separateLabels: Bool
     let frame: MapGeo.Frame, plan: RouteMapPlan, source: Int, buildings: Bool
     private let worker = DispatchQueue(label: "motonav.route-offline", qos: .utility)
     private let token = MapWorkToken()
     private var jobToken: MapWorkToken?
     private let foregroundBusy: () -> Bool
     private let onReady: (RouteMapPlan.Node) -> Void
+    private let onProgress: (Int, Int, Int) -> Void   // full / base / total
     private let onStatus: (String) -> Void
     private var ready: [Bool], baseReady: [Bool]
     private var target = 0, busy = false
     private var retryAt = Date.distantPast
     private var timer: Timer?
-    init(frame: MapGeo.Frame, plan: RouteMapPlan, source: Int, buildings: Bool,
-         foregroundBusy: @escaping () -> Bool, onReady: @escaping (RouteMapPlan.Node) -> Void, onStatus: @escaping (String) -> Void) {
+    private var bgTask: UIBackgroundTaskIdentifier = .invalid
+    init(frame: MapGeo.Frame, plan: RouteMapPlan, source: Int, buildings: Bool, separateLabels: Bool,
+         foregroundBusy: @escaping () -> Bool, onReady: @escaping (RouteMapPlan.Node) -> Void,
+         onProgress: @escaping (Int, Int, Int) -> Void, onStatus: @escaping (String) -> Void) {
         self.style = Settings.shared.theme
+        self.separateLabels = separateLabels
         self.frame = frame; self.plan = plan; self.source = source; self.buildings = buildings
-        self.foregroundBusy = foregroundBusy; self.onReady = onReady; self.onStatus = onStatus
+        self.foregroundBusy = foregroundBusy; self.onReady = onReady
+        self.onProgress = onProgress; self.onStatus = onStatus
         ready = [Bool](repeating: false, count: plan.nodes.count); baseReady = ready
     }
+
+    private func reportProgress() {
+        onProgress(ready.filter { $0 }.count, baseReady.filter { $0 }.count, ready.count)
+    }
+
+    /// Keep the current block alive when the app is backgrounded mid-ride.
+    /// iOS grants a short window; expired tasks simply retry on the next pump.
+    private func beginBackgroundTaskIfNeeded() {
+        guard bgTask == .invalid else { return }
+        bgTask = UIApplication.shared.beginBackgroundTask(withName: "motonav.offline-maps") { [weak self] in
+            DispatchQueue.main.async { self?.finishBackgroundTask() }
+        }
+    }
+    private func finishBackgroundTask() {
+        guard bgTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(bgTask)
+        bgTask = .invalid
+    }
     func read(_ node: RouteMapPlan.Node) -> Data? {
-        RouteMapCache.shared.read(frame: frame, source: source, buildings: buildings, node: node, style: style)
-            ?? (buildings ? RouteMapCache.shared.read(frame: frame, source: source, buildings: false, node: node, style: style) : nil)
+        RouteMapCache.shared.read(frame: frame, source: source, buildings: buildings, node: node, style: style, separateLabels: separateLabels)
+            ?? (buildings ? RouteMapCache.shared.read(frame: frame, source: source, buildings: false, node: node, style: style, separateLabels: separateLabels) : nil)
     }
     func update(_ index: Int) { target = max(0, min(plan.nodes.count - 1, index)) }
+
+    /// A live navigation capture needs the shared screenshot lease now. Cancel
+    /// the in-flight prefetch job immediately instead of making the foreground
+    /// build() wait for the next 0.5 s pump (or for a 5-tile building capture).
+    func yieldToForeground() {
+        guard busy else { return }
+        jobToken?.cancel()
+    }
     func start() {
         busy = true; onStatus("沿线离线地图：检查已有地图包…")
         worker.async {
             var done = [Bool](repeating: false, count: self.plan.nodes.count), base = done
             for (i, node) in self.plan.nodes.enumerated() {
                 if self.token.isCancelled { return }
-                done[i] = RouteMapCache.shared.read(frame: self.frame, source: self.source, buildings: self.buildings, node: node, style: self.style) != nil
-                base[i] = done[i] || RouteMapCache.shared.read(frame: self.frame, source: self.source, buildings: false, node: node, style: self.style) != nil
+                done[i] = RouteMapCache.shared.read(frame: self.frame, source: self.source, buildings: self.buildings, node: node, style: self.style, separateLabels: self.separateLabels) != nil
+                base[i] = done[i] || RouteMapCache.shared.read(frame: self.frame, source: self.source, buildings: false, node: node, style: self.style, separateLabels: self.separateLabels) != nil
             }
             DispatchQueue.main.async {
                 guard !self.token.isCancelled else { return }
                 self.ready = done; self.baseReady = base; self.busy = false
+                self.reportProgress()
                 self.timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.pump() }
-                self.onReady(self.plan.nodes[self.target]); self.pump()
+                if base[self.target] { self.onReady(self.plan.nodes[self.target]) }
+                self.pump()
             }
         }
     }
     private func pump() {
-        if busy, foregroundBusy() { jobToken?.cancel() }
+        // Do NOT cancel an in-flight job here. MapFeeder.yieldToForeground()
+        // already gives live navigation priority over the screenshot lease;
+        // killing the job on every pump starved background prefetch for the
+        // whole ride.
         guard !token.isCancelled, !busy else { return }
         let count = ready.filter { $0 }.count, baseCount = baseReady.filter { $0 }.count
+        reportProgress()
         if count == ready.count {
-            onStatus("沿线底图已全部离线：\(count)/\(ready.count) 块（2 米/像素）")
-            timer?.invalidate(); timer = nil; return
+            onStatus("沿线底图已全部离线：\(count)/\(ready.count) 块")
+            finishBackgroundTask(); timer?.invalidate(); timer = nil; return
         }
-        guard UIApplication.shared.applicationState == .active else {
+        // A background task lets the current block finish when the screen locks
+        // or the app is backgrounded mid-ride (iOS grants a short window).
+        guard UIApplication.shared.applicationState == .active || bgTask != .invalid else {
             onStatus("沿线离线地图：\(baseCount)/\(ready.count) 块可用；回到 App 前台继续下载"); return
         }
         guard !foregroundBusy(), Date() >= retryAt else { return }
@@ -68,8 +108,13 @@ final class RouteOfflineMaps {
         guard let i = indexes.first(where: { !baseReady[$0] }) ?? indexes.first(where: { !ready[$0] }) else { return }
         busy = true
         let node = plan.nodes[i]
-        let includeBuildings = buildings && baseCount == baseReady.count
+        // Building outlines used to wait until EVERY plain base was cached, so
+        // long routes never showed them near the start. Prioritise the blocks
+        // around the current position instead.
+        let nearTarget = abs(i - target) <= 2
+        let includeBuildings = buildings && (baseCount == baseReady.count || (nearTarget && baseReady[i]))
         onStatus("沿线离线地图：\(baseCount)/\(ready.count) 块可用，下载第 \(i + 1) 块\(includeBuildings ? "（补齐建筑）" : "（普通底图优先）")")
+        beginBackgroundTaskIfNeeded()
         let job = MapWorkToken(); jobToken = job
         worker.async {
             let result = Result { () throws -> Data in
@@ -80,22 +125,25 @@ final class RouteOfflineMaps {
                         shouldCancel: { self.token.isCancelled || job.isCancelled }, onBaseReady: { base in
                             guard !self.token.isCancelled else { return }
                             do {
-                                try RouteMapCache.shared.store(base, frame: self.frame, source: self.source, node: node, style: self.style)
-                                DispatchQueue.main.async { if !self.token.isCancelled { self.baseReady[i] = true; self.onReady(node) } }
+                                try RouteMapCache.shared.store(base, frame: self.frame, source: self.source, node: node, style: self.style, separateLabels: self.separateLabels)
+                                DispatchQueue.main.async { if !self.token.isCancelled {
+                                    self.baseReady[i] = true; self.reportProgress(); self.onReady(node)
+                                } }
                             } catch { /* The final store reports storage errors in onStatus. */ }
                         }, onBuildingStatus: { message in
                             DispatchQueue.main.async { if !self.token.isCancelled { self.onStatus(message) } }
-                        }, style: self.style).bytes
+                        }, style: self.style, separateLabels: self.separateLabels).bytes
                 } else {
                     throw MapProcessingError.invalid("沿线预下载仅支持高德底图")
                 }
                 if self.token.isCancelled { throw MapProcessingError.cancelled }
-                try RouteMapCache.shared.store(packet, frame: self.frame, source: self.source, node: node, style: self.style)
+                try RouteMapCache.shared.store(packet, frame: self.frame, source: self.source, node: node, style: self.style, separateLabels: self.separateLabels)
                 return packet
             }
             DispatchQueue.main.async {
                 guard !self.token.isCancelled else { return }
                 self.busy = false
+                self.finishBackgroundTask()
                 switch result {
                 case .success(let packet):
                     self.baseReady[i] = true
@@ -109,8 +157,9 @@ final class RouteOfflineMaps {
                     self.retryAt = Date().addingTimeInterval(15)
                     self.onStatus("沿线离线地图：\(error.localizedDescription)，保留已保存地图")
                 }
+                self.reportProgress()
             }
         }
     }
-    func close() { token.cancel(); jobToken?.cancel(); timer?.invalidate(); timer = nil }
+    func close() { token.cancel(); jobToken?.cancel(); timer?.invalidate(); timer = nil; finishBackgroundTask() }
 }

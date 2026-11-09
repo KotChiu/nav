@@ -81,12 +81,16 @@ static inline uint16_t rdu16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] 
 static inline int32_t rd32(const uint8_t *p) { return (int32_t)((uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24)); }
 
 // ---- 大块数据接收（'M'）----
+#include "PlaceLabels.h"
+static PlaceLabels placeLabels;
+static size_t placeLabelStride = 0;
+
 struct Bulk {
   uint8_t *buf; uint32_t cap;
   int id; uint32_t total; uint16_t parts; uint16_t got; bool done;
   uint8_t mask[512];        // 每片一位，最多 4096 片
 };
-Bulk bulks[6];              // 下标 1 = 地图块，2 = 路线，3 = 图片地图（v2.5），4 = 原路线（v4.4），5 = 音乐封面（v7.12.10-cover）
+Bulk bulks[8];              // 下标 1 = 地图块，2 = 路线，3 = 图片地图（v2.5），4 = 原路线（v4.4），5 = 音乐封面（v7.12.10-cover）
 
 // ---- v4.4 原路线（导入的高德分享路线）：导航时画成一条淡色细线，走错路时能看到原来该走哪 ----
 #define GHOST_PTS 6000

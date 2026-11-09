@@ -66,6 +66,7 @@ final class NaviBridge: NSObject, ObservableObject {
     @Published private(set) var vias: [Via] = []     // iOS v0.4 途经点（分享的路线自带途经点，不用这个）
     var destCoord: CLLocationCoordinate2D? { destLat.isNaN ? nil : CLLocationCoordinate2D(latitude: destLat, longitude: destLng) }
     private var destLat = Double.nan, destLng = Double.nan
+    private var destName = ""
     private var planSeq = 0
     private var lastRouteDoneAt = Date.distantPast
     // iOS v0.3 巡航
@@ -223,10 +224,10 @@ final class NaviBridge: NSObject, ObservableObject {
 
     /// 规划去 (lat, lng)（高德坐标）的路线。share 不为 nil 时按导入的高德分享路线走（沿路挑途经点，只要一条）；
     /// 否则一次规划最多 3 条（躲避拥堵），“不走高速”看设置。
-    func plan(toLat lat: Double, lng: Double, share: AmapShare.Route? = nil) {
+    func plan(toLat lat: Double, lng: Double, name: String = "", share: AmapShare.Route? = nil) {
         guard !navigating,!WebMotorSession.shared.running else { return }
         attach()
-        destLat = lat; destLng = lng
+        destLat = lat; destLng = lng; destName = share?.endName ?? name
         shareRoute = share
         vias = []                                    // 新目的地：途经点清空
         replan()
@@ -369,9 +370,19 @@ final class NaviBridge: NSObject, ObservableObject {
         let token = arrival.begin(simulation: emulate)
         installCallbacks()
         navigating = true // Arm before start: SDK callbacks may be synchronous.
-        BleLink.shared.send("C")
-        MapFeeder.shared.onNaviStart()
         let me = myPosition()
+        BleLink.shared.send("C")
+        let places = [MapPlaceSearch.Place(name: destName, lat: destLat, lng: destLng)]
+            + vias.map { MapPlaceSearch.Place(name: $0.name, lat: $0.lat, lng: $0.lng) }
+        MapFeeder.shared.onNaviStart(places: places)
+        // Warm up the first map frame right now. The first AMap fix can be
+        // seconds away; until a raster frame arrives the display only shows
+        // the bare arrow / distance page.
+        if let me = me {
+            let course = LocationService.shared.location?.course ?? -1
+            MapFeeder.shared.primeNavigation(lat: me.lat, lng: me.lng,
+                                             bearing: course >= 0 ? course : 0, kmh: 0)
+        }
         ShareGuide.shared.start(shareRoute, avoidHighway: Settings.shared.avoidHighway, emulate: emulate,
                                 myLat: me?.lat ?? .nan, myLng: me?.lng ?? .nan)          // 偏航跟随原路线 + 圆屏原路线细线
         emulating = emulate; emuPaused = false
@@ -574,7 +585,7 @@ final class NaviBridge: NSObject, ObservableObject {
         uiRoad = road
         if road != lastRoadText {
             lastRoadText = road
-            TextImage.send(slot: 0, road, maxW: 290, size: 26, minSize: 18)
+            TextImage.send(slot: 0, road, maxW: 290, size: 31, minSize: 28)
         }
         let km = remainM >= 1000 ? String(format: "%.1fkm", Double(remainM) / 1000) : "\(remainM)m"
         let eta = Calendar.current.date(byAdding: .second, value: remainS, to: Date()) ?? Date()

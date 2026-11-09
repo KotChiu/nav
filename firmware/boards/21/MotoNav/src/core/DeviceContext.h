@@ -40,7 +40,7 @@ Arduino_ESP32RGBPanel *board21Rgb = new Arduino_ESP32RGBPanel(
   LCD_DATA0, LCD_DATA1, LCD_DATA2, LCD_DATA3, LCD_DATA4,
   1, 50, 8, 10,
   1, 8, 3, 8,
-  0, 12 * 1000 * 1000, false, 0, 0, PANEL_WIDTH * 10);
+  0, 12 * 1000 * 1000, false, 0, 0, PANEL_WIDTH * 10, true);
 Board21Panel *panel = new Board21Panel(board21Rgb);
 PortScale portScale;
 #define FLUSH_RECT_MAX 12
@@ -127,17 +127,16 @@ bool fastFlushOn = false;         // RGB path is handled by the ESP32_Display_Pa
 #define C_ORANGE 0xFBC3   // #FF7A1A
 #define C_SEP    0x31A6   // #333333 车道分隔线
 #define C_SIGNRED 0xE104  // #E02020 限速牌红圈
-// UI theme: original GitHub "赛博霓虹" palette. Keep color accents instead of
-// flattening every screen to grayscale.
+// Shared dial surfaces, typography and state colors. Map themes are separate.
 #define C_UI_BG      0x0000
-#define C_UI_PANEL   0x0841
-#define C_UI_PANEL_2 0x0862
-#define C_UI_TEXT    0xFFFF
-#define C_UI_SUB     0x9CF3
-#define C_UI_DIM     0x4208
-#define C_UI_LINE    0x2104
-#define C_UI_ACCENT  0x04B6
-#define C_UI_ACCENT2 0xF815
+#define C_UI_PANEL   0x1082
+#define C_UI_PANEL_2 0x18E4
+#define C_UI_TEXT    0xF7BE
+#define C_UI_SUB     0xB5B7
+#define C_UI_DIM     0x7BEF
+#define C_UI_LINE    0x3187
+#define C_UI_ACCENT  0x9777
+#define C_UI_ACCENT2 0xFD32
 
 // ===== 屏幕几何：466x466，圆心 (233, 233) =====
 #define CX 233

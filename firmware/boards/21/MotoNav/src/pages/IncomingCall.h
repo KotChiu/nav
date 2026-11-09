@@ -96,7 +96,7 @@ void touchPoll() {
     if (callOn || pairOn || touchEat || fxOn) dragAbort();
     else {
       if (page == 2 && !lvglUiReady && !musicPressHandled && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) musicTap(touchX0, touchY0);
-      if (page == 1 && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) weatherTap();
+      if (page == 1 && !sliding && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) weatherTap();
       dragEnd();
     }
     touchEat = false;

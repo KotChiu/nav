@@ -75,14 +75,14 @@ final class AmapCaptureHost: NSObject {
     func mapLoadFailed(_ map: MAMapView, error: NSError) {
         finish(.failure(MapProcessingError.invalid("高德地图加载失败：\(error.domain) \(error.code)")))
     }
-    func capture(_ frame: MapGeo.Frame, x: Int, y: Int, size n: Int, satellite: Bool = false, style: Int = 1, completion: @escaping (Result<Shot, Error>) -> Void) {
+    func capture(_ frame: MapGeo.Frame, x: Int, y: Int, size n: Int, satellite: Bool = false, showLabels: Bool, completion: @escaping (Result<Shot, Error>) -> Void) {
         precondition(Thread.isMainThread)
         guard pending == nil else { completion(.failure(MapProcessingError.invalid("高德截图正在处理上一块"))); return }
         do {
             let m = try ensureMap(size: CGFloat(AmapCapturePolicy.renderSize(for: n)))
             satelliteCapture=satellite
             m.mapType = satellite ? .satellite : .standard
-            m.isShowsLabels = style == 0
+            m.isShowsLabels = showLabels
             pending = completion; reference = nil; referenceProjection = nil; emptyBuildingChecks = 0; started = Date(); serial += 1
             let id = serial
             m.isShowsBuildings = false; m.rotationDegree = 0; m.cameraDegree = n == 600 ? 0.05 : 0

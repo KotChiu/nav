@@ -19,6 +19,8 @@
 #include "src/pages/SettingsPage.h"
 #include "src/pages/RobotPage.h"
 #include "src/pages/StockPage.h"
+#include "src/pages/PhotoState.h"
+#include "src/pages/PhotoPage.h"
 #include "src/pages/PairingPage.h"
 #include "src/pages/ArrivalAnimation.h"
 #include "src/pages/IncomingCall.h"
@@ -75,7 +77,8 @@ void setup() {
   }
   Serial.println("stage gfx begin");
   if (!gfx->begin(qspiMHz * 1000000)) Serial.println("gfx->begin() failed!");
-  Serial.println("stage gfx ready");
+  Serial.printf("stage gfx ready, RGB scanout=%s\n",
+                board21Rgb->frameBoundarySwapActive() ? "frame-boundary" : "single");
   panel->setBrightness(screenBrightness);
 
   iconBuf = (uint16_t *)ps_malloc(ICON_BUF_W * ICON_BUF_H * 2);   // v1.8.1 图标缓存
@@ -284,6 +287,7 @@ void loop() {
     pairOn = false; pairDone = false;
     if (page == 2) musicDirty = true;
     else if (page == 1) wxDirty = true;
+    else if (page == PAGE_PHOTO) photoDirty = true;
     else if (page >= 3 && page <= 5) needFlush = true;
     else if (inNav) navDirty = true;
     else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
@@ -300,6 +304,7 @@ void loop() {
     wasCall = false;
     if (page == 2) musicDirty = true;
     else if (page == 1) wxDirty = true;
+    else if (page == PAGE_PHOTO) photoDirty = true;
     else if (page >= 3 && page <= 5) needFlush = true;
     else if (inNav) navDirty = true;
     else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
@@ -320,12 +325,17 @@ void loop() {
     if (!callOn && !pairOn) {
       if (page == 2) musicDirty = true;
       else if (page == 1) wxDirty = true;
-      else if (page >= 3 && page <= 5) needFlush = true;
+      else if (page == PAGE_PHOTO) photoDirty = true;
+    else if (page >= 3 && page <= 5) needFlush = true;
       else if (inNav) navDirty = true;
       else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
     }
   }
 
+  if (inNav && page == PAGE_PHOTO) {
+    dragAbort(); page = PAGE_HOME; pageAt = millis(); navDirty = true;
+  }
+  if (page == PAGE_PHOTO && photoDirty && !sliding && !callOn && !pairOn && !fxOn) drawPhotoPage();
   musicTick();
   weatherTick();                                       // v5.3 天气页
   slideTick();

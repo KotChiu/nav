@@ -4,7 +4,7 @@ import Foundation
 enum AmapSdkRaster {
     private static let lease = NSLock()
     static func build(_ f: MapGeo.Frame, cx: Double, cy: Double, includeBuildings: Bool,
-                      shouldCancel: @escaping () -> Bool, onBaseReady: ((Data) -> Void)? = nil, onBuildingStatus: ((String) -> Void)? = nil, satellite: Bool = false, style: Int = 1) throws -> RasterResult {
+                      shouldCancel: @escaping () -> Bool, onBaseReady: ((Data) -> Void)? = nil, onBuildingStatus: ((String) -> Void)? = nil, satellite: Bool = false, style: Int = 1, separateLabels: Bool = false) throws -> RasterResult {
         precondition(!Thread.isMainThread)
         func check() throws { if shouldCancel() { throw MapProcessingError.cancelled } }
         while !lease.try() { try check(); Thread.sleep(forTimeInterval: 0.1) }
@@ -18,7 +18,7 @@ enum AmapSdkRaster {
             let box = CaptureResultBox(), sem = DispatchSemaphore(value: 0)
             DispatchQueue.main.async {
                 if shouldCancel() { box.set(.failure(MapProcessingError.cancelled)); sem.signal(); return }
-                AmapCaptureHost.shared.capture(f, x: x, y: y, size: n, satellite: satellite, style: style) { result in box.set(result); sem.signal() }
+                AmapCaptureHost.shared.capture(f, x: x, y: y, size: n, satellite: satellite, showLabels: !separateLabels && (style == 0 || satellite)) { result in box.set(result); sem.signal() }
             }
             var elapsed = 0.0
             do {
@@ -47,9 +47,7 @@ enum AmapSdkRaster {
         guard stride(from: 0, to: raw.count, by: 7).contains(where: { raw[$0] != raw[0] }) else { throw MapProcessingError.invalid("高德返回纯色底图") }
         if satellite { return try SatelliteRaster.encode(f,cx: cx,cy: cy,half: half,raw: raw,shouldCancel: shouldCancel) }
         if style == 0 {
-            let q = MapStyles.original(raw)
-            let packet = MapGeo.encodeRaster(frameId: f.id, x0: x, y0: y, w: n, h: n, mmPerPx: 2000, idx: q.indices, pal: q.palette)
-            guard packet.count <= 480000, RasterPacket.valid(packet) else { throw MapProcessingError.invalid("高德原版底图过大") }
+            let packet = try MapStyles.originalPacket(raw, frameId: f.id, x0: x, y0: y, shouldCancel: shouldCancel)
             onBaseReady?(packet); return RasterResult(bytes: packet, tiles: 1, fromCache: 0)
         }
         if style == 5 {

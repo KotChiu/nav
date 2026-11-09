@@ -114,7 +114,7 @@ final class CoverBridge {
     /// 苹果 COMPRESSION_ZLIB 输出裸 deflate（RFC1951）；固件 parseCover 按 zlib 流（RFC1950）解析，
     /// 需补 0x78 0x9C 头 + adler32 尾（与安卓 java.util.zip.Deflater 产物一致）。
     /// 压缩失败时退回"未压缩存储块"，仍是合法 zlib 流。
-    private static func zlibWrap(_ raw: [UInt8]) -> Data {
+    static func zlibWrap(_ raw: [UInt8]) -> Data {
         var out = Data([0x78, 0x9C])
         // 注意：compressed(using:) 定义在 NSData 上，Data 必须先桥接（Data 本身没有这个成员）
         if let deflated = try? (Data(raw) as NSData).compressed(using: .zlib) as Data {

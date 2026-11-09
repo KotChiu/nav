@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A8C0DEDE01F486F6A26CC506 /* PhotoTransferView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8C0DEDE01F486F6A26CC506 /* PhotoTransferView.swift */; };
 		094AC14B9BE91BA0103EED39 /* IndependentRouteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F15BA9922292159C9E3A453 /* IndependentRouteView.swift */; };
 		0A1AD8E8441189C00F2C93DC /* MapStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CD06CCAE5FBBFC390CE8A18 /* MapStyles.swift */; };
 		0CD7650FFA5EE49636033B0A /* SatelliteRaster.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A30D9B90438DDBEA274681 /* SatelliteRaster.swift */; };
@@ -85,6 +86,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		C8C0DEDE01F486F6A26CC506 /* PhotoTransferView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoTransferView.swift; sourceTree = "<group>"; };
 		04C63477564D9DE7E1066725 /* AmapShare.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmapShare.swift; sourceTree = "<group>"; };
 		0E513753F4C1CA0A1F4CB5D2 /* MapFeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapFeeder.swift; sourceTree = "<group>"; };
 		19E629763663B2222DB6D9A3 /* MotoNav.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MotoNav.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -241,6 +243,7 @@
 				C671E80BBEA3EB1E9311EB12 /* MusicBridge.swift */,
 				C671E80CBEA3EB1E9311EB12 /* CoverBridge.swift */,
 				C7C0DEDE01F486F6A26CC504 /* StockBridge.swift */,
+				C8C0DEDE01F486F6A26CC506 /* PhotoTransferView.swift */,
 				88F6F7FEE25CC563EEC49A1F /* CruiseIdleTimer.swift */,
 				CE47CC0D351EABDC9EEE6D04 /* RasterProcessing.swift */,
 				FB643DCAF97E834DC966F034 /* AmapCaptureHost.swift */,
@@ -453,6 +456,7 @@
 				D5BE622C01F486F6A26CC504 /* MusicBridge.swift in Sources */,
 				D5BE622D01F486F6A26CC504 /* CoverBridge.swift in Sources */,
 				A7C0DEDE01F486F6A26CC504 /* StockBridge.swift in Sources */,
+				A8C0DEDE01F486F6A26CC506 /* PhotoTransferView.swift in Sources */,
 				F336897359EC15D9BD17B152 /* CruiseIdleTimer.swift in Sources */,
 				FB6E59E7B7F70EACF4129EE5 /* RasterProcessing.swift in Sources */,
 				20C19A3E34FEE42B5331ACD1 /* AmapCaptureHost.swift in Sources */,
@@ -498,7 +502,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.16.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.motonav;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gechao.motonav;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "MotoNav/MotoNav-Bridging-Header.h";
@@ -581,7 +585,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 0.16.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.motonav.share;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gechao.motonav.share;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -606,7 +610,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 0.16.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.motonav.share;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gechao.motonav.share;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -634,7 +638,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.16.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.motonav;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gechao.motonav;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "MotoNav/MotoNav-Bridging-Header.h";

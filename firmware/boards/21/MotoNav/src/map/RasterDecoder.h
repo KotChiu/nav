@@ -227,6 +227,26 @@ bool parseRaster(const uint8_t *p, uint32_t len) {
   return true;
 }
 
+// The reserved bytes make the envelope invalid as a legacy raster header.
+bool parseRasterWire(const uint8_t *p, uint32_t len) {
+  if (len <= 16 || memcmp(p, "MRZ\1", 4) != 0 || rd32(p + 8) || rd32(p + 12))
+    return parseRaster(p, len);
+  const uint32_t bytes = (uint32_t)rd32(p + 4);
+  if (bytes < 17 || bytes > RASTER_MAX_BYTES) return false;
+  if (!viceInflater) viceInflater = (tinfl_decompressor *)malloc(sizeof(tinfl_decompressor));
+  if (!viceInflater) return false;
+  uint8_t *raster = (uint8_t *)ps_malloc(bytes);
+  if (!raster) return false;
+  tinfl_init(viceInflater);
+  size_t input = len - 16, output = bytes;
+  const tinfl_status result = tinfl_decompress(viceInflater, p + 16, &input, raster, raster, &output,
+      TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+  const bool accepted = result == TINFL_STATUS_DONE && input == len - 16 && output == bytes &&
+      parseRaster(raster, bytes);
+  free(raster);
+  return accepted;
+}
+
 // ===== v7.12.10-cover 音乐封面（bulk type 5）=====
 // 载荷：'C''V''R' 版本(1)=1 宽(1) 高(1) + zlib 压缩的 RGB565（小端）。宽高 0 表示清除封面。
 tinfl_decompressor *coverInflater = nullptr;

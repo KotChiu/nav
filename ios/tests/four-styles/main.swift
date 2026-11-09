@@ -24,3 +24,18 @@ check(!RasterPacket.valid(Data(packet.dropLast())),"truncated palette packet is 
 var corrupt = packet; corrupt[10] = 0
 check(!RasterPacket.valid(corrupt),"invalid dimensions rejected")
 print("PASS four independent style pipeline checks")
+
+// Dense colors can exceed the 480 KB RLE budget at 1200².
+var random: UInt32 = 19
+let dense = (0..<(n * n)).map { _ -> UInt32 in
+    random = 1_664_525 &* random &+ 1_013_904_223
+    return 0xff000000 | (random >> 28) * 0x111111
+}
+let adaptive = try MapStyles.originalPacket(dense, frameId: 1, x0: -1200, y0: 1200, shouldCancel: { false })
+let header = [UInt8](adaptive.prefix(16))
+let width = RasterPacket.u16(header, 10)
+let mm = RasterPacket.u16(header, 14) & 0x7fff
+check(width < n && width * mm == 2_400_000, "dense original reduces resolution while keeping coverage")
+check(RasterPacket.valid(adaptive, frame: 1, x: -1200, y: 1200), "adaptive packet fits and validates")
+check(RasterPacket.decode(adaptive)?.count == width * width, "adaptive palette packet decodes")
+print("PASS dense original map falls back to a transmissible packet")
