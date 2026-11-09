@@ -651,7 +651,8 @@ static void lvglHybridTick() {
   for (int i = 0; i < 3; ++i) setLvglHidden(homeOrbit[i], !showHome);
   setLvglHidden(homeHintLabel, !showHome);
   if (showHome) {
-    const char *status = waitSt == WAIT_LOST ? "Link lost" : ((bleConnected && bleAuthed) ? "Ready" : "No link");
+    const char *status = waitSt == WAIT_LOST ? "LINK LOST" :
+                         ((bleConnected && bleAuthed) ? "CONNECTED" : "PHONE OFFLINE");
     uint32_t statusColor = waitSt == WAIT_LOST ? C_UI_ACCENT2
       : ((bleConnected && bleAuthed) ? C_UI_ACCENT : C_UI_SUB);
     if (setLvglLabelText(homeStatusLabel, status)) {
