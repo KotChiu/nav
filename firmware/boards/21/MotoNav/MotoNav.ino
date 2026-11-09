@@ -337,6 +337,14 @@ void loop() {
   if (inNav && page == PAGE_PHOTO) {
     dragAbort(); page = PAGE_HOME; pageAt = millis(); navDirty = true;
   }
+  // Settings/market/ride screens must not hide an imminent maneuver.
+  // Non-navigation pages are for glances, not continuous riding.
+  if (inNav && page >= PAGE_SETTINGS && page <= PAGE_STOCKS &&
+      !cruiseOn && navDir.length() && navDir != "S" &&
+      navDist > 0 && navDist < 200 && millis() - pageAt > 800) {
+    dragAbort();
+    returnToNavigation();
+  }
   if (page == PAGE_PHOTO && photoDirty && !sliding && !callOn && !pairOn && !fxOn) drawPhotoPage();
   musicTick();
   weatherTick();                                       // v5.3 天气页
