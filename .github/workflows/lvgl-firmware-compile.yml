@@ -34,5 +34,7 @@ jobs:
         run: |
           arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli core install esp32:esp32@3.3.10 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-      - name: Build 2.1 firmware without flashing
-        run: python3 firmware/build.py --board 21 --jobs 2
+      - name: Compile 2.1 native LVGL framebuffer path without flashing
+        run: python3 firmware/build.py --board 21 --jobs 2 --raster-surface native
+      - name: Compile Arduino_Canvas fallback without flashing
+        run: python3 firmware/build.py --board 21 --jobs 2 --raster-surface legacy
