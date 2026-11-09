@@ -4,6 +4,9 @@
 #include <FFat.h>
 #include "../../ui/BadgePacket.h"
 
+// PageNavigation.h is included after this file in the sketch entrypoint.
+void drawBadgePage();
+
 static const char *const BADGE_PATH = "/badge.bin";
 static const char *const BADGE_TEMP_PATH = "/badge.tmp";
 
