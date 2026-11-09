@@ -32,6 +32,7 @@ ST7701S RGB 显示的初始化、DMA、VSYNC、背光、480×480 物理缓冲由
 
 - `LvglNavigationHud.h` 使用 LVGL label、圆形限速牌与动态颜色，接入 `LvglOverlay.h`；`MapFrame.h` 在 LVGL 已启动时不再重复绘制旧速度 HUD，未启动时保留 Canvas 回退。状态包括实时车速、超速颜色、限速及摄像头距离。
 - `MapState.h` 通过 accessor 把白天/夜间地图主题色提供给 LVGL 层，避免把地图内部宏硬编码进先于地图初始化的头文件中。
+- `ui/MapProjection.h` 提取地图世界坐标到 466×466 逻辑画布的旋转/缩放变换；`MapFrame.h`、`RouteRenderer.h`、`RadarEffects.h` 已复用相同计算，桌面导航示例也共用此函数。`MapProjectionTest.cpp` 验证不同方向/比例下与旧 Canvas 数学公式一致，**尚未替换 Canvas 地图填充和画线 API**。
 - `LvglPageSlide.h` + `PageSlideGeometry.h` 解耦滑动几何计算与显示实现。真机设置、互动角色、股票三页的相互滑动只移动 LVGL 对象，不再逐行 memcpy；两张原有 PSRAM 快照仍复用。混合绘制页**没有**启用此路径，避免地图突然空白。
 - `LvglOverlay.h` 保持地图正常的异步刷新节奏；LVGL HUD 更新不会强制把地图变成同步刷新。
 - 桌面模拟器在导航预览中使用相同 `LvglNavigationHud`，并接入原生滑动层；数据及道路仍是模拟的。
