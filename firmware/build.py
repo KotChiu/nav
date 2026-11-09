@@ -77,7 +77,12 @@ def main():
                     '--build-path', str(build / 'build'), '--fqbn', FQBN,
                     '--build-property', 'compiler.c.extra_flags=' + prefix_map,
                     '--build-property', 'compiler.cpp.extra_flags=' + cpp_flags, '--output-dir', str(output), str(source)], check=True)
-    print(package(output, ROOT / 'dist' / args.board / 'panel0', version, args.board))
+    # Never overwrite a native build artifact with a legacy-fallback image:
+    # both variants share the firmware version but NOT the display backend.
+    dist = ROOT / 'dist' / args.board / 'panel0'
+    if args.board == '21' and args.raster_surface == 'legacy':
+        dist = dist / 'legacy-fallback'
+    print(package(output, dist, version, args.board))
 
 
 if __name__ == '__main__':
