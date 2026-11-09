@@ -73,7 +73,7 @@ static void settingsBrightnessEvent(lv_event_t *event) {
   if (eventCode == LV_EVENT_PRESSED) lvglCaptureTouch = true;
   else if (eventCode == LV_EVENT_VALUE_CHANGED) {
     screenBrightness = constrain((int)lv_slider_get_value(settings.brightness), 5, 180);
-    panel->setBrightness(screenBrightness);
+    ::panel->setBrightness(screenBrightness);
     settingsRefresh();
   } else if (eventCode == LV_EVENT_RELEASED ||
              eventCode == LV_EVENT_PRESS_LOST) {
