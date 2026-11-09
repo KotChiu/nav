@@ -104,7 +104,10 @@ bool parseBadge(const uint8_t *packet, uint32_t len) {
   badgeActive = true;
   ++badgeRevision;
   badgeStored = badgePersist(packet, len);
-  pendingBadgeStatus = badgeStored ? "BDG,SAVED,1" : "BDG,SAVED,0";
+  // Include transfer ID to prevent an old notification from being mistaken
+  // for a later photo upload.
+  pendingBadgeStatus = String("BDG,SAVED,") + bulks[MotoNavBadge::BULK_TYPE].id +
+                       (badgeStored ? ",1" : ",0");
   // A new photo appears immediately when idle, without a swipe through
   // navigation pages. Never replace the screen during active navigation,
   // a call, pairing or an animation.
