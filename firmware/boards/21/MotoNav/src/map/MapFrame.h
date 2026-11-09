@@ -61,8 +61,8 @@ void drawMapFrame() {
     const uint8_t *pp = mapShow + featOff[i];
     for (int k = 0; k < np; k++) {
       float dx = rd16(pp + 4 * k) - lx, dy = rd16(pp + 4 * k + 2) - ly;
-      tmpX[k] = CX + sc * (dx * cs - dy * sn);
-      tmpY[k] = MAP_PY - sc * (dx * sn + dy * cs);
+      motonavProjectDelta(dx, dy, sc, cs, sn, CX, MAP_PY,
+                          tmpX[k], tmpY[k]);
     }
     uint8_t cls = featCls[i];
     if (cls & 0x80) {
