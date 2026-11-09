@@ -6,6 +6,7 @@ on:
       - 'tools/lvgl-simulator/**'
       - 'firmware/boards/21/MotoNav/ui/**'
       - 'firmware/tests/RasterBridgeTest.cpp'
+      - 'firmware/tests/BadgePacketTest.cpp'
       - 'firmware/boards/21/MotoNav/src/display/LvglOverlay.h'
       - '.github/workflows/lvgl-simulator.yml'
   workflow_dispatch:
@@ -21,6 +22,10 @@ jobs:
         run: |
           g++ -std=c++17 -Wall -Wextra -pedantic firmware/tests/RasterBridgeTest.cpp -o /tmp/motonav-raster-test
           /tmp/motonav-raster-test
+      - name: Test badge protocol and CRC32
+        run: |
+          g++ -std=c++17 -Wall -Wextra -pedantic firmware/tests/BadgePacketTest.cpp -o /tmp/motonav-badge-test
+          /tmp/motonav-badge-test
       - name: Configure
         run: cmake -S tools/lvgl-simulator -B build/lvgl-simulator -DCMAKE_BUILD_TYPE=Release
       - name: Build
