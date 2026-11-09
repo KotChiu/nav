@@ -13,6 +13,7 @@
 
 #include "../../firmware/boards/21/MotoNav/ui/LvglHomeChrome.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglWeatherView.h"
+#include "../../firmware/boards/21/MotoNav/ui/LvglMusicStatusView.h"
 
 namespace {
 constexpr int W = 466, H = 466, PANEL = 480, BORDER = (PANEL - W) / 2;
@@ -31,6 +32,7 @@ bool navigation = false, linkReady = true, playing = true;
 bool dragging = false;
 int downX = 0, downY = 0;
 MotoNavHomeChrome chrome;
+MotoNavMusicStatusView demoMusicWidgets;
 lv_obj_t *brightnessValue = nullptr;
 lv_obj_t *musicState = nullptr;
 static const char *pageNames[] = {"HOME", "WEATHER", "MUSIC", "COMPANION", "STOCKS", "SETTINGS"};
@@ -163,18 +165,20 @@ void weather(lv_obj_t *screen) {
 void musicEvent(lv_event_t *ev) {
   if (lv_event_get_code(ev) != LV_EVENT_CLICKED) return;
   playing = !playing;
-  if (musicState) lv_label_set_text(musicState, playing ? "PLAYING" : "PAUSED");
+  motonavMusicStatusUpdate(demoMusicWidgets, false, false,
+                           playing ? "PLAYING" : "PAUSED", "", false);
 }
 void music(lv_obj_t *screen) {
-  centerLabel(screen, "MUSIC", 50, 0x27DBE9, &lv_font_montserrat_28);
+  demoMusicWidgets = MotoNavMusicStatusView{};
+  motonavMusicStatusCreate(demoMusicWidgets, screen);
+  motonavMusicStatusUpdate(demoMusicWidgets, false, false,
+                           playing ? "PLAYING" : "PAUSED", "", false);
+  motonavMusicStatusVisible(demoMusicWidgets, true);
   lv_obj_t *disc = box(screen, 136, 111, 194, 194, 0x111F2A, LV_RADIUS_CIRCLE, 0x1ED7E8);
   (void)disc;
   centerLabel(screen, "♪", 161, 0xF225A8, &lv_font_montserrat_40);
   centerLabel(screen, "DEMO AUDIO", 310, 0xFFFFFF, &lv_font_montserrat_20);
-  musicState = lv_label_create(screen);
-  lv_label_set_text(musicState, playing ? "PLAYING" : "PAUSED");
-  lv_obj_set_style_text_color(musicState, lv_color_hex(SUB), 0);
-  lv_obj_align(musicState, LV_ALIGN_TOP_MID, 0, 340);
+  centerLabel(screen, "SIMULATED PHONE AUDIO", 341, SUB, &lv_font_montserrat_14);
   button(screen, "PREV", 78, 374, 92, musicEvent);
   button(screen, "PLAY / PAUSE", 184, 374, 118, musicEvent);
   button(screen, "NEXT", 316, 374, 78, musicEvent);
