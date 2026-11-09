@@ -37,8 +37,13 @@ static lv_obj_t *homeOrbit[3] = {};
 static lv_obj_t *homeWeatherCard = nullptr;
 static lv_obj_t *homeStatusChip = nullptr;
 static lv_obj_t *musicHeaderLabel = nullptr;
+static lv_obj_t *musicPlaceholder = nullptr;
 static lv_obj_t *musicStatusLabel = nullptr;
 static lv_obj_t *musicFooterLabel = nullptr;
+static lv_obj_t *photoTitleLabel = nullptr;
+static lv_obj_t *photoEmptyCard = nullptr;
+static lv_obj_t *photoEmptyTitle = nullptr;
+static lv_obj_t *photoEmptyHint = nullptr;
 static lv_obj_t *watchTimeLabel = nullptr;
 static lv_obj_t *watchDateLabel = nullptr;
 static lv_obj_t *watchTempLabel = nullptr;
@@ -203,7 +208,7 @@ static void configureTransparentLabel(lv_obj_t *label, int width, int height) {
 #define STOCK_CHART_W 306
 #define STOCK_CHART_H 52
 #define STOCK_ROW_H 124
-#define STOCK_PANEL_COLOR 0x000000
+#define STOCK_PANEL_COLOR 0x122633
 
 static void stockCanvasRect(lv_color_t *buffer, int width, int x, int y,
                             int w, int h, lv_color_t color) {
@@ -335,6 +340,15 @@ static void createLvglOverlay() {
   lv_obj_align(musicFooterLabel, LV_ALIGN_TOP_MID, 0, 402);
   lv_obj_add_flag(musicFooterLabel, LV_OBJ_FLAG_HIDDEN);
 
+  musicPlaceholder = MotoNavUI::panel(screen, 169, 126, 128, 128, 64,
+                                      MotoNavUI::SurfaceRaised);
+  lv_obj_set_style_border_color(musicPlaceholder,
+                               MotoNavUI::color(MotoNavUI::Line), 0);
+  lv_obj_t *musicGlyph = MotoNavUI::label(musicPlaceholder, LV_SYMBOL_AUDIO,
+                                  &lv_font_montserrat_40, MotoNavUI::Mint);
+  lv_obj_center(musicGlyph);
+  lv_obj_add_flag(musicPlaceholder, LV_OBJ_FLAG_HIDDEN);
+
   // A precise instrument face replaces the old pixel clock and cartoon.
   homeOrbit[0] = MotoNavUI::arc(screen, 24, 24, 418,
                               222, 318, MotoNavUI::Mint, 3);
@@ -388,10 +402,26 @@ static void createLvglOverlay() {
   MotoNavUI::rideCreate(screen);
   MotoNavUI::weatherCreate(screen);
 
+  // Electronic badge: full-bleed photos remain untouched; only the empty
+  // state receives a tasteful type-led invitation.
+  photoEmptyCard = MotoNavUI::panel(screen, 78, 129, 310, 230, 30);
+  lv_obj_add_flag(photoEmptyCard, LV_OBJ_FLAG_HIDDEN);
+  photoEmptyTitle = MotoNavUI::label(photoEmptyCard, "YOUR BADGE",
+                             &lv_font_montserrat_28, MotoNavUI::Text);
+  lv_obj_align(photoEmptyTitle, LV_ALIGN_TOP_MID, 0, 63);
+  photoEmptyHint = MotoNavUI::label(photoEmptyCard,
+                          "SEND AN IMAGE FROM YOUR PHONE",
+                          &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_align(photoEmptyHint, LV_ALIGN_TOP_MID, 0, 131);
+  photoTitleLabel = MotoNavUI::label(screen, "MOTONAV  /  BADGE",
+                         &lv_font_montserrat_16, MotoNavUI::Mint);
+  lv_obj_align(photoTitleLabel, LV_ALIGN_TOP_MID, 0, 62);
+  lv_obj_add_flag(photoTitleLabel, LV_OBJ_FLAG_HIDDEN);
+
   stockTitleLabel = lv_label_create(screen);
   lv_obj_set_style_text_color(stockTitleLabel, lv_color_white(), 0);
   lv_obj_set_style_text_font(stockTitleLabel, &lv_font_montserrat_28, 0);
-  lv_label_set_text(stockTitleLabel, "MARKET | DAY");
+  lv_label_set_text(stockTitleLabel, "MARKETS  /  TODAY");
   lv_obj_align(stockTitleLabel, LV_ALIGN_TOP_MID, 0, 52);
   lv_obj_add_flag(stockTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
@@ -399,7 +429,7 @@ static void createLvglOverlay() {
   lv_obj_set_style_text_color(stockStatusLabel, lvglColor565(C_UI_SUB), 0);
   lv_obj_set_style_text_font(stockStatusLabel, &lv_font_montserrat_16, 0);
   configureOpaqueLabel(stockStatusLabel, 360, 24);
-  lv_label_set_text(stockStatusLabel, "Waiting for iPhone quotes");
+  lv_label_set_text(stockStatusLabel, "WAITING FOR PHONE QUOTES");
   lv_obj_align(stockStatusLabel, LV_ALIGN_TOP_MID, 0, 88);
   lv_obj_add_flag(stockStatusLabel, LV_OBJ_FLAG_HIDDEN);
 
@@ -408,7 +438,8 @@ static void createLvglOverlay() {
   lv_obj_set_pos(stockList, CX - 172, 115);
   lv_obj_set_style_pad_all(stockList, 0, 0);
   lv_obj_set_style_border_width(stockList, 0, 0);
-  lv_obj_set_style_bg_color(stockList, lv_color_black(), 0);
+  lv_obj_set_style_bg_color(stockList, MotoNavUI::color(MotoNavUI::Background), 0);
+  lv_obj_set_style_bg_opa(stockList, LV_OPA_TRANSP, 0);
   lv_obj_set_scroll_dir(stockList, LV_DIR_VER);
   lv_obj_set_scrollbar_mode(stockList, LV_SCROLLBAR_MODE_AUTO);
   lv_obj_add_flag(stockList, LV_OBJ_FLAG_SCROLL_MOMENTUM);
@@ -418,7 +449,7 @@ static void createLvglOverlay() {
     lv_obj_set_size(row, 332, STOCK_ROW_H);
     lv_obj_set_pos(row, 0, i * (STOCK_ROW_H + 8));
     lv_obj_set_style_pad_all(row, 0, 0);
-    lv_obj_set_style_radius(row, 8, 0);
+    lv_obj_set_style_radius(row, 17, 0);
     lv_obj_set_style_border_width(row, 1, 0);
     lv_obj_set_style_border_color(row, lvglColor565(C_UI_LINE), 0);
     lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
@@ -594,9 +625,14 @@ static void lvglHybridTick() {
 
   MotoNavUI::settingsUpdate(showSettings);
 
-  setLvglHidden(musicHeaderLabel, !showMusic);
+  setLvglHidden(musicHeaderLabel, !showMusic || (coverValid && coverImg));
+  setLvglHidden(musicPlaceholder, !showMusic || (coverValid && coverImg));
   setLvglHidden(musicStatusLabel, !showMusic);
   setLvglHidden(musicFooterLabel, !showMusic);
+  bool showPhotoEmpty = page == PAGE_PHOTO && !photoValid && !sliding &&
+                        !pairOn && !callOn && !fxOn;
+  setLvglHidden(photoEmptyCard, !showPhotoEmpty);
+  setLvglHidden(photoTitleLabel, !showPhotoEmpty);
   if (showMusic) {
     const char *musicState = !(bleConnected && bleAuthed)
         ? "PHONE OFFLINE" : hidMusicMode && !appleMedia.available
@@ -618,7 +654,10 @@ static void lvglHybridTick() {
     const char *status = waitSt == WAIT_LOST ? "Link lost" : ((bleConnected && bleAuthed) ? "Ready" : "No link");
     uint32_t statusColor = waitSt == WAIT_LOST ? C_UI_ACCENT2
       : ((bleConnected && bleAuthed) ? C_UI_ACCENT : C_UI_SUB);
-    if (setLvglLabelText(homeStatusLabel, status)) homeTextChanged = true;
+    if (setLvglLabelText(homeStatusLabel, status)) {
+      homeTextChanged = true;
+      lv_obj_center(homeStatusLabel);
+    }
     setLvglTextColor(homeStatusLabel, lvglColor565(statusColor));
   }
 
