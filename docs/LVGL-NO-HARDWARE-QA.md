@@ -5,6 +5,7 @@
 ## 哪些部分能先完成
 
 - ESP32-S3 固件必须能够针对真实的 2.1 英寸 Waveshare 屏幕**编译通过**，但不能据此宣称能够点亮屏幕或稳定导航。
+- 当前主绘制表面已提供 **不继承 `Arduino_Canvas`** 的 `MotoNavRasterSurface`；它继承 `Arduino_GFX` 以兼容旧图形算法，属于迁移过渡层，并非纯 LVGL 画法。CI 分别编译这个新路径和原来的 `Arduino_Canvas` 回退路径。
 - Mac/Linux 上的 LVGL 8.3 SDL2 模拟器必须能够运行所有 6 个当前固件页面，复用真实天气/音乐/导航 HUD、地图 Canvas、多边形及路线绘制模块，**数据来源是固定场景，不是 BLE/GPS**。
 - 纯 C++ 单元测试应覆盖：地图坐标投影、手势翻页/几何覆盖、导航箭头方位、所有方向类型、图像像素/解码和 framebuffer 不重叠等。
 - 每次 PR 提交可运行 CI，无设备也会生成 14 张 480×480 圆屏场景 PNG，以及一个可查看的 `index.html`。来自模拟器，**不是物理屏幕截图**。
@@ -16,6 +17,10 @@
 brew install cmake sdl2
 cmake -S tools/lvgl-simulator -B build/lvgl-simulator -DCMAKE_BUILD_TYPE=Release
 cmake --build build/lvgl-simulator -j4
+
+# 单独编译 2.1 新旧绘制路径（不会烧录）
+python3 firmware/build.py --board 21 --raster-surface native
+python3 firmware/build.py --board 21 --raster-surface legacy
 
 # 普通交互模式：左右键换页，N 开关导航
 ./build/lvgl-simulator/motonav-lvgl-simulator
