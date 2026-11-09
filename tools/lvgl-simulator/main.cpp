@@ -45,6 +45,7 @@ bool pressed = false, dirty = true;
 int pageIndex = 0, brightness = 70, speed = 68;
 bool navigation = false, linkReady = true, playing = true;
 float demoTurnDegrees = 90.f, demoProgress = 0.45f;
+MotoNavCueKind demoCueKind = MotoNavCueKind::Right;
 bool demoNearTurn = false;
 bool dragging = false;
 int downX = 0, downY = 0;
@@ -190,7 +191,7 @@ void navigationPage(lv_obj_t *screen) {
   motonavMapCanvasVisible(demoMapCanvas, true);
   demoTurnCues = MotoNavNavigationCues{};
   motonavNavigationCuesCreate(demoTurnCues, screen);
-  motonavNavigationCuesUpdate(demoTurnCues, demoTurnDegrees,
+  motonavNavigationCuesUpdate(demoTurnCues, demoCueKind, demoTurnDegrees,
                               demoNearTurn ? "35m" : "250m",
                               demoNearTurn, demoProgress,
                               true, true, false,
@@ -456,10 +457,16 @@ int main(int argc, char **argv) {
     }
     navigation = true;
     linkReady = true;
-    const float headings[] = {0, -90, 90, 90, 90};
+    const float headings[] = {0, -90, 90, 90, 90, 0, 0};
+    const MotoNavCueKind kinds[] = {
+      MotoNavCueKind::Straight, MotoNavCueKind::Left,
+      MotoNavCueKind::Right, MotoNavCueKind::Right,
+      MotoNavCueKind::Right, MotoNavCueKind::UTurn, MotoNavCueKind::Arrive
+    };
     const char *names[] = {"nav-straight", "nav-left", "nav-right", "nav-near",
-                            "nav-overspeed"};
-    for (int i = 0; i < 5; ++i) {
+                            "nav-overspeed", "nav-uturn", "nav-arrive"};
+    for (int i = 0; i < 7; ++i) {
+      demoCueKind = kinds[i];
       demoTurnDegrees = headings[i];
       demoNearTurn = i == 3;
       demoProgress = i == 3 ? 0.95f : 0.45f;
@@ -470,6 +477,7 @@ int main(int argc, char **argv) {
     navigation = false;
     demoNearTurn = false;
     demoTurnDegrees = 90;
+    demoCueKind = MotoNavCueKind::Right;
     speed = 68;
     linkReady = false;
     showPage(0);
