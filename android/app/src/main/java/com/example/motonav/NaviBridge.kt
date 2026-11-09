@@ -98,6 +98,9 @@ object NaviBridge {
 
     // ---- 推算用的状态（只在主线程里读写）----
     private var active = false
+    // Shared with the optional badge uploader: never send a large image
+    // while turn-by-turn guidance or cruise is active.
+    val guidanceActive: Boolean get() = active || cruising
     private val arrivalSession = ArrivalPolicy()
     private var curDir = ""
     private var curAngle: Int? = null          // v1.8 当前路口的实际转弯角度（度），算不出来时为 null
