@@ -70,6 +70,8 @@ void setup() {
     setScreenDeg(pr.getInt("rotd", screenRot * 90), false);         // v6.4 任意角度
     bootBrand = BootAnimation::valid(pr.getInt("bootbrand", 0));
     hidMusicMode = pr.getBool("mediahid", false);
+    cleanOn = pr.getBool("cleanmap", false);
+    progOn = pr.getBool("progring", true);
     screenBrightness = constrain(pr.getInt("bright", 70), 5, 180);
     fastFlushOn = pr.getBool("fastf", true);
     pr.end();
