@@ -51,3 +51,18 @@ jobs:
         run: cmake --build build/lvgl-simulator --parallel 4
       - name: Smoke test
         run: xvfb-run -a ctest --test-dir build/lvgl-simulator --output-on-failure
+      - name: Render all mocked pages and critical navigation states
+        run: |
+          mkdir -p build/motonav-visual
+          xvfb-run -a ./build/lvgl-simulator/motonav-lvgl-simulator --smoke-test \
+            --capture-dir build/motonav-visual
+          python3 tools/lvgl-simulator/verify_captures.py build/motonav-visual
+      - name: Publish simulator gallery for offline UI review
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: motonav-lvgl-visual-gallery
+          path: |
+            build/motonav-visual/index.html
+            build/motonav-visual/*.png
+          retention-days: 14
