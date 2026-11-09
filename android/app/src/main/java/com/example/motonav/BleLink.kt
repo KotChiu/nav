@@ -414,6 +414,7 @@ object BleLink {
             val id = p[2].toIntOrNull() ?: return
             MapFeeder.onAck(t, id)
             BadgeTransfer.onAck(t, id)
+            if (t == 6 && p.size >= 4) BadgeTransfer.onStored(p[3] == "1")
         }
     }
 
