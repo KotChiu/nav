@@ -8,12 +8,16 @@
 - `firmware/boards/21/MotoNav/ui/LvglWeatherView.h`：天气主页面的温度、天气状态、未来时段与空气质量状态，真机读取 BLE 解码结果，模拟器注入固定 fixture。天气详情/中文文字位图暂时走设备原 Canvas。
 - `firmware/boards/21/MotoNav/ui/LvglMusicStatusView.h`：音乐页标题、播放状态和操作提示，真机使用 HID/AMS/音乐反馈状态；模拟器使用可点击的模拟播放状态。
 - `firmware/boards/21/MotoNav/ui/LvglNavigationHud.h`：地图模式顶部实时车速、限速牌和测速距离；真机使用导航状态与地图配色，PC 用模拟车速/限速。
+- `firmware/boards/21/MotoNav/ui/LvglMapCanvas.h`：真机地图模式使用独立 PSRAM RGB565 画布作为 LVGL Canvas source，绘制较小的真实道路多边形和线路。桌面第 1 页模拟导航时使用**相同的 polygon/line Canvas 函数**，另加程序生成的示例栅格底图（不是真实地图）。
+- `firmware/boards/21/MotoNav/ui/LvglNavigationCues.h`：Mac 可预览原生转向箭头/圆弧；设备上出于导航安全，`MOTONAV_NATIVE_NAV_CUES` 默认为 0，未完成实机方向与视觉对照前不会替换旧箭头。
 - `firmware/boards/21/MotoNav/ui/LvglPageSlide.h` + `PageSlideGeometry.h`：设置、互动角色、股票间原生 LVGL 双 image 滑动；真机复用已有两张 PSRAM 快照，PC 用两张 SDL 显示快照。其他页面仍使用旧过渡路径。
 - 2.1 固件 `HomePage.h` 在 LVGL 初始化后不再用 `Arduino Canvas` 重复绘制主页装饰；启动早期仍保留传统 Canvas 回退，避免黑屏。
 
 ## 本轮的模拟数据（不是固件截图/真机等价预览）
 
-**天气主页面和音乐播放状态使用了设备/桌面共享的 LVGL 控件实现，但桌面仍注入固定模拟数据。** 导航路线、股票、互动角色、设置仍以桌面示例控件为主。**导航 HUD 使用共享 LVGL 组件，但底图和道路在 PC 上仍是示例**；设置/互动角色/股票之间的原生滑动已有同源实现。原设备的天气详情、部分位图、音乐封面/歌词及导航地图底图依然需要继续迁移。模拟器不是 ESP32 的像素级回归结果。
+**天气主页面和音乐播放状态使用了设备/桌面共享的 LVGL 控件实现，但桌面仍注入固定模拟数据。** 导航路线、股票、互动角色、设置仍以桌面示例控件为主。**导航 HUD、底图 Canvas 绘图 API 与地图投影、转向 UI 预览使用共享 LVGL 组件，但 PC 的道路与栅格仍是固定示例数据**；非导航状态下主页/天气/音乐/设置/互动角色/股票间的滑动已切换为原生 LVGL 图片平移。原设备的天气详情、部分位图、音乐封面/歌词及导航地图底图依然需要继续迁移。模拟器不是 ESP32 的像素级回归结果。
+
+模拟器与设备共享的地图几何画法可以直接观察，但它**不是 GPS 导航/真实交通灯回放，也不代表实机 FPS 或最终画面一致性**。设备端 Native Canvas 内存不足会自动回退；真实车载转向箭头必须另做实机安全验收。
 
 键盘：← → 换页、数字无；N 开关模拟导航、B 切换模拟手机连接、↑ ↓ 调整模拟车速、Esc 退出。鼠标点击按钮、左右拖动切页、下滑回主页、滚轮切页；设置页滑杆为模拟值，不会操作硬件。
 
