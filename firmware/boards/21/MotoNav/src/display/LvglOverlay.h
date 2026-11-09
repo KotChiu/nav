@@ -6,6 +6,7 @@
 #include "../../ui/LvglWeatherView.h"
 #include "../../ui/LvglMusicStatusView.h"
 #include "../../ui/LvglNavigationHud.h"
+#include "../../ui/LvglNavigationCues.h"
 #include "../../ui/LvglMapCanvas.h"
 #include "../../ui/LvglPageSlide.h"
 #include "../../ui/LvglRasterAssets.h"
@@ -20,6 +21,15 @@ static MotoNavHomeChrome lvglHomeChrome;
 static MotoNavWeatherView lvglWeatherView;
 static MotoNavMusicStatusView lvglMusicView;
 static MotoNavNavigationHud lvglMapHud;
+static MotoNavNavigationCues lvglTurnCues;
+static bool lvglNativeCueSupported() {
+#if MOTONAV_NATIVE_NAV_CUES
+  return navDir == "S" || navDir == "L" || navDir == "R" ||
+         navDir == "SL" || navDir == "SR";
+#else
+  return false;
+#endif
+}
 static MotoNavMapCanvas lvglMapCanvas;
 static bool lvglMapCanvasCurrentFrame = false;
 static uint16_t *lvglMapCanvasPixels() {
@@ -407,6 +417,7 @@ static void createLvglOverlay() {
   motonavWeatherViewCreate(lvglWeatherView, screen);
   motonavMusicStatusCreate(lvglMusicView, screen);
   motonavNavigationHudCreate(lvglMapHud, screen);
+  motonavNavigationCuesCreate(lvglTurnCues, screen);
   // The existing PSRAM snapshots will be shown as two LVGL image objects.
   // It is not another framebuffer allocation.
   motonavLvglSlideCreate(lvglSwipeLayer, screen, LCD_WIDTH, LCD_HEIGHT);
@@ -857,6 +868,23 @@ static void lvglHybridTick() {
     motonavNavigationHudUpdate(lvglMapHud, speedKmh, hasCam, camLimit,
                                cameraRange.c_str(), over,
                                lvglColor565(mapHudColor565()), lvglColor565(C_RED));
+  }
+  bool showNativeCues = showMapHud && lvglMapCanvasCurrentFrame &&
+                        lvglNativeCueSupported() && !cruiseOn;
+  motonavNavigationCuesVisible(lvglTurnCues, showNativeCues);
+  if (showNativeCues) {
+    float angle = 0;
+    const bool far = navDir != "S" && navDist > STAGE_FAR_M;
+    if (!far) (void)dirAngle(navDir, angle);
+    const bool near = navDir != "S" && navDist <= MAP_NEAR_M;
+    const bool veryNear = navDir != "S" && navDist <= STAGE_NEAR_M;
+    float progress = ringActive ? ringShown : tripFrac();
+    const bool trip = !ringActive && progress >= 0;
+    const bool track = navDir != "S" && !trip;
+    String distance = distText(navDist);
+    motonavNavigationCuesUpdate(lvglTurnCues, angle, distance.c_str(),
+      near, progress, ringActive, track, trip,
+      lvglColor565(trip ? TRIP_DONE_C : veryNear ? C_ORANGE : C_YELLOW));
   }
   bool showMusic = page == PAGE_MUSIC && !sliding && !pairOn && !callOn && !fxOn;
   motonavMusicStatusVisible(lvglMusicView, showMusic);
