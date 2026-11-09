@@ -166,3 +166,114 @@ final class CoverBridge {
         return out
     }
 }
+
+
+// MARK: - Electronic badge photo (firmware BLE bulk type 6)
+/// A user-selected photo is crop-to-fill resized to 240x240 RGB565.
+/// Header: "BDG1" + LE16 width + LE16 height + LE32 CRC32(raw pixels).
+/// No compression in v1: firmware validates exact length and CRC before ACK.
+final class BadgeBridge: ObservableObject {
+    static let shared = BadgeBridge()
+    private static let size = 240
+    private var serial = 0
+    private var pendingId: Int?
+    @Published var selectedImage: UIImage?
+    @Published var status = "选择照片后可上传到 2.1 英寸电子吧唧。"
+    @Published var sending = false
+
+    func upload() {
+        guard let image = selectedImage else { status = "请先选择一张图片"; return }
+        guard BleLink.shared.isReady, BleLink.shared.badgeSupported else {
+            status = "需要连接支持电子吧唧的 2.1 英寸固件"; return
+        }
+        guard !NaviBridge.shared.navigating && !WebMotorSession.shared.running else {
+            status = "请结束导航或巡航、停车后再上传图片"; return
+        }
+        guard !sending else { return }
+        sending = true
+        status = "正在裁剪图片并生成 RGB565…"
+        serial = (serial + 1) & 0xFF
+        let id = serial
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let packet = Self.encode(image)
+            DispatchQueue.main.async {
+                guard let self = self, self.serial == id else { return }
+                guard let packet = packet else {
+                    self.sending = false; self.status = "图片处理失败，请选择其他照片"; return
+                }
+                guard BleLink.shared.isReady && BleLink.shared.badgeSupported else {
+                    self.sending = false; self.status = "圆屏连接已断开"; return
+                }
+                self.pendingId = id
+                self.status = "BLE 传输中（约 \(packet.count / 1024) KB），等待圆屏确认…"
+                BleLink.shared.sendBulk(type: 6, id: id, data: packet)
+            }
+        }
+    }
+
+    func acknowledge(id: Int) {
+        guard pendingId == id else { return }
+        pendingId = nil
+        sending = false
+        status = "图片已显示，正在确认设备存储状态…"
+    }
+
+    func saved(_ yes: Bool) {
+        status = yes
+          ? "图片已上传并保存到设备，断开手机仍可显示。"
+          : "图片已上传到设备内存，但设备存储未挂载，重启后可能丢失。"
+        sending = false
+    }
+
+    private static func crc32(_ bytes: [UInt8]) -> UInt32 {
+        var crc: UInt32 = 0xFFFF_FFFF
+        for byte in bytes {
+            crc ^= UInt32(byte)
+            for _ in 0..<8 {
+                crc = (crc >> 1) ^ ((crc & 1) != 0 ? 0xEDB8_8320 : 0)
+            }
+        }
+        return ~crc
+    }
+
+    private static func encode(_ image: UIImage) -> Data? {
+        let px = size
+        let canvas = UIGraphicsImageRenderer(size: CGSize(width: px, height: px))
+        let square = canvas.image { _ in
+            UIColor.black.setFill()
+            UIRectFill(CGRect(x: 0, y: 0, width: px, height: px))
+            let imageSize = image.size
+            guard imageSize.width > 0 && imageSize.height > 0 else { return }
+            let scale = max(CGFloat(px) / imageSize.width, CGFloat(px) / imageSize.height)
+            let w = imageSize.width * scale, h = imageSize.height * scale
+            image.draw(in: CGRect(x: (CGFloat(px)-w)/2, y: (CGFloat(px)-h)/2,
+                                  width: w, height: h))
+        }
+        guard let cg = square.cgImage else { return nil }
+        var rgba = [UInt8](repeating: 0, count: px*px*4)
+        let bitmapInfo = CGBitmapInfo.byteOrder32Big.rawValue |
+                         CGImageAlphaInfo.premultipliedLast.rawValue
+        guard let ctx = CGContext(data: &rgba, width: px, height: px,
+                                  bitsPerComponent: 8, bytesPerRow: px*4,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: bitmapInfo) else { return nil }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: px, height: px))
+        var rgb = [UInt8](repeating: 0, count: px*px*2)
+        for i in 0..<(px*px) {
+            let r = UInt16(rgba[4*i]), g = UInt16(rgba[4*i+1]), b = UInt16(rgba[4*i+2])
+            let value = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+            rgb[2*i] = UInt8(value & 0xFF)
+            rgb[2*i+1] = UInt8(value >> 8)
+        }
+        let crc = crc32(rgb)
+        var data = Data([0x42, 0x44, 0x47, 0x31,
+                         UInt8(px & 255), UInt8(px >> 8),
+                         UInt8(px & 255), UInt8(px >> 8),
+                         UInt8(truncatingIfNeeded: crc),
+                         UInt8(truncatingIfNeeded: crc >> 8),
+                         UInt8(truncatingIfNeeded: crc >> 16),
+                         UInt8(truncatingIfNeeded: crc >> 24)])
+        data.append(contentsOf: rgb)
+        return data
+    }
+}
