@@ -17,6 +17,7 @@
 #include "../../firmware/boards/21/MotoNav/ui/LvglWeatherView.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglMusicStatusView.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglNavigationHud.h"
+#include "../../firmware/boards/21/MotoNav/ui/LvglNavigationCues.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglPageSlide.h"
 #include "../../firmware/boards/21/MotoNav/ui/MapProjection.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglMapCanvas.h"
@@ -44,6 +45,7 @@ int downX = 0, downY = 0;
 MotoNavHomeChrome chrome;
 MotoNavMusicStatusView demoMusicWidgets;
 MotoNavNavigationHud demoNavigationHud;
+MotoNavNavigationCues demoTurnCues;
 MotoNavLvglPageSlide demoSwipe;
 bool demoSlideActive = false, demoSlideHorizontal = true;
 int demoSlideDirection = -1;
@@ -180,6 +182,11 @@ void navigationPage(lv_obj_t *screen) {
   motonavMapCanvasPolyline(demoMapCanvas, routeX, routeY, 5, 11, 0x067D, true);
   motonavMapCanvasCommit(demoMapCanvas);
   motonavMapCanvasVisible(demoMapCanvas, true);
+  demoTurnCues = MotoNavNavigationCues{};
+  motonavNavigationCuesCreate(demoTurnCues, screen);
+  motonavNavigationCuesUpdate(demoTurnCues, 90, "250m", false, 0.45f,
+                              true, true, false, lv_color_hex(0xFDE15A));
+  motonavNavigationCuesVisible(demoTurnCues, true);
   centerLabel(screen, "TURN RIGHT IN 250m", 304, 0xFFFFFF, &lv_font_montserrat_20);
   button(screen, "END MOCK ROUTE", 125, 363, 216, navEvent);
 }
@@ -411,7 +418,8 @@ int main(int argc, char **argv) {
     showPage(0);
     lv_refr_now(nullptr);
     if (!demoMapCanvas.canvas || demoMapCanvas.nativeLines < 2 ||
-        demoMapCanvas.nativePolygons < 2) {
+        demoMapCanvas.nativePolygons < 2 || !demoTurnCues.root ||
+        !demoTurnCues.ring || !demoTurnCues.arrow) {
       std::fprintf(stderr, "Native LVGL map geometry smoke failed\\n");
       return 4;
     }
