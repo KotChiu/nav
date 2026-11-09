@@ -117,7 +117,14 @@ void setup() {
   needFlush = false;
   lvglHybridInit();
   slideBuffersInit();
-  drawWaiting(WAIT_NOLINK);
+  if (badgeActive) {
+    // The badge is usable without any phone connection after reboot.
+    page = PAGE_BADGE;
+    renderPage(PAGE_BADGE);
+    lvglHybridTick();
+  } else {
+    drawWaiting(WAIT_NOLINK);
+  }
   flushSync();
   needFlush = false;
 
