@@ -18,8 +18,8 @@ ST7701S RGB 显示的初始化、DMA、VSYNC、背光、480×480 物理缓冲由
 | 中文天气/音乐与歌词位图 | `ui/LvglRasterAssets.h` 将灰度位图转换成 LVGL image，已有槽位 3/4/5/6/12 | 资源分配失败时保留 Canvas 回退；实机 PSRAM 验证 |
 | **本轮：天气详情中文位图** | 新接入槽位 7/8（降雨/空气），9/10/11（预警）及对应 tint/y 位置 | 降雨条图、预警说明仍由 Canvas 画；无字图/空字图/切换详情需要实测 |
 | 音乐封面 | `MotoNavCoverAsset` 支持圆形 RGB565 封面及旧路径回退 | 实机内存、缩放、层叠/透明 |
-| 导航地图与 HUD | **新增** `ui/LvglNavigationHud.h`：地图上的速度、限速牌、摄像头距离使用和 PC 共享的 LVGL 控件；真实值来自 ESP32 导航状态 | 地图底图、多边形、路线、红绿灯、车道、转向提示、进度环仍使用 Canvas，需要后续迁移 |
-| 滑动切页 | **新增** `ui/LvglPageSlide.h`：设置/互动角色/股票之间的滑动复用原有两张 PSRAM 快照，LVGL 两张 image 移动代替逐行 memcpy | 含导航、天气、音乐的混合绘制仍走旧合成器；需要 2.1 实机测试帧率、PSRAM、触摸、旋转 |
+| 导航地图与 HUD | `ui/LvglNavigationHud.h`：速度、限速、摄像头距离为共享原生 LVGL；`LvglMapCanvas.h`：地图栅格 RGB565、道路、多边形及路线在专用 PSRAM Canvas 上绘制，安全范围内采用 LVGL `draw_polygon/draw_line` | 复杂线条、Vice City 抗锯齿、栅格采样、车道/交通灯等仍复用旧算法；PSRAM 不足或交通灯覆盖时自动退回旧绘制路径 |
+| 滑动切页 | `LvglPageSlide.h` + `TransitionPolicy.h`：非导航的主页/天气/音乐/设置/互动角色/股票复用两张 PSRAM 快照，通过 LVGL Image 平移动画 | 导航中保留旧合成器（`MOTONAV_NATIVE_NAV_SLIDES=0`），需实机测试触摸、旋转及刷新性能 |
 
 ## 本轮变更
 
@@ -33,12 +33,29 @@ ST7701S RGB 显示的初始化、DMA、VSYNC、背光、480×480 物理缓冲由
 - `LvglNavigationHud.h` 使用 LVGL label、圆形限速牌与动态颜色，接入 `LvglOverlay.h`；`MapFrame.h` 在 LVGL 已启动时不再重复绘制旧速度 HUD，未启动时保留 Canvas 回退。状态包括实时车速、超速颜色、限速及摄像头距离。
 - `MapState.h` 通过 accessor 把白天/夜间地图主题色提供给 LVGL 层，避免把地图内部宏硬编码进先于地图初始化的头文件中。
 - `ui/MapProjection.h` 提取地图世界坐标到 466×466 逻辑画布的旋转/缩放变换；`MapFrame.h`、`RouteRenderer.h`、`RadarEffects.h` 已复用相同计算，桌面导航示例也共用此函数。`MapProjectionTest.cpp` 验证不同方向/比例下与旧 Canvas 数学公式一致，**尚未替换 Canvas 地图填充和画线 API**。
-- `LvglPageSlide.h` + `PageSlideGeometry.h` 解耦滑动几何计算与显示实现。真机设置、互动角色、股票三页的相互滑动只移动 LVGL 对象，不再逐行 memcpy；两张原有 PSRAM 快照仍复用。混合绘制页**没有**启用此路径，避免地图突然空白。
+- `LvglPageSlide.h` + `PageSlideGeometry.h` 解耦滑动几何计算与显示实现；最初仅设置/互动角色/股票，随后扩展到**所有非导航状态下的六个页面**。动画仍复用原来的两张 PSRAM 快照；导航进行时的切页受 `MOTONAV_NATIVE_NAV_SLIDES=0` 保护。
 - `LvglOverlay.h` 保持地图正常的异步刷新节奏；LVGL HUD 更新不会强制把地图变成同步刷新。
 - 桌面模拟器在导航预览中使用相同 `LvglNavigationHud`，并接入原生滑动层；数据及道路仍是模拟的。
 - `PageSlideGeometryTest.cpp` 验证正反方向与横竖滑动全过程无缝覆盖；SDL2 冒烟检查创建导航 HUD 和原生滑动层。
 
-**仍未完成**：统一的 LVGL 地图图元/底图、路线与转向覆盖，触摸到刷新端到端性能与安全验收，彻底去除 Canvas，物理 RGB DMA/PSRAM 的专有适配层。当前为功能迁移的一部分，不可直接宣称全部 LVGL 迁移完成。
+## 本轮：地图图层、导航提示与缓冲所有权
+
+- `ui/LvglMapCanvas.h`：**新的地图显示容器已真正接入 2.1 固件**。在 LVGL 初始化后、进入地图模式时，按需申请一块独立的 466×466 RGB565 PSRAM 图像源（434312 字节），与主 LVGL 绘制缓冲、DMA 快照明确分离。地图原有栅格采样器仍写入这一源缓冲，由 LVGL Canvas 负责合成到屏幕；尚不是栅格算法的完全原生重写。
+- `MapPrimitives.h`：道路/导航路线的折线，以及公园、水面的多边形，在点数不超过 96、坐标有限且位于安全边界内时，使用 **LVGL 8.3 `lv_canvas_draw_line/polygon`** 直接绘制。大型路网、超界多边形、Vice City 特殊抗锯齿仍自动回退到旧 Canvas 绘制，但输出进入同一 LVGL 地图图层。
+- `MapFrame.h`：开始地图帧时临时切换绘制目标，绘完立即恢复主逻辑 framebuffer，再通知 LVGL 图层失效重绘。尚未迁移的交通灯提示可能覆盖地图，因此检测到交通灯覆盖时本帧自动使用旧路径。低 PSRAM、来电、配对、滑动和异常情况也会回退。不会让 PSRAM 地图图片与已提交的 RGB DMA 源互相别名。
+- `ui/LvglNavigationCues.h` + `TurnCueGeometry.h`：新实现原生 LVGL 转向箭头/方向与环形进度显示，Mac 模拟器可预览；**固件默认 `MOTONAV_NATIVE_NAV_CUES=0`，真实导航依旧使用旧箭头和进度环**，待实机验证再开放开关。复杂 U 型转弯/终点样式仍有旧路由兜底，不能当作所有箭头已迁移。
+- `ui/TransitionPolicy.h`：非导航时六个页面间的滑动已走 LVGL 图片合成；**导航时仍用原来的逐像素滑动代码**，以免车辆运行中丢失提示。
+- `ui/FrameOwnership.h` + `DisplayPipeline.h`：明确主逻辑绘制、LVGL Map 源、RGB flush 快照的职责。PSRAM/信号量/任务创建失败时退回同步刷新；VSYNC 等待超时不再无限阻塞，而是记录错误后重启。实际设备若 VSYNC 异常，可能重复重启，**必须实机测试**。
+- 新增纯 C++ `FrameOwnershipTest.cpp`、`TransitionPolicyTest.cpp`、`TurnCueGeometryTest.cpp`，以及 SDL2 原生地图 Polygon/Polyline/Canvas 冒烟与缓存共享测试。箭头朝向测试在 CI 中曾识别并拦截一次左右翼反向错误，已修复。
+
+### 仍未完成（不能称为全量 LVGL）
+
+- 旧 Canvas **仍负责**复杂地图图元、栅格索引解码、车道、交通灯、部分转向图形/边缘环、天气详情和部分音乐 UI；只是绘制目标部分已接入 LVGL 的地图 Canvas 源。
+- 真机原生箭头/进度环及导航中的原生滑动**默认关闭**；需安全验证所有转向、路口临近、0°/90°/314° 屏幕方向。
+- `Arduino_ESP32RGBPanel` / ST7701S 初始化、RGB 时序、VSYNC、DMA、背光与 480×480 实际像素输出仍须保留板级适配器；LVGL 不取代驱动。
+- 统一 framebuffer 所有权已建立第一版，但仍有一份额外的地图 PSRAM 源与 RGB 帧快照，**未完成零拷贝/最终去除 Arduino Canvas**；需要实体板子测 FPS、PSRAM 峰值、上传大包时任务并发、重启回退等。
+
+**验收顺序**：先拿模拟器用各种导航状态核对箭头、道路和地图层，再进行硬件刷写的独立评审；检查车道/摄像头/交通灯叠层、异常角度、帧率以及长时间 BLE 断连；确认通过后才启用原生导航提示，并考虑删掉剩余 Canvas UI。
 
 ## 验证标准
 
