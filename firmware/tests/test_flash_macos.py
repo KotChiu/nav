@@ -42,7 +42,7 @@ class FlashTests(unittest.TestCase):
             root = Path(folder)
             source = root / "firmware/boards/21/MotoNav/src/core/FirmwareConfig.h"
             source.parent.mkdir(parents=True)
-            source.write_text('#define FW_VERSION "v7.13.0-companion"\\n')
+            source.write_text('#define FW_VERSION "v7.13.0-companion"\n')
             qa_dir = root / "firmware/dist/21/panel0/qa-autotest"
             qa_dir.mkdir(parents=True)
             app = bytes([0xE9]) + b"qa application"
@@ -81,11 +81,11 @@ class FlashTests(unittest.TestCase):
                 flash.validate_images("21", root, qa=False)
 
     def test_qa_check_is_non_destructive_and_explicit(self):
-        with mock.patch.object(flash, "find_tool", return_value="esptool"), \\
+        with mock.patch.object(flash, "find_tool", return_value="esptool"), \
              mock.patch.object(flash, "validate_images",
-                               return_value=("7.13.0-companion", {})) as validate, \\
-             mock.patch.object(flash, "usb_ports", return_value=[]), \\
-             mock.patch.object(flash.subprocess, "run") as run, \\
+                               return_value=("7.13.0-companion", {})) as validate, \
+             mock.patch.object(flash, "usb_ports", return_value=[]), \
+             mock.patch.object(flash.subprocess, "run") as run, \
              contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(flash.main(["--board", "21", "--qa", "--check"]), 0)
             validate.assert_called_once_with("21", qa=True)
