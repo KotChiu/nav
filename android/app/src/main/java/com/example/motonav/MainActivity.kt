@@ -723,6 +723,11 @@ class MainActivity : AppCompatActivity() {
 
     /** 圆屏显示：小地图开关、风格、夜间配色、清爽模式、行程环、弯道上色、走过的路线、预判 */
     private fun mapSection(card: LinearLayout) {
+        card.addView(pillButton("电子吧唧 · 上传照片", CYAN) {
+            startActivity(Intent(this, BadgeActivity::class.java))
+        })
+        card.addView(note("新 2.1 英寸固件支持独立吧唧页；从相册选照片，停车时通过蓝牙上传。"))
+        card.addView(divider(top = 12))
         card.addView(settingRow("显示小地图", "关掉后圆屏只显示大箭头", toggle({ MapFeeder.enabled }) { MapFeeder.setEnabled(it) }))
         card.addView(divider())
         // v6.0 风格：右边小预览图，点「更换」打开全屏风格卡片
