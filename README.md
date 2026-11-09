@@ -54,6 +54,7 @@ Windows PowerShell 构建：`.\\firmware\\build.ps1 -Board 21`。镜像生成目
 | 目标 | 入口 |
 | --- | --- |
 | 了解整体代码与 BLE / 固件 | [固件说明](firmware/README.md)、[音乐与 BLE HID](docs/BLE-HID.md) |
+| 开发者架构与任务 | [系统架构](docs/ARCHITECTURE.md)、[路线图](docs/ROADMAP.md)、[代码审查](docs/CODE-REVIEW-2026-11-09.md)、[AI Coding 规范](AGENTS.md) |
 | Android 构建、地图与天气 Key | 下方「Windows 一键打包」「地图与天气配置」；入口 `一键打包.bat` |
 | iPhone 安装及源码构建 | [新手安装](docs/INSTALL-BEGINNER.md)、[签名与续签](docs/INSTALL-IOS.md)；Mac 构建 `bash scripts/build-ios-local.sh` |
 | 2.1 硬件、主题与性能 | [2.1 开发记录](docs/BOARD-2.1-RESEARCH.md) |
