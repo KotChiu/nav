@@ -166,44 +166,83 @@ class BadgeActivity : AppCompatActivity() {
 /** Keep transfer status independent of Activity lifecycle and navigation UI. */
 object BadgeTransfer {
     @Volatile var status: String = "选择照片后上传到圆屏"
-    private var pendingId = -1
+    @Volatile private var pendingId = -1
+    @Volatile private var encoding = false
     private var seq = 0
+    private val handler = Handler(Looper.getMainLooper())
 
     fun upload(photo: Bitmap) {
         if (!BleLink.isConnected || !BleLink.badgeSupported) {
             status = "圆屏未连接或固件不支持电子吧唧"
             return
         }
-        if (pendingId >= 0) { status = "正在等待上一张图片的设备确认"; return }
+        if (NaviBridge.guidanceActive) {
+            status = "导航或巡航中不可上传图片，请停车结束导航后重试"
+            return
+        }
+        synchronized(this) {
+            if (encoding || pendingId >= 0) {
+                status = "上一张图片仍在处理或等待设备确认"
+                return
+            }
+            encoding = true
+        }
         status = "正在处理图片…"
         Thread {
             try {
                 val packet = BadgeActivity.encode(photo)
-                Handler(Looper.getMainLooper()).post {
+                handler.post {
+                    encoding = false
                     if (!BleLink.isConnected || !BleLink.badgeSupported) {
                         status = "连接中断，尚未上传"
                     } else {
                         seq = (seq + 1) and 255
-                        pendingId = seq
-                        status = "BLE 传输中（约 ${packet.size / 1024} KB），等待圆屏确认…"
-                        BleLink.sendBulk(6, seq, packet)
+                        val id = seq
+                        pendingId = id
+                        if (BleLink.sendBulk(6, id, packet)) {
+                            status = "BLE 传输中（约 ${packet.size / 1024} KB），等待圆屏确认…"
+                            handler.postDelayed({
+                                if (pendingId == id) {
+                                    pendingId = -1
+                                    status = "等待圆屏确认超时，可能未上传成功，请重试"
+                                }
+                            }, 120_000)
+                        } else {
+                            pendingId = -1
+                            status = "蓝牙队列未就绪，无法开始上传"
+                        }
                     }
                 }
             } catch (_: Exception) {
-                status = "处理图片失败，请换一张照片"
+                handler.post {
+                    encoding = false
+                    status = "处理图片失败，请换一张照片"
+                }
             }
         }.start()
     }
 
-    fun onAck(type: Int, id: Int) {
-        if (type == 6 && id == pendingId) {
-            pendingId = -1
-            status = "图片已显示，正在确认设备存储状态…"
+    fun onAck(type: Int, id: Int, saved: Boolean?) {
+        if (type != 6 || id != pendingId) return
+        if (saved == null) {
+            status = "图片已发送，等待存储状态…"
+        } else {
+            onStored(id, saved)
         }
     }
-    fun onStored(saved: Boolean) {
+
+    fun onStored(id: Int, saved: Boolean) {
+        if (id != pendingId) return // old or reordered notifications
         pendingId = -1
         status = if (saved) "上传成功，图片已保存到设备，可脱离手机显示"
                  else "图片已显示但未持久保存，断电后可能丢失"
+    }
+
+    fun connectionLost() {
+        if (encoding || pendingId >= 0) {
+            pendingId = -1
+            encoding = false
+            status = "蓝牙断开，图片上传未确认；重连后请重试"
+        }
     }
 }
