@@ -26,5 +26,7 @@ if(APPLE)
   target_compile_definitions(motonav-lvgl-simulator PRIVATE SDL_MAIN_HANDLED)
 endif()
 
+add_executable(motonav-raster-test test_raster.cpp)
 enable_testing()
+add_test(NAME raster_bridge_unit COMMAND motonav-raster-test)
 add_test(NAME lvgl_simulator_smoke COMMAND motonav-lvgl-simulator --smoke-test)
