@@ -278,7 +278,7 @@ void slideCommit() {
       wxAskAt = millis();
     }
     if (inNav) navDirty = true;
-    else { riderPrevF = -1; riderPrevZ = -2; catForce = true; }
+    else { onWaitScreen = true; needFlush = true; }
   }
 }
 
@@ -293,7 +293,7 @@ void slideCancel() {
   else if (page == 1) wxDirty = false;
   else if (page >= 3 && page <= PAGE_PHOTO) needFlush = true;
   else if (inNav) navDirty = true;
-  else { onWaitScreen = true; catForce = true; }
+  else { onWaitScreen = true; needFlush = true; }
   needFlush = true;
 }
 
