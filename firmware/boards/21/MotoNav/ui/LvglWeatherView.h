@@ -31,8 +31,15 @@ struct MotoNavWeatherView {
   lv_obj_t *forecastCell[6] = {};
   lv_obj_t *forecastTime[6] = {};
   lv_obj_t *forecastValue[6] = {};
+  lv_obj_t *forecastIcon[6] = {};
   lv_obj_t *footer = nullptr;
 };
+
+static inline void motonavWeatherHide(lv_obj_t *obj, bool hidden) {
+  if (!obj || lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN) == hidden) return;
+  if (hidden) lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
+}
 
 static inline void motonavWeatherLabelText(lv_obj_t *obj, const char *text) {
   if (!obj) return;
@@ -97,20 +104,20 @@ static inline void motonavWeatherViewCreate(MotoNavWeatherView &view, lv_obj_t *
     lv_obj_clear_flag(view.forecastCell[i], LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
     view.forecastTime[i] = motonavWeatherLabel(view.forecastCell[i], 1, 8, 56,
                                                 &lv_font_montserrat_14, 0x9DAFBF);
-    view.forecastValue[i] = motonavWeatherLabel(view.forecastCell[i], 0, 43, 58,
+    view.forecastValue[i] = motonavWeatherLabel(view.forecastCell[i], 0, 39, 58,
                                                  &lv_font_montserrat_16, 0xFFFFFF);
+    view.forecastIcon[i] = motonavWeatherLabel(view.forecastCell[i], 0, 62, 58,
+                                                &lv_font_montserrat_14, 0x38C7D8);
   }
   view.footer = motonavWeatherLabel(view.root, 47, 398, 372,
                                     &lv_font_montserrat_14, 0x93A5B6);
   lv_obj_move_background(view.root);
-  lv_obj_add_flag(view.root, LV_OBJ_FLAG_HIDDEN);
+  motonavWeatherHide(view.root, true);
 }
 
 static inline void motonavWeatherViewVisible(MotoNavWeatherView &view, bool visible) {
   if (!view.root) return;
-  const bool hidden = lv_obj_has_flag(view.root, LV_OBJ_FLAG_HIDDEN);
-  if (visible && hidden) lv_obj_clear_flag(view.root, LV_OBJ_FLAG_HIDDEN);
-  else if (!visible && !hidden) lv_obj_add_flag(view.root, LV_OBJ_FLAG_HIDDEN);
+  motonavWeatherHide(view.root, !visible);
 }
 
 static inline void motonavWeatherViewUpdate(MotoNavWeatherView &view,
@@ -129,7 +136,8 @@ static inline void motonavWeatherViewUpdate(MotoNavWeatherView &view,
     snprintf(buffer, sizeof(buffer), "%d\xC2\xB0", model.temperature);
     motonavWeatherLabelText(view.temperature, buffer);
     motonavWeatherLabelText(view.summary,
-                             model.hourly ? "HOURLY FORECAST" : "DAILY FORECAST");
+                             !model.connected ? "PHONE OFFLINE - LAST DATA" :
+                             (model.hourly ? "HOURLY FORECAST" : "DAILY FORECAST"));
     motonavWeatherLabelText(view.forecastTitle,
                              model.hourly ? "NEXT HOURS" : "NEXT DAYS");
     snprintf(buffer, sizeof(buffer), "AQI %s  |  ALERTS %d  |  %s",
@@ -148,11 +156,13 @@ static inline void motonavWeatherViewUpdate(MotoNavWeatherView &view,
   for (int i = 0; i < 6; ++i) {
     const bool needed = i < count;
     if (!needed) {
-      lv_obj_add_flag(view.forecastCell[i], LV_OBJ_FLAG_HIDDEN);
+      motonavWeatherHide(view.forecastCell[i], true);
       continue;
     }
-    lv_obj_clear_flag(view.forecastCell[i], LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_pos(view.forecastCell[i], start + i * 62, 295);
+    motonavWeatherHide(view.forecastCell[i], false);
+    if (lv_obj_get_x(view.forecastCell[i]) != start + i * 62 ||
+        lv_obj_get_y(view.forecastCell[i]) != 295)
+      lv_obj_set_pos(view.forecastCell[i], start + i * 62, 295);
     if (model.hourly) {
       snprintf(buffer, sizeof(buffer), "%02d:00", model.forecastHourOrWeek[i] % 24);
       motonavWeatherLabelText(view.forecastTime[i], buffer);
@@ -166,5 +176,16 @@ static inline void motonavWeatherViewUpdate(MotoNavWeatherView &view,
                model.forecastLowOrRain[i]);
     }
     motonavWeatherLabelText(view.forecastValue[i], buffer);
+    if (model.hourly) {
+      if (model.forecastLowOrRain[i] >= 10)
+        snprintf(buffer, sizeof(buffer), "%d%% RAIN", model.forecastLowOrRain[i]);
+      else snprintf(buffer, sizeof(buffer), "%s", motonavWeatherCondition(model.forecastIcon[i]));
+    } else snprintf(buffer, sizeof(buffer), "%s", motonavWeatherCondition(model.forecastIcon[i]));
+    // Compact condition words must fit in 58 px at 14 pt.
+    if (strstr(buffer, "CLOUD")) strcpy(buffer, "CLOUD");
+    else if (strstr(buffer, "RAIN") && !strchr(buffer, '%')) strcpy(buffer, "RAIN");
+    else if (strstr(buffer, "CLEAR")) strcpy(buffer, "SUN");
+    else if (strlen(buffer) > 9) strcpy(buffer, "OTHER");
+    motonavWeatherLabelText(view.forecastIcon[i], buffer);
   }
 }
