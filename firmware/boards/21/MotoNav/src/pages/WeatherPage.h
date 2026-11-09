@@ -155,11 +155,11 @@ void drawWeather() {
   gfx->fillScreen(C_UI_BG);
   if (lvglUiReady) {
     // Share the real LVGL weather layout with the desktop simulator.
-    // Keep the phone-rendered Chinese location/wind bitmaps as Canvas assets
-    // until the BLE text-image path becomes an LVGL image source.
+    // Packed BLE Chinese labels now have native LVGL image adapters.
+    // Canvas remains a fallback for images that fail PSRAM allocation.
     if (wxHave) {
-      drawTextImg(3, 56, 0xFF);
-      drawTextImg(4, 232, 0xC0);
+      if (!lvglTextAssetReady[3]) drawTextImg(3, 56, 0xFF);
+      if (!lvglTextAssetReady[4]) drawTextImg(4, 232, 0xC0);
     }
     needFlush = true;
     return;
