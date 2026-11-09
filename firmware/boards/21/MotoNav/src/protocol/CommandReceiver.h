@@ -351,7 +351,7 @@ void handleText(const String &m) {
     screenBrightness = constrain(b, 5, 180);
     brightnessSaveAt = millis() + 800;
     if (flushDone) {                                    // v2.2 刷屏任务在用总线时先等它推完
-      xSemaphoreTake(flushDone, portMAX_DELAY);
+      flushWait(); // Same bounded, fail-closed wait as other display updates.
       panel->setBrightness(screenBrightness);
       xSemaphoreGive(flushDone);
     } else {
