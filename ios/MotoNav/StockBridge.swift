@@ -44,7 +44,25 @@ final class StockBridge: ObservableObject {
     private let periodKey = "stock_chart_period_v1"
     private var timer: Timer?
     private var fetching = false
+    private var quoteTask: URLSessionDataTask?
+    // Version each request batch. cancel() does not guarantee its callback
+    // cannot arrive later, especially after a chart-period or watchlist change.
+    private var quoteGeneration: UInt64 = 0
+    private var candleGeneration: UInt64 = 0
     private var candleTasks: [String: URLSessionDataTask] = [:]
+
+    private func invalidateQuotes() {
+        quoteGeneration &+= 1
+        quoteTask?.cancel()
+        quoteTask = nil
+        fetching = false
+    }
+
+    private func invalidateCandles() {
+        candleGeneration &+= 1
+        candleTasks.values.forEach { $0.cancel() }
+        candleTasks.removeAll()
+    }
 
     private init() {
         period = ChartPeriod(rawValue: UserDefaults.standard.string(forKey: periodKey) ?? "") ?? .day
@@ -72,6 +90,8 @@ final class StockBridge: ObservableObject {
     func refresh() {
         guard !fetching, !watchlist.isEmpty else { return }
         fetching = true
+        quoteGeneration &+= 1
+        let generation = quoteGeneration
         status = "正在更新行情…"
         let codes = watchlist
         guard let url = URL(string: "https://qt.gtimg.cn/q=\(codes.joined(separator: ","))") else {
@@ -82,7 +102,7 @@ final class StockBridge: ObservableObject {
         var request = URLRequest(url: url, timeoutInterval: 12)
         request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)", forHTTPHeaderField: "User-Agent")
         request.setValue("https://gu.qq.com/", forHTTPHeaderField: "Referer")
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else { return }
             let parsed: Result<[Quote], Error>
             if let error = error {
@@ -96,6 +116,8 @@ final class StockBridge: ObservableObject {
                 parsed = .failure(StockError.invalidData)
             }
             DispatchQueue.main.async {
+                guard self.quoteGeneration == generation, self.watchlist == codes else { return }
+                self.quoteTask = nil
                 self.fetching = false
                 switch parsed {
                 case .success(let values):
@@ -112,7 +134,9 @@ final class StockBridge: ObservableObject {
                     self.status = "行情更新失败：\(error.localizedDescription)"
                 }
             }
-        }.resume()
+        }
+        quoteTask = task
+        task.resume()
     }
 
     @discardableResult
@@ -121,7 +145,10 @@ final class StockBridge: ObservableObject {
         guard !watchlist.contains(code) else { return false }
         watchlist.append(code)
         save()
+        invalidateQuotes()
+        invalidateCandles()
         quotes.removeAll()
+        candles.removeAll()
         refresh()
         return true
     }
@@ -129,10 +156,10 @@ final class StockBridge: ObservableObject {
     func remove(_ code: String) {
         let key = (Self.normalize(code) ?? code).lowercased()
         watchlist.removeAll { $0.lowercased() == key }
+        invalidateQuotes()
+        invalidateCandles()
         quotes.removeAll { $0.code.lowercased() == key }
-        candles.removeValue(forKey: key.uppercased())
-        candleTasks.filter { $0.key.hasSuffix(":" + key) }.forEach { $0.value.cancel() }
-        candleTasks = candleTasks.filter { !$0.key.hasSuffix(":" + key) }
+        candles.removeAll()
         status = watchlist.isEmpty ? "自选列表为空" : "已删除 \(key.uppercased())"
         save()
         sendLatest()
@@ -160,8 +187,7 @@ final class StockBridge: ObservableObject {
         guard self.period != period else { return }
         self.period = period
         UserDefaults.standard.set(period.rawValue, forKey: periodKey)
-        candleTasks.values.forEach { $0.cancel() }
-        candleTasks.removeAll()
+        invalidateCandles()
         candles.removeAll()
         status = period == .day ? "正在更新日 K…" : "正在更新 1 分 K…"
         sendLatest()
@@ -169,12 +195,14 @@ final class StockBridge: ObservableObject {
     }
 
     private func fetchCandles() {
+        invalidateCandles()
+        let generation = candleGeneration
         let period = self.period
         for quote in quotes {
             let code = quote.code.lowercased()
             let taskKey = "\(period.rawValue):\(code)"
             if period == .minute && !Self.supportsMinuteK(code) {
-                fetchMinuteFallback(quote, taskKey: taskKey)
+                fetchMinuteFallback(quote, taskKey: taskKey, generation: generation)
                 continue
             }
             let chartCode = Self.chartCode(code, period: period)
@@ -198,6 +226,8 @@ final class StockBridge: ObservableObject {
                 }
                 DispatchQueue.main.async {
                     guard let self = self,
+                          self.candleGeneration == generation,
+                          self.period == period,
                           self.watchlist.contains(where: { $0.lowercased() == code }) else { return }
                     self.candleTasks.removeValue(forKey: taskKey)
                     self.candles[quote.code] = values
@@ -209,7 +239,7 @@ final class StockBridge: ObservableObject {
         }
     }
 
-    private func fetchMinuteFallback(_ quote: Quote, taskKey: String) {
+    private func fetchMinuteFallback(_ quote: Quote, taskKey: String, generation: UInt64) {
         let code = quote.code.lowercased()
         let queryCode = String(code.prefix(2)) + quote.code.dropFirst(2)
         guard let url = URL(string: "https://ifzq.gtimg.cn/appstock/app/minute/query?code=\(queryCode)") else { return }
@@ -234,6 +264,8 @@ final class StockBridge: ObservableObject {
             }
             DispatchQueue.main.async {
                 guard let self = self,
+                      self.candleGeneration == generation,
+                      self.period == .minute,
                       self.watchlist.contains(where: { $0.lowercased() == code }) else { return }
                 self.candleTasks.removeValue(forKey: taskKey)
                 self.candles[quote.code] = values
