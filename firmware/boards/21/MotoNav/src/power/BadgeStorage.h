@@ -9,6 +9,30 @@ void drawBadgePage();
 
 static const char *const BADGE_PATH = "/badge.bin";
 static const char *const BADGE_TEMP_PATH = "/badge.tmp";
+static const char *const BADGE_BACKUP_PATH = "/badge.bak";
+
+// The backup holds the previous confirmed image across interrupted updates.
+static bool badgeReadFile(const char *path) {
+  if (!badgePixels) return false;
+  File file = FFat.open(path, FILE_READ);
+  if (!file) return false;
+  if (file.size() != MotoNavBadge::PACKET_BYTES) { file.close(); return false; }
+  uint8_t header[MotoNavBadge::HEADER_BYTES] = {};
+  if (file.read(header, sizeof(header)) != sizeof(header)) { file.close(); return false; }
+  if (header[0] != 'B' || header[1] != 'D' || header[2] != 'G' ||
+      header[3] != '1' ||
+      MotoNavBadge::le16(header + 4) != MotoNavBadge::SIZE ||
+      MotoNavBadge::le16(header + 6) != MotoNavBadge::SIZE) {
+    file.close(); return false;
+  }
+  const size_t count = file.readBytes(reinterpret_cast<char *>(badgePixels),
+                                      MotoNavBadge::PIXEL_BYTES);
+  file.close();
+  return count == MotoNavBadge::PIXEL_BYTES &&
+         MotoNavBadge::le32(header + 8) ==
+         MotoNavBadge::crc32(reinterpret_cast<const uint8_t *>(badgePixels),
+                             MotoNavBadge::PIXEL_BYTES);
+}
 
 void badgeInit() {
   badgePixels = static_cast<uint16_t *>(ps_malloc(MotoNavBadge::PIXEL_BYTES));
@@ -21,49 +45,54 @@ void badgeInit() {
     Serial.println("BADGE: FFat not mounted (no auto-format); RAM-only mode");
     return;
   }
-  File file = FFat.open(BADGE_PATH, FILE_READ);
-  if (!file) return;
-  if (file.size() != MotoNavBadge::PACKET_BYTES) { file.close(); return; }
-  uint8_t header[MotoNavBadge::HEADER_BYTES] = {};
-  if (file.read(header, sizeof(header)) != sizeof(header)) { file.close(); return; }
-  // Check the header BEFORE reading a potentially invalid image.
-  if (header[0] != 'B' || header[1] != 'D' || header[2] != 'G' || header[3] != '1' ||
-      MotoNavBadge::le16(header + 4) != MotoNavBadge::SIZE ||
-      MotoNavBadge::le16(header + 6) != MotoNavBadge::SIZE) {
-    file.close(); return;
+  // An interrupted rename leaves the earlier valid image in .bak. Never
+  // format or delete either copy during startup recovery.
+  if (badgeReadFile(BADGE_PATH) || badgeReadFile(BADGE_BACKUP_PATH)) {
+    badgeActive = true;
+    badgeStored = true;
+    ++badgeRevision;
+    Serial.println("BADGE: recovered validated persisted photo");
+  } else if (FFat.exists(BADGE_PATH) || FFat.exists(BADGE_BACKUP_PATH)) {
+    Serial.println("BADGE: stored images failed CRC/size validation");
   }
-  const size_t count = file.readBytes(reinterpret_cast<char *>(badgePixels),
-                                      MotoNavBadge::PIXEL_BYTES);
-  file.close();
-  if (count != MotoNavBadge::PIXEL_BYTES ||
-      MotoNavBadge::le32(header + 8) !=
-      MotoNavBadge::crc32(reinterpret_cast<const uint8_t *>(badgePixels),
-                          MotoNavBadge::PIXEL_BYTES)) {
-    Serial.println("BADGE: persisted image CRC failed");
-    return;
-  }
-  badgeActive = true;
-  badgeStored = true;
-  ++badgeRevision;
-  Serial.println("BADGE: loaded persisted photo");
 }
 
 static bool badgePersist(const uint8_t *packet, size_t bytes) {
   if (!badgeStorageReady) return false;
+  // FFat FILE_WRITE appends on some implementations; explicitly discard an
+  // old/incomplete temporary file before creating the new one.
+  if (FFat.exists(BADGE_TEMP_PATH) && !FFat.remove(BADGE_TEMP_PATH))
+    return false;
   File file = FFat.open(BADGE_TEMP_PATH, FILE_WRITE);
   if (!file) return false;
   const bool wrote = file.write(packet, bytes) == bytes;
   file.flush();
   file.close();
   if (!wrote) { FFat.remove(BADGE_TEMP_PATH); return false; }
-  if (!FFat.rename(BADGE_TEMP_PATH, BADGE_PATH)) {
-    // FAT drivers do not all support overwrite-by-rename.
-    if (FFat.exists(BADGE_PATH)) FFat.remove(BADGE_PATH);
-    if (!FFat.rename(BADGE_TEMP_PATH, BADGE_PATH)) {
-      FFat.remove(BADGE_TEMP_PATH);
+
+  // Validate the on-disk copy's exact size before touching the old photo.
+  File check = FFat.open(BADGE_TEMP_PATH, FILE_READ);
+  if (!check) { FFat.remove(BADGE_TEMP_PATH); return false; }
+  const bool complete = check.size() == bytes;
+  check.close();
+  if (!complete) { FFat.remove(BADGE_TEMP_PATH); return false; }
+
+  const bool hadOld = FFat.exists(BADGE_PATH);
+  if (hadOld) {
+    // Active photo remains available until a complete new file exists.
+    // Previous .bak is redundant while .bin exists.
+    if (FFat.exists(BADGE_BACKUP_PATH) && !FFat.remove(BADGE_BACKUP_PATH))
       return false;
-    }
+    if (!FFat.rename(BADGE_PATH, BADGE_BACKUP_PATH)) return false;
   }
+  if (!FFat.rename(BADGE_TEMP_PATH, BADGE_PATH)) {
+    // New image failed to commit: restore the old image, if possible. The
+    // backup remains recoverable at startup even if this rename fails.
+    if (hadOld) FFat.rename(BADGE_BACKUP_PATH, BADGE_PATH);
+    return false;
+  }
+  // Keep the previous image as a one-generation fallback in case the new
+  // FAT file becomes corrupted after a power loss.
   return true;
 }
 
