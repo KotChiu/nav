@@ -47,6 +47,8 @@ def find_tool():
 
 
 def validate_images(board_id, root=ROOT, qa=False):
+    if qa and board_id != "21":
+        raise ValueError("QA 自检固件仅支持微雪 2.1，不能烧录到其它板型。")
     board = BOARDS[board_id]
     source = root / "firmware" / board["source"]
     if not source.exists():
@@ -60,8 +62,6 @@ def validate_images(board_id, root=ROOT, qa=False):
         version = (root / 'firmware/RELEASE_VERSION').read_text().strip()
         if not re.fullmatch(r'\d+\.\d+\.\d+(?:-[A-Za-z0-9][A-Za-z0-9.-]*)?', version):
             raise ValueError("固件版本标记无效。")
-    if qa and board_id != "21":
-        raise ValueError("QA 自检固件仅支持微雪 2.1，不能烧录到其它板型。")
     folder = root / "firmware/dist" / board["folder"] / "panel0"
     if qa:
         folder = folder / "qa-autotest"
