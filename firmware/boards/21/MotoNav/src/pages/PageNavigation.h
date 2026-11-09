@@ -30,6 +30,12 @@ void slideBuffersInit() {
   }
 }
 
+// Native LVGL status mirrors the actual player protocol state. Bitmap
+// lyrics, Chinese title/artist and cover art stay on Canvas temporarily.
+String musicStatusLVGL;
+String musicFooterLVGL;
+bool musicLyricsShownLVGL = false;
+
 // v7.8 音乐页：歌名/歌手图片栏 5/6；#Z,有会话,播放中,按钮位掩码。
 // v7.12.10-cover 收到封面（bulk type 5）时改为封面圆盘布局：圆盘 r=64 居上，歌名/歌手/按钮下移，不放歌词。
 void drawMusic() {
@@ -62,7 +68,7 @@ void drawMusic() {
         dst[i] = src[u];
       }
     }
-  } else printCentered("MUSIC", CX, 65, 4, C_UI_ACCENT);
+  } else if (!lvglUiReady) printCentered("MUSIC", CX, 65, 4, C_UI_ACCENT);
   bool linked = bleConnected && bleAuthed;
   if (hidMusicMode && linked && !appleMedia.available) {
     printCentered("PHONE MEDIA KEYS", CX, coverShow ? 194 : 158, 2, C_WHITE);
@@ -73,6 +79,7 @@ void drawMusic() {
   } else printCentered("PHONE OFFLINE", CX, coverShow ? 205 : 170, 3, C_UI_SUB);
   bool showLyrics = linked && hidMusicMode && musicLyrics && appleMedia.available && imgs[12].showW > 0 && !coverShow;
   if (showLyrics) drawTextImg(12, 242, 0xDD);
+  musicLyricsShownLVGL = showLyrics;
   const char *feedback[] = {"", "SENT", "PHONE RECEIVED", "DONE", "NO RESPONSE", "NO PLAYER", "HID SENT", "HID NOT READY", "HID SEND FAILED", "AMS SENT", "AMS SEND FAILED", "AMS QUEUED"};
   String state = linked && musicHave ? (musicPlaying ? "PLAYING" : "PAUSED") : "NO PLAYER";
   if (hidMusicMode) {
@@ -80,7 +87,9 @@ void drawMusic() {
       : !appleMedia.playback.known ? "STATE UNKNOWN" : appleMedia.playback.state == 1 ? "PLAYING" : appleMedia.playback.state == 0 ? "PAUSED" : "SEEKING";
   }
   if (musicAck > 0 && musicAck <= 11) state = feedback[musicAck];
-  printCentered(state, CX, showLyrics ? 272 : coverShow ? 276 : 257, 2, musicAck == 4 ? C_UI_ACCENT2 : C_UI_SUB);
+  musicStatusLVGL = state;
+  if (!lvglUiReady)
+    printCentered(state, CX, showLyrics ? 272 : coverShow ? 276 : 257, 2, musicAck == 4 ? C_UI_ACCENT2 : C_UI_SUB);
   for (int i = 0; !lvglUiReady && i < 3; i++) {
     int x = CX + (i - 1) * 100, y = coverShow ? 360 : 335;
     bool enabled = hidMusicMode ? (hidMediaReady() || appleMedia.controlReady(i)) : linked && musicHave;
@@ -107,9 +116,13 @@ void drawMusic() {
       double elapsed = appleMedia.playback.elapsed + appleMedia.playback.rate * (millis() - appleMedia.playbackAt) / 1000.0;
       int sec = (int)constrain(elapsed, 0.0, duration), total = (int)duration;
       char time[32]; snprintf(time, sizeof(time), "%d:%02d / %d:%02d", sec/60, sec%60, total/60, total%60);
-      printCentered(time, CX, coverShow ? 410 : 392, 2, C_UI_SUB);
-    }
-  } else printCentered("SWIPE LEFT TO RETURN", CX, coverShow ? 410 : 402, 2, C_UI_SUB);
+      musicFooterLVGL = time;
+      if (!lvglUiReady) printCentered(time, CX, coverShow ? 410 : 392, 2, C_UI_SUB);
+    } else musicFooterLVGL = "";
+  } else {
+    musicFooterLVGL = "SWIPE LEFT TO RETURN";
+    if (!lvglUiReady) printCentered(musicFooterLVGL, CX, coverShow ? 410 : 402, 2, C_UI_SUB);
+  }
   drawPageDots();
   needFlush = true;
 }
