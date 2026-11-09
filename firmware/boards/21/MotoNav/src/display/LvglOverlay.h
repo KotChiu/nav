@@ -18,8 +18,10 @@ static MotoNavWeatherView lvglWeatherView;
 static MotoNavMusicStatusView lvglMusicView;
 // 4-bit images from the phone are shared between firmware and PC SDL.
 // Image backing buffers are allocated lazily in PSRAM, not internal RAM.
-static MotoNavRasterAsset lvglTextAssets[5];
-static const int lvglTextSlots[5] = {3, 4, 5, 6, 12};
+static MotoNavRasterAsset lvglTextAssets[10];
+// Phone-rendered grayscale slots: weather summary 3/4, music 5/6/12,
+// QWeather rain/air 7/8 and alerts 9/10/11.
+static const int lvglTextSlots[10] = {3, 4, 5, 6, 12, 7, 8, 9, 10, 11};
 static MotoNavCoverAsset lvglAlbumCover;
 static void *motonavRasterPsramAlloc(size_t bytes) { return ps_malloc(bytes); }
 static lv_disp_draw_buf_t lvglDrawBuf;
@@ -356,7 +358,7 @@ static void createLvglOverlay() {
   motonavHomeChromeCreate(lvglHomeChrome, screen, CX, C_UI_ACCENT, C_UI_ACCENT2);
   motonavWeatherViewCreate(lvglWeatherView, screen);
   motonavMusicStatusCreate(lvglMusicView, screen);
-  for (int i = 0; i < 5; ++i)
+  for (int i = 0; i < 10; ++i)
     motonavRasterCreate(lvglTextAssets[i], screen, motonavRasterPsramAlloc, free);
   motonavCoverCreate(lvglAlbumCover, screen, motonavRasterPsramAlloc, free);
 
@@ -784,16 +786,25 @@ static void lvglHybridTick() {
   const bool linkedMusic = showMusic && bleConnected && bleAuthed &&
                            !(hidMusicMode && !appleMedia.available);
   const bool showCover = showMusic && coverValid && coverImg;
-  for (int i = 0; i < 5; ++i) {
+  const bool showWeatherDetail = page == PAGE_WEATHER && wxHave && wxExtra &&
+                                 wxDetail != 0 && !sliding && !pairOn && !callOn && !fxOn;
+  for (int i = 0; i < 10; ++i) {
     const int slot = lvglTextSlots[i];
-    const bool use = slot < 5 ? showWeather && wxHave
-      : slot == 12 ? linkedMusic && musicLyricsShownLVGL : linkedMusic;
+    const bool use = slot == 3 || slot == 4 ? showWeather && wxHave
+      : slot == 5 || slot == 6 ? linkedMusic
+      : slot == 12 ? linkedMusic && musicLyricsShownLVGL
+      : slot == 7 || slot == 8 ? showWeatherDetail && wxDetail == 1
+      : showWeatherDetail && wxDetail == 2;
     if (use) {
       const TextImg &source = imgs[slot];
       const int y = slot == 3 ? 56 : slot == 4 ? 232
         : slot == 5 ? (showCover ? 194 : 158)
-        : slot == 6 ? (showCover ? 240 : 210) : 242;
+        : slot == 6 ? (showCover ? 240 : 210)
+        : slot == 7 ? 105 : slot == 8 ? 285
+        : slot == 9 ? 125 : slot == 10 ? 200
+        : slot == 11 ? 270 : 242;
       const uint8_t tint = slot == 4 ? 0xC0 : slot == 6 ? 0xBB
+        : slot == 10 || slot == 11 ? 0xDC
         : slot == 12 ? 0xDD : 0xFF;
       lvglTextAssetReady[slot] = motonavRasterSetText(lvglTextAssets[i],
         source.show, IMG_MAX, source.showW, source.showH, y, tint,
