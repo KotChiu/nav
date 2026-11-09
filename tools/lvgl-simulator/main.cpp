@@ -149,7 +149,7 @@ void navigationPage(lv_obj_t *screen) {
   demoMapCanvas = MotoNavMapCanvas{};
   if (!motonavMapCanvasCreate(demoMapCanvas, screen, demoMapPixels, W, H) ||
       !motonavMapCanvasBegin(demoMapCanvas)) {
-    std::fprintf(stderr, "Cannot create native LVGL map canvas\\n");
+    std::fprintf(stderr, "Cannot create native LVGL map canvas\n");
     return;
   }
   // A deterministic stand-in for the BLE raster tiles. The *drawing*
@@ -165,7 +165,7 @@ void navigationPage(lv_obj_t *screen) {
   const float lakeY[] = {195, 177, 260, 283};
   if (!motonavMapCanvasPolygon(demoMapCanvas, parkX, parkY, 4, 0x3C8A) ||
       !motonavMapCanvasPolygon(demoMapCanvas, lakeX, lakeY, 4, 0x1595))
-    std::fprintf(stderr, "Native LVGL map polygon failed\\n");
+    std::fprintf(stderr, "Native LVGL map polygon failed\n");
   centerLabel(screen, "SIMULATED NAVIGATION", 12, 0x29DCE9, &lv_font_montserrat_16);
   demoNavigationHud = MotoNavNavigationHud{};
   motonavNavigationHudCreate(demoNavigationHud, screen);
@@ -363,7 +363,7 @@ static void savePanelPpm(const std::string &path) {
   // physical 480x480 circular panel. No SDL screenshot dependence.
   std::ofstream stream(path, std::ios::binary | std::ios::trunc);
   if (!stream) throw std::runtime_error("Cannot write " + path);
-  stream << "P6\\n" << PANEL << " " << PANEL << "\\n255\\n";
+  stream << "P6\n" << PANEL << " " << PANEL << "\n255\n";
   const int r2 = (W / 2 - 2) * (W / 2 - 2);
   for (int y = 0; y < PANEL; ++y) {
     for (int x = 0; x < PANEL; ++x) {
@@ -415,14 +415,14 @@ int main(int argc, char **argv) {
     else if (std::string(argv[i]) == "--capture-dir" && i + 1 < argc)
       captureDir = argv[++i];
     else {
-      std::fprintf(stderr, "Usage: %s [--smoke-test] [--capture-dir DIR]\\n", argv[0]);
+      std::fprintf(stderr, "Usage: %s [--smoke-test] [--capture-dir DIR]\n", argv[0]);
       return 2;
     }
   }
   if (!captureDir.empty()) {
     try { std::filesystem::create_directories(captureDir); }
     catch (const std::exception &e) {
-      std::fprintf(stderr, "Cannot create capture dir: %s\\n", e.what());
+      std::fprintf(stderr, "Cannot create capture dir: %s\n", e.what());
       return 2;
     }
   }
@@ -496,7 +496,7 @@ int main(int argc, char **argv) {
       size_t visible = 0;
       for (uint16_t px : framebuffer) if (px != 0) ++visible;
       if (visible < 100) {
-        std::fprintf(stderr, "LVGL smoke failed: page=%d pixels=%zu\\n", p, visible);
+        std::fprintf(stderr, "LVGL smoke failed: page=%d pixels=%zu\n", p, visible);
         SDL_DestroyTexture(texture);
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
@@ -513,7 +513,7 @@ int main(int argc, char **argv) {
     if (!demoMapCanvas.canvas || demoMapCanvas.nativeLines < 2 ||
         demoMapCanvas.nativePolygons < 2 || !demoTurnCues.root ||
         !demoTurnCues.ring || !demoTurnCues.arrow) {
-      std::fprintf(stderr, "Native LVGL map geometry smoke failed\\n");
+      std::fprintf(stderr, "Native LVGL map geometry smoke failed\n");
       return 4;
     }
     assert(lv_obj_get_child_cnt(lv_scr_act()) > 0);
@@ -522,7 +522,7 @@ int main(int argc, char **argv) {
     lv_refr_now(nullptr);
     transitionToPage(4, true, -1);
     if (!demoSlideActive || !demoSwipe.active) {
-      std::fprintf(stderr, "LVGL swipe layer failed to start\\n");
+      std::fprintf(stderr, "LVGL swipe layer failed to start\n");
       return 3;
     }
     motonavLvglSlideMove(demoSwipe, W / 2, true, -1);
@@ -532,7 +532,7 @@ int main(int argc, char **argv) {
     showPage(0);
     transitionToPage(1, true, -1); // home -> weather
     if (!demoSlideActive) {
-      std::fprintf(stderr, "LVGL mixed weather-page swipe failed\\n");
+      std::fprintf(stderr, "LVGL mixed weather-page swipe failed\n");
       return 5;
     }
     motonavLvglSlideMove(demoSwipe, W / 2, true, -1);
@@ -542,7 +542,7 @@ int main(int argc, char **argv) {
     showPage(1);
     transitionToPage(2, true, -1); // weather -> music
     if (!demoSlideActive) {
-      std::fprintf(stderr, "LVGL mixed music-page swipe failed\\n");
+      std::fprintf(stderr, "LVGL mixed music-page swipe failed\n");
       return 6;
     }
     motonavLvglSlideEnd(demoSwipe);
@@ -551,7 +551,7 @@ int main(int argc, char **argv) {
     showPage(0);
     transitionToPage(1, true, -1);
     if (demoSlideActive) {
-      std::fprintf(stderr, "Native slide unexpectedly replaced active navigation\\n");
+      std::fprintf(stderr, "Native slide unexpectedly replaced active navigation\n");
       return 7;
     }
     navigation = false;
