@@ -8,6 +8,10 @@ on:
       - 'ios/MotoNav/BleLink.swift'
       - '.github/workflows/badge-mobile-build.yml'
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
