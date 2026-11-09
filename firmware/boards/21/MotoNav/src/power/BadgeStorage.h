@@ -10,6 +10,7 @@ void drawBadgePage();
 static const char *const BADGE_PATH = "/badge.bin";
 static const char *const BADGE_TEMP_PATH = "/badge.tmp";
 static const char *const BADGE_BACKUP_PATH = "/badge.bak";
+static bool badgeRecoveredFromBackup = false;
 
 // The backup holds the previous confirmed image across interrupted updates.
 static bool badgeReadFile(const char *path) {
@@ -47,7 +48,10 @@ void badgeInit() {
   }
   // An interrupted rename leaves the earlier valid image in .bak. Never
   // format or delete either copy during startup recovery.
-  if (badgeReadFile(BADGE_PATH) || badgeReadFile(BADGE_BACKUP_PATH)) {
+  const bool primaryGood = badgeReadFile(BADGE_PATH);
+  const bool backupGood = !primaryGood && badgeReadFile(BADGE_BACKUP_PATH);
+  badgeRecoveredFromBackup = backupGood;
+  if (primaryGood || backupGood) {
     badgeActive = true;
     badgeStored = true;
     ++badgeRevision;
@@ -78,21 +82,25 @@ static bool badgePersist(const uint8_t *packet, size_t bytes) {
   if (!complete) { FFat.remove(BADGE_TEMP_PATH); return false; }
 
   const bool hadOld = FFat.exists(BADGE_PATH);
-  if (hadOld) {
-    // Active photo remains available until a complete new file exists.
-    // Previous .bak is redundant while .bin exists.
+  if (hadOld && badgeRecoveredFromBackup) {
+    // Current .bin is damaged and the last valid image is in .bak. Never
+    // destroy the only valid backup to make room for an invalid primary.
+    if (!FFat.remove(BADGE_PATH)) return false;
+  } else if (hadOld) {
+    // A current valid .bin exists; rotating an older backup is safe.
     if (FFat.exists(BADGE_BACKUP_PATH) && !FFat.remove(BADGE_BACKUP_PATH))
       return false;
     if (!FFat.rename(BADGE_PATH, BADGE_BACKUP_PATH)) return false;
   }
   if (!FFat.rename(BADGE_TEMP_PATH, BADGE_PATH)) {
-    // New image failed to commit: restore the old image, if possible. The
-    // backup remains recoverable at startup even if this rename fails.
-    if (hadOld) FFat.rename(BADGE_BACKUP_PATH, BADGE_PATH);
+    // If prior .bin was healthy, restore from the backup. For a recovered
+    // boot the valid .bak remains available for the next startup.
+    if (hadOld && !badgeRecoveredFromBackup)
+      FFat.rename(BADGE_BACKUP_PATH, BADGE_PATH);
     return false;
   }
-  // Keep the previous image as a one-generation fallback in case the new
-  // FAT file becomes corrupted after a power loss.
+  badgeRecoveredFromBackup = false;
+  // Keep one previous generation as fallback after an interrupted update.
   return true;
 }
 
