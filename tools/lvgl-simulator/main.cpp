@@ -19,6 +19,7 @@
 #include "../../firmware/boards/21/MotoNav/ui/LvglNavigationHud.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglNavigationCues.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglPageSlide.h"
+#include "../../firmware/boards/21/MotoNav/ui/TransitionPolicy.h"
 #include "../../firmware/boards/21/MotoNav/ui/MapProjection.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglMapCanvas.h"
 
@@ -315,7 +316,7 @@ void transitionToPage(int target, bool horizontal, int direction) {
     demoSlideActive = false;
   }
   const int from = pageIndex;
-  const bool nativePair = from >= 3 && from <= 5 && target >= 3 && target <= 5;
+  const bool nativePair = motonavNativeSwipeAllowed(from, target, navigation, true);
   if (!nativePair) { showPage(target); return; }
   lv_refr_now(nullptr);
   std::copy(std::begin(framebuffer), std::end(framebuffer), std::begin(slideOldPixels));
@@ -436,6 +437,32 @@ int main(int argc, char **argv) {
     lv_refr_now(nullptr);
     motonavLvglSlideEnd(demoSwipe);
     demoSlideActive = false;
+    showPage(0);
+    transitionToPage(1, true, -1); // home -> weather
+    if (!demoSlideActive) {
+      std::fprintf(stderr, "LVGL mixed weather-page swipe failed\\n");
+      return 5;
+    }
+    motonavLvglSlideMove(demoSwipe, W / 2, true, -1);
+    lv_refr_now(nullptr);
+    motonavLvglSlideEnd(demoSwipe);
+    demoSlideActive = false;
+    showPage(1);
+    transitionToPage(2, true, -1); // weather -> music
+    if (!demoSlideActive) {
+      std::fprintf(stderr, "LVGL mixed music-page swipe failed\\n");
+      return 6;
+    }
+    motonavLvglSlideEnd(demoSwipe);
+    demoSlideActive = false;
+    navigation = true;
+    showPage(0);
+    transitionToPage(1, true, -1);
+    if (demoSlideActive) {
+      std::fprintf(stderr, "Native slide unexpectedly replaced active navigation\\n");
+      return 7;
+    }
+    navigation = false;
     showPage(0);
   }
 
