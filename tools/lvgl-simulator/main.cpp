@@ -15,6 +15,7 @@
 #include "../../firmware/boards/21/MotoNav/ui/LvglHomeChrome.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglWeatherView.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglMusicStatusView.h"
+#include "../../firmware/boards/21/MotoNav/ui/LvglBadgeView.h"
 
 namespace {
 constexpr int W = 466, H = 466, PANEL = 480, BORDER = (PANEL - W) / 2;
@@ -34,9 +35,11 @@ bool dragging = false;
 int downX = 0, downY = 0;
 MotoNavHomeChrome chrome;
 MotoNavMusicStatusView demoMusicWidgets;
+MotoNavBadgeView demoBadge;
+uint16_t demoBadgePixels[MotoNavBadge::SIZE * MotoNavBadge::SIZE] = {};
 lv_obj_t *brightnessValue = nullptr;
 lv_obj_t *musicState = nullptr;
-static const char *pageNames[] = {"HOME", "WEATHER", "MUSIC", "COMPANION", "STOCKS", "SETTINGS"};
+static const char *pageNames[] = {"HOME", "WEATHER", "MUSIC", "COMPANION", "STOCKS", "SETTINGS", "BADGE"};
 
 lv_obj_t *label(lv_obj_t *parent, const char *text, int x, int y,
                 uint32_t color = 0xFFFFFF, const lv_font_t *font = &lv_font_montserrat_20) {
@@ -99,7 +102,7 @@ lv_obj_t *button(lv_obj_t *parent, const char *text, int x, int y, int w,
 }
 void footer(lv_obj_t *screen) {
   label(screen, "MOCK DATA", 185, 421, 0x697987, &lv_font_montserrat_14);
-  for (int i = 0; i < 6; ++i) {
+  for (int i = 0; i < 7; ++i) {
     lv_obj_t *dot = box(screen, 173 + 23 * i, 445, 7, 7,
                         i == pageIndex ? 0xFFFFFF : 0x30414D, 7);
     (void)dot;
@@ -233,8 +236,27 @@ void settings(lv_obj_t *screen) {
   lv_label_set_text(brightnessValue, value);
   centerLabel(screen, "PC SIMULATION - NO HARDWARE CONTROL", 362, SUB, &lv_font_montserrat_14);
 }
+void badge(lv_obj_t *screen) {
+  // Fixed RGB565 fixture. The simulator shares the actual firmware badge
+  // component while mobile apps provide real user photos over BLE.
+  for (int y = 0; y < MotoNavBadge::SIZE; ++y) {
+    for (int x = 0; x < MotoNavBadge::SIZE; ++x) {
+      const uint8_t red = uint8_t((x * 200) / MotoNavBadge::SIZE + 18);
+      const uint8_t green = uint8_t((y * 140) / MotoNavBadge::SIZE + 15);
+      const uint8_t blue = uint8_t(128 + (x + y) % 110);
+      demoBadgePixels[y * MotoNavBadge::SIZE + x] =
+          uint16_t(((red & 0xF8) << 8) | ((green & 0xFC) << 3) | (blue >> 3));
+    }
+  }
+  demoBadge = MotoNavBadgeView{};
+  motonavBadgeViewCreate(demoBadge, screen);
+  motonavBadgeViewSet(demoBadge, demoBadgePixels, 1);
+  motonavBadgeViewVisible(demoBadge, true);
+  centerLabel(demoBadge.root, "E-BADGE DEMO", 185, 0xFFFFFF, &lv_font_montserrat_24);
+  centerLabel(demoBadge.root, "UPLOADED PHOTOS DISPLAY HERE", 239, 0xFFFFFF, &lv_font_montserrat_14);
+}
 void showPage(int target) {
-  pageIndex = (target + 6) % 6;
+  pageIndex = (target + 7) % 7;
   brightnessValue = nullptr; musicState = nullptr;
   lv_obj_t *screen = lv_scr_act();
   lv_obj_clean(screen);
@@ -247,6 +269,7 @@ void showPage(int target) {
     case 3: companion(screen); break;
     case 4: stocks(screen); break;
     case 5: settings(screen); break;
+    case 6: badge(screen); break;
   }
   if (pageIndex != 0 || !navigation) footer(screen);
   dirty = true;
@@ -313,7 +336,7 @@ int main(int argc, char **argv) {
   if (smoke) {
     // Exercise every page in CI, not just the splash/home scene.
     // Rendering must reach the RGB565 framebuffer without hardware.
-    for (int p = 0; p < 6; ++p) {
+    for (int p = 0; p < 7; ++p) {
       showPage(p);
       lv_tick_inc(40);
       lv_timer_handler();
