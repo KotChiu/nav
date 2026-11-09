@@ -1,6 +1,6 @@
 #pragma once
 void drawPhotoPage() {
-  gfx->fillScreen(C_BLACK);
+  gfx->fillScreen(C_UI_BG);
   if (photoValid && photoPixels) {
     uint16_t *out=gfx->getFramebuffer();
     const int offset=(LCD_WIDTH-int(PhotoProtocol::Pixels)*2)/2;
