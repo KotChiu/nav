@@ -32,6 +32,7 @@ final class BleLink: NSObject, ObservableObject {
     private var buildingQueries: Int { buildingProbe.attempts }
     private var txNotifyReady = false
     @Published private(set) var buildingsSupported = false
+    @Published private(set) var badgeSupported = false
     @Published var isReady = false
     @Published var sentCount = 0
     @Published var lastSent = ""
@@ -117,6 +118,7 @@ final class BleLink: NSObject, ObservableObject {
     private func attach(_ p: CBPeripheral) {
         isReady = false; txNotifyReady = false
         buildingsSupported = false
+        badgeSupported = false
         mediaHIDSupported = false; mediaHIDReady = false; mediaHIDMode = false; mediaLyricsSupported = false; mediaLyricsActive = false; mediaAMSControls = 0; verified = false; buildingProbe.reset()
         MusicBridge.shared.resetAMS()
         peripheral = p
@@ -450,6 +452,7 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
         isReady = false
         bulkQ.reset(); bulkBarrier.reset(); bulkWriteSerial += 1
         buildingsSupported = false
+        badgeSupported = false
         mediaHIDSupported = false; mediaHIDReady = false; mediaHIDMode = false; mediaLyricsSupported = false; mediaLyricsActive = false; mediaAMSControls = 0; verified = false; buildingProbe.reset(); txNotifyReady = false
         MusicBridge.shared.resetAMS()
         MapFeeder.shared.onBuildingCapability()
@@ -517,6 +520,12 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
             mediaLyricsSupported = true
             MusicBridge.shared.syncMode(); MusicBridge.shared.refresh(force: true); return
         }
+        if s == "CAP,BADGE,1" {
+            badgeSupported = true
+            return
+        }
+        if s == "BDG,SAVED,1" { BadgeBridge.shared.saved(true); return }
+        if s == "BDG,SAVED,0" { BadgeBridge.shared.saved(false); return }
         if s == "CAP,BLD,1" {
             if !buildingsSupported { buildingsSupported = true; MapFeeder.shared.onBuildingCapability() }
             return
@@ -536,6 +545,7 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
         if parts.first == "K", parts.count >= 3, let t = Int(parts[1]), let id = Int(parts[2]) {
             bulkQ.acknowledge(type: t, id: id)
             MapFeeder.shared.onAck(type: t, id: id)
+            if t == 6 { BadgeBridge.shared.acknowledge(id: id) }
             return
         }
         if parts.first == "S", parts.count >= 4 {
