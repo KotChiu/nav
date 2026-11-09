@@ -1,0 +1,24 @@
+name: LVGL desktop simulator
+
+on:
+  pull_request:
+    paths:
+      - 'tools/lvgl-simulator/**'
+      - 'firmware/boards/21/MotoNav/ui/**'
+      - 'firmware/boards/21/MotoNav/src/display/LvglOverlay.h'
+      - '.github/workflows/lvgl-simulator.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL2 and headless display
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev xvfb
+      - name: Configure
+        run: cmake -S tools/lvgl-simulator -B build/lvgl-simulator -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build/lvgl-simulator --parallel 4
+      - name: Smoke test
+        run: xvfb-run -a ctest --test-dir build/lvgl-simulator --output-on-failure
