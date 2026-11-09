@@ -156,6 +156,15 @@ static inline uint16_t dim565(uint16_t c, uint32_t k) {   // k: 0~32，32 = 原�
   return (uint16_t)(((r * k >> 5) << 11) | ((g * k >> 5) << 5) | (b * k >> 5));
 }
 
+// LVGL owns the photo; Canvas only clears stale navigation pixels below it.
+void drawBadgePage() {
+  onWaitScreen = false;
+  frameIsMap = false;
+  gfx->fillScreen(C_UI_BG);
+  forceFullFlush = true;
+  needFlush = true;
+}
+
 // 画一个页面到画布（不改当前页）
 void renderPage(int p) {
   int keep = page;
@@ -166,6 +175,7 @@ void renderPage(int p) {
   else if (p == 3) drawSettings();
   else if (p == 4) drawRobotPage();
   else if (p == 5) drawStockPage();
+  else if (p == PAGE_BADGE) drawBadgePage();
   else if (inNav) drawNavFrame();
   else drawWaiting(bleConnected ? WAIT_READY : WAIT_NOLINK);
   page = keep; sliding = ks;
@@ -261,7 +271,7 @@ void slideCommit() {
     onWaitScreen = false;
     wxDirty = false;
     if (!wxHave || millis() - wxAt > 15UL * 60 * 1000) { pendingEvt = "T,W"; wxAskAt = millis(); }
-  } else if (page >= 3 && page <= 5) {
+  } else if (page >= 3 && page <= PAGE_BADGE) {
     onWaitScreen = false;
     if (page == PAGE_STOCKS) pendingEvt = "T,S";
   } else {
@@ -281,7 +291,7 @@ void slideCancel() {
   if (lvglUiReady) lvglHybridTick();
   if (page == 2) musicDirty = true;
   else if (page == 1) wxDirty = false;
-  else if (page >= 3 && page <= 5) needFlush = true;
+  else if (page >= 3 && page <= PAGE_BADGE) needFlush = true;
   else if (inNav) navDirty = true;
   else { onWaitScreen = true; catForce = true; }
   needFlush = true;
@@ -379,7 +389,7 @@ void dragAbort() {
   sliding = false; dragging = false; slideSettling = false;
   renderPage(page);
   if (lvglUiReady) lvglHybridTick();
-  if (page == 2) musicDirty = true; else if (page == 1) wxDirty = true; else if (page >= 3 && page <= 5) needFlush = true; else if (inNav) navDirty = true;
+  if (page == 2) musicDirty = true; else if (page == 1) wxDirty = true; else if (page >= 3 && page <= PAGE_BADGE) needFlush = true; else if (inNav) navDirty = true;
 }
 
 // 将触摸点换算到画布坐标，按钮使用较大的点按范围。
