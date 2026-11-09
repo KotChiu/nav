@@ -3,6 +3,8 @@ package com.example.motonav
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
@@ -25,15 +27,20 @@ import java.util.zip.CRC32
  */
 class BadgeActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
-    private var selected: Uri? = null
+    private var selectedBitmap: Bitmap? = null
     private lateinit var preview: ImageView
     private lateinit var status: TextView
 
     private val choose = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
-            selected = uri
-            try { preview.setImageBitmap(decode(uri)) }
-            catch (_: Exception) { status.text = "无法打开图片，请重新选择" }
+            try {
+                val photo = decode(uri)
+                selectedBitmap = photo
+                preview.setImageBitmap(photo)
+            } catch (_: Exception) {
+                selectedBitmap = null
+                status.text = "无法打开图片，请重新选择"
+            }
         }
     }
 
@@ -76,9 +83,9 @@ class BadgeActivity : AppCompatActivity() {
         root.addView(Button(this).apply {
             text = "上传到圆屏"
             setOnClickListener {
-                val uri = selected
-                if (uri == null) status.text = "请先选择照片"
-                else BadgeTransfer.upload(uri, this@BadgeActivity)
+                val photo = selectedBitmap
+                if (photo == null) status.text = "请先选择照片"
+                else BadgeTransfer.upload(photo)
             }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)).apply {
             topMargin = dp(10)
@@ -103,9 +110,24 @@ class BadgeActivity : AppCompatActivity() {
         var sample = 1
         while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 1200) sample *= 2
         val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        return contentResolver.openInputStream(uri)?.use {
+        val raw = contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, opts)
         } ?: error("Cannot read image")
+        val orientation = try {
+            contentResolver.openInputStream(uri)?.use {
+                ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL)
+            } ?: ExifInterface.ORIENTATION_NORMAL
+        } catch (_: Exception) { ExifInterface.ORIENTATION_NORMAL }
+        val angle = when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+        if (angle == 0f) return raw
+        return Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height,
+            Matrix().apply { postRotate(angle) }, true)
     }
 
     companion object {
@@ -147,7 +169,7 @@ object BadgeTransfer {
     private var pendingId = -1
     private var seq = 0
 
-    fun upload(uri: Uri, activity: BadgeActivity) {
+    fun upload(photo: Bitmap) {
         if (!BleLink.isConnected || !BleLink.badgeSupported) {
             status = "圆屏未连接或固件不支持电子吧唧"
             return
@@ -156,16 +178,7 @@ object BadgeTransfer {
         status = "正在处理图片…"
         Thread {
             try {
-                val packet = BadgeActivity.encode(activity.run {
-                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-                    require(bounds.outWidth > 0 && bounds.outHeight > 0)
-                    var sample = 1
-                    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 1200) sample *= 2
-                    contentResolver.openInputStream(uri)?.use {
-                        BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
-                    } ?: error("Cannot decode image")
-                })
+                val packet = BadgeActivity.encode(photo)
                 Handler(Looper.getMainLooper()).post {
                     if (!BleLink.isConnected || !BleLink.badgeSupported) {
                         status = "连接中断，尚未上传"
