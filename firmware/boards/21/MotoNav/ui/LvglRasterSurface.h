@@ -8,6 +8,7 @@
 #include "Arduino_GFX_Library.h"
 #include <esp_heap_caps.h>
 #include <cstring>
+#include "Rgb565Plane.h"
 
 class MotoNavRasterSurface : public Arduino_GFX {
  public:
@@ -40,54 +41,31 @@ class MotoNavRasterSurface : public Arduino_GFX {
   }
 
   void writePixelPreclipped(int16_t x, int16_t y, uint16_t color) override {
-    if (frame_ && (unsigned)x < (unsigned)WIDTH &&
-                  (unsigned)y < (unsigned)HEIGHT)
-      frame_[size_t(y) * WIDTH + x] = color;
+    plane().pixel(x, y, color);
   }
   void writeFastHLine(int16_t x, int16_t y, int16_t len,
                       uint16_t color) override {
-    if (!frame_ || y < 0 || y >= HEIGHT || len == 0) return;
-    int a = x, b = x + len;
-    if (len < 0) { a = x + len + 1; b = x + 1; }
-    if (b <= 0 || a >= WIDTH) return;
-    if (a < 0) a = 0;
-    if (b > WIDTH) b = WIDTH;
-    auto *row = frame_ + size_t(y) * WIDTH;
-    for (int ix = a; ix < b; ++ix) row[ix] = color;
+    plane().hline(x, y, len, color);
   }
   void writeFastVLine(int16_t x, int16_t y, int16_t len,
                       uint16_t color) override {
-    if (!frame_ || x < 0 || x >= WIDTH || len == 0) return;
-    int a = y, b = y + len;
-    if (len < 0) { a = y + len + 1; b = y + 1; }
-    if (b <= 0 || a >= HEIGHT) return;
-    if (a < 0) a = 0;
-    if (b > HEIGHT) b = HEIGHT;
-    for (int iy = a; iy < b; ++iy)
-      frame_[size_t(iy) * WIDTH + x] = color;
+    plane().vline(x, y, len, color);
   }
-  void writeFillRectPreclipped(int16_t x, int16_t y,
-                                int16_t w, int16_t h,
-                                uint16_t color) override {
-    if (!frame_ || w <= 0 || h <= 0) return;
-    const int left = x < 0 ? 0 : x;
-    const int top = y < 0 ? 0 : y;
-    const int right = x + w > WIDTH ? WIDTH : x + w;
-    const int bottom = y + h > HEIGHT ? HEIGHT : y + h;
-    if (left >= right || top >= bottom) return;
-    for (int iy = top; iy < bottom; ++iy) {
-      uint16_t *row = frame_ + size_t(iy) * WIDTH;
-      for (int ix = left; ix < right; ++ix) row[ix] = color;
-    }
+  void writeFillRectPreclipped(int16_t x, int16_t y, int16_t w,
+                                int16_t h, uint16_t color) override {
+    plane().rect(x, y, w, h, color);
   }
-
   void fillScreen(uint16_t color) {
-    writeFillRectPreclipped(0, 0, WIDTH, HEIGHT, color);
+    plane().rect(0, 0, WIDTH, HEIGHT, color);
     lvglCanvasRepainted = true;
     forceFullFlush = true;
   }
 
  private:
+  MotoNavRgb565Plane plane() {
+    return MotoNavRgb565Plane{frame_, WIDTH, HEIGHT};
+  }
+
   Arduino_G *output_;
   uint16_t *owned_ = nullptr;
   uint16_t *frame_ = nullptr;
