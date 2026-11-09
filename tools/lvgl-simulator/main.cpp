@@ -19,6 +19,7 @@
 #include "../../firmware/boards/21/MotoNav/ui/LvglNavigationHud.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglPageSlide.h"
 #include "../../firmware/boards/21/MotoNav/ui/MapProjection.h"
+#include "../../firmware/boards/21/MotoNav/ui/LvglMapCanvas.h"
 
 namespace {
 constexpr int W = 466, H = 466, PANEL = 480, BORDER = (PANEL - W) / 2;
@@ -26,6 +27,8 @@ constexpr uint16_t CYAN = 0x04B6, MAGENTA = 0xF815;
 constexpr uint32_t BG = 0x000000, PANEL_BG = 0x101820, SUB = 0x98A5B4;
 lv_color_t renderBuffer[W * 36];
 uint16_t framebuffer[W * H] = {};
+uint16_t demoMapPixels[W * H] = {};
+MotoNavMapCanvas demoMapCanvas;
 uint16_t roundedFrame[W * H] = {};
 uint16_t slideOldPixels[W * H] = {};
 uint16_t slideNewPixels[W * H] = {};
@@ -134,6 +137,26 @@ void home(lv_obj_t *screen) {
   button(screen, "WEATHER", 240, 350, 133, pageEvent, 1);
 }
 void navigationPage(lv_obj_t *screen) {
+  demoMapCanvas = MotoNavMapCanvas{};
+  if (!motonavMapCanvasCreate(demoMapCanvas, screen, demoMapPixels, W, H) ||
+      !motonavMapCanvasBegin(demoMapCanvas)) {
+    std::fprintf(stderr, "Cannot create native LVGL map canvas\\n");
+    return;
+  }
+  // A deterministic stand-in for the BLE raster tiles. The *drawing*
+  // functions here are the same as the firmware's native polygon/route API.
+  for (int y = 0; y < H; ++y) {
+    for (int x = 0; x < W; ++x) {
+      demoMapPixels[y * W + x] = ((x / 35 + y / 42) & 1) ? 0x09EA : 0x0949;
+    }
+  }
+  const float parkX[] = {48, 152, 166, 67};
+  const float parkY[] = {175, 145, 226, 258};
+  const float lakeX[] = {310, 409, 414, 340};
+  const float lakeY[] = {195, 177, 260, 283};
+  if (!motonavMapCanvasPolygon(demoMapCanvas, parkX, parkY, 4, 0x3C8A) ||
+      !motonavMapCanvasPolygon(demoMapCanvas, lakeX, lakeY, 4, 0x1595))
+    std::fprintf(stderr, "Native LVGL map polygon failed\\n");
   centerLabel(screen, "SIMULATED NAVIGATION", 12, 0x29DCE9, &lv_font_montserrat_16);
   demoNavigationHud = MotoNavNavigationHud{};
   motonavNavigationHudCreate(demoNavigationHud, screen);
@@ -145,19 +168,18 @@ void navigationPage(lv_obj_t *screen) {
   // renderer; source points are deliberately mock map data.
   static const float worldPoints[5][2] = {
       {-137, -15}, {-43, -15}, {-43, 42}, {61, 42}, {61, 84}};
-  static lv_point_t route[5] = {};
+  float routeX[5] = {}, routeY[5] = {};
   for (int i = 0; i < 5; ++i) {
     float x = 0, y = 0;
     motonavProjectDelta(worldPoints[i][0], worldPoints[i][1],
                         1.0f, 1.0f, 0.0f, W / 2, 262, x, y);
-    route[i].x = static_cast<lv_coord_t>(x);
-    route[i].y = static_cast<lv_coord_t>(y);
+    routeX[i] = x;
+    routeY[i] = y;
   }
-  lv_obj_t *line = lv_line_create(screen);
-  lv_line_set_points(line, route, sizeof(route) / sizeof(route[0]));
-  lv_obj_set_style_line_color(line, lv_color_hex(0x19DCEB), 0);
-  lv_obj_set_style_line_width(line, 12, 0);
-  lv_obj_set_style_line_rounded(line, true, 0);
+  motonavMapCanvasPolyline(demoMapCanvas, routeX, routeY, 5, 18, 0xFFFFFF, true);
+  motonavMapCanvasPolyline(demoMapCanvas, routeX, routeY, 5, 11, 0x067D, true);
+  motonavMapCanvasCommit(demoMapCanvas);
+  motonavMapCanvasVisible(demoMapCanvas, true);
   centerLabel(screen, "TURN RIGHT IN 250m", 304, 0xFFFFFF, &lv_font_montserrat_20);
   button(screen, "END MOCK ROUTE", 125, 363, 216, navEvent);
 }
@@ -388,6 +410,11 @@ int main(int argc, char **argv) {
     navigation = true;
     showPage(0);
     lv_refr_now(nullptr);
+    if (!demoMapCanvas.canvas || demoMapCanvas.nativeLines < 2 ||
+        demoMapCanvas.nativePolygons < 2) {
+      std::fprintf(stderr, "Native LVGL map geometry smoke failed\\n");
+      return 4;
+    }
     assert(lv_obj_get_child_cnt(lv_scr_act()) > 0);
     navigation = false;
     showPage(3);
