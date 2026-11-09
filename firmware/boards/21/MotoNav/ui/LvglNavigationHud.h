@@ -108,6 +108,7 @@ static inline void motonavNavigationHudUpdate(
 static inline void motonavNavigationHudVisible(
     MotoNavNavigationHud &view, bool visible) {
   if (!view.root) return;
-  if (visible) lv_obj_move_foreground(view.root);
+  if (visible && lv_obj_has_flag(view.root, LV_OBJ_FLAG_HIDDEN))
+    lv_obj_move_foreground(view.root);
   motonavNavHudHidden(view.root, !visible);
 }
