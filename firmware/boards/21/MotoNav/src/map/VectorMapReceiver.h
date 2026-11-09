@@ -1,4 +1,5 @@
 #pragma once
+#include "../../ui/BadgePacket.h"
 // 位置预测、地图缓冲初始化及矢量地图解析。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
 // v6.7 推算 t 时刻（再加 lead 秒）的位置和朝向：按当前车速和转弯速度沿弧线往前推（最多推 1.5 秒）
 void predictPose(unsigned long t, float lead, float &x, float &y, float &h) {
