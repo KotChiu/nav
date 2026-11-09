@@ -38,3 +38,13 @@ jobs:
         run: python3 firmware/build.py --board 21 --jobs 2 --raster-surface native
       - name: Compile Arduino_Canvas fallback without flashing
         run: python3 firmware/build.py --board 21 --jobs 2 --raster-surface legacy
+      - name: Compile opt-in 2.1 hardware QA firmware
+        run: python3 firmware/build.py --board 21 --jobs 2 --raster-surface native --qa
+      - name: Publish 2.1 QA auto-test firmware (not hardware tested)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MotoNav-2.1-QA-AUTOTEST-NOT-DEVICE-TESTED
+          path: firmware/dist/21/panel0/qa-autotest/
+          if-no-files-found: error
+          retention-days: 14
