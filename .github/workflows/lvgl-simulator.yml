@@ -10,6 +10,7 @@ on:
       - 'firmware/tests/MapProjectionTest.cpp'
       - 'firmware/tests/FrameOwnershipTest.cpp'
       - 'firmware/tests/TransitionPolicyTest.cpp'
+      - 'firmware/tests/TurnCueGeometryTest.cpp'
       - 'firmware/tests/BadgePacketTest.cpp'
       - 'firmware/boards/21/MotoNav/src/display/LvglOverlay.h'
       - '.github/workflows/lvgl-simulator.yml'
@@ -36,7 +37,7 @@ jobs:
           /tmp/motonav-map-projection
       - name: Verify framebuffer ownership and LVGL swipe rollout
         run: |
-          for test in FrameOwnershipTest TransitionPolicyTest; do
+          for test in FrameOwnershipTest TransitionPolicyTest TurnCueGeometryTest; do
             g++ -std=c++17 -Wall -Wextra -Werror -pedantic "firmware/tests/${test}.cpp" -o "/tmp/${test}"
             "/tmp/${test}"
           done
