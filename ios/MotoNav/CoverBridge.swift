@@ -220,6 +220,7 @@ final class BadgeBridge: ObservableObject {
     }
 
     func saved(_ yes: Bool) {
+        pendingId = nil
         status = yes
           ? "图片已上传并保存到设备，断开手机仍可显示。"
           : "图片已上传到设备内存，但设备存储未挂载，重启后可能丢失。"
@@ -239,10 +240,10 @@ final class BadgeBridge: ObservableObject {
 
     private static func encode(_ image: UIImage) -> Data? {
         let px = size
-        let canvas = UIGraphicsImageRenderer(size: CGSize(width: px, height: px))
+        let canvas = UIGraphicsImageRenderer(size: CGSize(width: CGFloat(px), height: CGFloat(px)))
         let square = canvas.image { _ in
             UIColor.black.setFill()
-            UIRectFill(CGRect(x: 0, y: 0, width: px, height: px))
+            UIRectFill(CGRect(x: 0, y: 0, width: CGFloat(px), height: CGFloat(px)))
             let imageSize = image.size
             guard imageSize.width > 0 && imageSize.height > 0 else { return }
             let scale = max(CGFloat(px) / imageSize.width, CGFloat(px) / imageSize.height)
