@@ -8,6 +8,9 @@ on:
       - 'firmware/tests/RasterBridgeTest.cpp'
       - 'firmware/tests/PageSlideGeometryTest.cpp'
       - 'firmware/tests/MapProjectionTest.cpp'
+      - 'firmware/tests/FrameOwnershipTest.cpp'
+      - 'firmware/tests/TransitionPolicyTest.cpp'
+      - 'firmware/tests/BadgePacketTest.cpp'
       - 'firmware/boards/21/MotoNav/src/display/LvglOverlay.h'
       - '.github/workflows/lvgl-simulator.yml'
   workflow_dispatch:
@@ -31,6 +34,12 @@ jobs:
         run: |
           g++ -std=c++17 -Wall -Wextra -Werror firmware/tests/MapProjectionTest.cpp -o /tmp/motonav-map-projection
           /tmp/motonav-map-projection
+      - name: Verify framebuffer ownership and LVGL swipe rollout
+        run: |
+          for test in FrameOwnershipTest TransitionPolicyTest; do
+            g++ -std=c++17 -Wall -Wextra -Werror -pedantic "firmware/tests/${test}.cpp" -o "/tmp/${test}"
+            "/tmp/${test}"
+          done
       - name: Configure
         run: cmake -S tools/lvgl-simulator -B build/lvgl-simulator -DCMAKE_BUILD_TYPE=Release
       - name: Build
