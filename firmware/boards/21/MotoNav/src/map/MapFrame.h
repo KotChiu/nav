@@ -23,7 +23,7 @@ void drawMapFrame() {
   const bool usingMapCanvas = lvglUiReady && logicalFrame &&
     !trafficOverlay && !staleShown && !sliding &&
     !pairOn && !callOn && !fxOn &&
-    lvglMapCanvasPixels() && lvglMapCanvasStartFrame();
+    lvglMapCanvasStartFrame() && lvglMapCanvasPixels();
   if (usingMapCanvas) gfx->setFramebuffer(lvglMapCanvasPixels());
   else lvglMapCanvasFallback();
   // 位置：按车速和转弯速度往前推算（v6.7 沿弧线，再加一点提前量），让画面连续移动、少“慢半拍”
