@@ -304,27 +304,11 @@ void settings(lv_obj_t *screen) {
   centerLabel(screen, "PC SIMULATION - NO HARDWARE CONTROL", 362, SUB, &lv_font_montserrat_14);
 }
 void badge(lv_obj_t *screen) {
-  // Fixed RGB565 fixture. The simulator shares the actual firmware badge
-  // component while mobile apps provide real user photos over BLE.
-  if (!badgeFixtureLoaded) {
-  for (int y = 0; y < MotoNavBadge::SIZE; ++y) {
-    for (int x = 0; x < MotoNavBadge::SIZE; ++x) {
-      const uint8_t red = uint8_t((x * 200) / MotoNavBadge::SIZE + 18);
-      const uint8_t green = uint8_t((y * 140) / MotoNavBadge::SIZE + 15);
-      const uint8_t blue = uint8_t(128 + (x + y) % 110);
-      demoBadgePixels[y * MotoNavBadge::SIZE + x] =
-          uint16_t(((red & 0xF8) << 8) | ((green & 0xFC) << 3) | (blue >> 3));
-    }
-  }
-  }
   demoBadge = MotoNavBadgeView{};
   motonavBadgeViewCreate(demoBadge, screen);
-  motonavBadgeViewSet(demoBadge, demoBadgePixels, 1);
+  motonavBadgeViewSet(demoBadge, badgeFixtureLoaded ? demoBadgePixels : nullptr,
+                      1, "SD CARD READY");
   motonavBadgeViewVisible(demoBadge, true);
-  if (!badgeFixtureLoaded) {
-    centerLabel(demoBadge.root, "E-BADGE DEMO", 185, 0xFFFFFF, &lv_font_montserrat_24);
-    centerLabel(demoBadge.root, "UPLOADED PHOTOS DISPLAY HERE", 239, 0xFFFFFF, &lv_font_montserrat_14);
-  }
 }
 void showPage(int target) {
   pageIndex = (target + PAGE_COUNT) % PAGE_COUNT;

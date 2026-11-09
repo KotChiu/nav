@@ -110,6 +110,7 @@ void drawStockPage();
 uint16_t* shownFrame();
 static uint16_t dim565(uint16_t c, uint32_t k);
 void renderPage(int p);
+const char *badgeStorageLabel();
 bool slidePrepare(int target);
 bool slideCompose(int p);
 void slideCommit();

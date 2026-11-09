@@ -846,7 +846,8 @@ static void lvglHybridTick() {
   const bool showBadge = page == PAGE_BADGE &&
                          !sliding && !pairOn && !callOn && !fxOn;
   if (showBadge)
-    motonavBadgeViewSet(lvglBadgeView, badgeActive ? badgePixels : nullptr, badgeRevision);
+    motonavBadgeViewSet(lvglBadgeView, badgeActive ? badgePixels : nullptr,
+                       badgeRevision, badgeStorageLabel());
   motonavBadgeViewVisible(lvglBadgeView, showBadge);
   char batteryText[24];
   if (batPct >= 0) snprintf(batteryText, sizeof(batteryText), "BAT %d%%", batPct);

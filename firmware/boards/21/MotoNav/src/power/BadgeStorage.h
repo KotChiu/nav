@@ -1,21 +1,30 @@
 #pragma once
-// Badge photo persistence lives in the existing FAT partition, if mounted.
-// Never silently format the FAT partition: it can contain other user files.
+// Prefer the TF card. Keep support for the existing internal FAT storage.
 #include <FFat.h>
+#include <SD_MMC.h>
 #include "../../ui/BadgePacket.h"
 
 // PageNavigation.h is included after this file in the sketch entrypoint.
 void drawBadgePage();
 
-static const char *const BADGE_PATH = "/badge.bin";
-static const char *const BADGE_TEMP_PATH = "/badge.tmp";
-static const char *const BADGE_BACKUP_PATH = "/badge.bak";
+struct BadgePaths {
+  const char *primary;
+  const char *temporary;
+  const char *backup;
+};
+static constexpr BadgePaths internalBadgePaths = {"/badge.bin", "/badge.tmp", "/badge.bak"};
+static constexpr BadgePaths sdBadgePaths = {"/motonav/badge.bin", "/motonav/badge.tmp", "/motonav/badge.bak"};
 static bool badgeRecoveredFromBackup = false;
+static fs::FS *badgeStore = nullptr;
+
+static const BadgePaths &badgePaths(fs::FS &store) {
+  return &store == &SD_MMC ? sdBadgePaths : internalBadgePaths;
+}
 
 // The backup holds the previous confirmed image across interrupted updates.
-static bool badgeReadFile(const char *path) {
+static bool badgeReadFile(fs::FS &store, const char *path) {
   if (!badgePixels) return false;
-  File file = FFat.open(path, FILE_READ);
+  File file = store.open(path, FILE_READ);
   if (!file) return false;
   if (file.size() != MotoNavBadge::PACKET_BYTES) { file.close(); return false; }
   uint8_t header[MotoNavBadge::HEADER_BYTES] = {};
@@ -35,68 +44,93 @@ static bool badgeReadFile(const char *path) {
                              MotoNavBadge::PIXEL_BYTES);
 }
 
+static bool badgeLoad(fs::FS &store) {
+  const BadgePaths &paths = badgePaths(store);
+  const bool primaryGood = badgeReadFile(store, paths.primary);
+  const bool backupGood = !primaryGood && badgeReadFile(store, paths.backup);
+  if (!primaryGood && !backupGood) {
+    if (store.exists(paths.primary) || store.exists(paths.backup))
+      Serial.println("BADGE: stored images failed CRC/size validation");
+    return false;
+  }
+  if (&store == badgeStore) badgeRecoveredFromBackup = backupGood;
+  badgeActive = true;
+  badgeStored = true;
+  ++badgeRevision;
+  Serial.println("BADGE: recovered validated persisted photo");
+  return true;
+}
+
+const char *badgeStorageLabel() {
+  if (badgeStore == &SD_MMC) return "SD CARD READY";
+  if (badgeStore == &FFat) return "INTERNAL STORAGE";
+  return "TEMPORARY DISPLAY";
+}
+
 void badgeInit() {
   badgePixels = static_cast<uint16_t *>(ps_malloc(MotoNavBadge::PIXEL_BYTES));
   if (!badgePixels) {
     Serial.println("BADGE: PSRAM allocation failed");
     return;
   }
-  badgeStorageReady = FFat.begin(false);
-  if (!badgeStorageReady) {
-    Serial.println("BADGE: FFat not mounted (no auto-format); RAM-only mode");
-    return;
+  // DAT3/CS stays high to select native SD mode; begin never formats media.
+  if (SD_MMC.setPins(SDMMC_CLK, SDMMC_CMD, SDMMC_DATA) &&
+      SD_MMC.begin("/sdcard", true, false)) {
+    badgeStore = &SD_MMC;
+    Serial.printf("BADGE: SD mounted, capacity=%llu MiB\n",
+                  (unsigned long long)(SD_MMC.cardSize() / (1024ULL * 1024)));
+    if (badgeLoad(SD_MMC)) return;
+  } else {
+    Serial.println("BADGE: SD unavailable");
   }
-  // An interrupted rename leaves the earlier valid image in .bak. Never
-  // format or delete either copy during startup recovery.
-  const bool primaryGood = badgeReadFile(BADGE_PATH);
-  const bool backupGood = !primaryGood && badgeReadFile(BADGE_BACKUP_PATH);
-  badgeRecoveredFromBackup = backupGood;
-  if (primaryGood || backupGood) {
-    badgeActive = true;
-    badgeStored = true;
-    ++badgeRevision;
-    Serial.println("BADGE: recovered validated persisted photo");
-  } else if (FFat.exists(BADGE_PATH) || FFat.exists(BADGE_BACKUP_PATH)) {
-    Serial.println("BADGE: stored images failed CRC/size validation");
+  // Preserve access to photos saved by older firmware when an empty SD is inserted.
+  if (FFat.begin(false)) {
+    if (!badgeStore) badgeStore = &FFat;
+    badgeLoad(FFat);
   }
+  Serial.printf("BADGE: %s\n", badgeStorageLabel());
 }
 
 static bool badgePersist(const uint8_t *packet, size_t bytes) {
-  if (!badgeStorageReady) return false;
-  // FFat FILE_WRITE appends on some implementations; explicitly discard an
-  // old/incomplete temporary file before creating the new one.
-  if (FFat.exists(BADGE_TEMP_PATH) && !FFat.remove(BADGE_TEMP_PATH))
+  if (!badgeStore) return false;
+  fs::FS &store = *badgeStore;
+  const BadgePaths &paths = badgePaths(store);
+  if (badgeStore == &SD_MMC && !store.exists("/motonav") && !store.mkdir("/motonav"))
     return false;
-  File file = FFat.open(BADGE_TEMP_PATH, FILE_WRITE);
+  // FAT FILE_WRITE appends on some implementations; explicitly discard an
+  // old/incomplete temporary file before creating the new one.
+  if (store.exists(paths.temporary) && !store.remove(paths.temporary))
+    return false;
+  File file = store.open(paths.temporary, FILE_WRITE);
   if (!file) return false;
   const bool wrote = file.write(packet, bytes) == bytes;
   file.flush();
   file.close();
-  if (!wrote) { FFat.remove(BADGE_TEMP_PATH); return false; }
+  if (!wrote) { store.remove(paths.temporary); return false; }
 
   // Validate the on-disk copy's exact size before touching the old photo.
-  File check = FFat.open(BADGE_TEMP_PATH, FILE_READ);
-  if (!check) { FFat.remove(BADGE_TEMP_PATH); return false; }
+  File check = store.open(paths.temporary, FILE_READ);
+  if (!check) { store.remove(paths.temporary); return false; }
   const bool complete = check.size() == bytes;
   check.close();
-  if (!complete) { FFat.remove(BADGE_TEMP_PATH); return false; }
+  if (!complete) { store.remove(paths.temporary); return false; }
 
-  const bool hadOld = FFat.exists(BADGE_PATH);
+  const bool hadOld = store.exists(paths.primary);
   if (hadOld && badgeRecoveredFromBackup) {
     // Current .bin is damaged and the last valid image is in .bak. Never
     // destroy the only valid backup to make room for an invalid primary.
-    if (!FFat.remove(BADGE_PATH)) return false;
+    if (!store.remove(paths.primary)) return false;
   } else if (hadOld) {
     // A current valid .bin exists; rotating an older backup is safe.
-    if (FFat.exists(BADGE_BACKUP_PATH) && !FFat.remove(BADGE_BACKUP_PATH))
+    if (store.exists(paths.backup) && !store.remove(paths.backup))
       return false;
-    if (!FFat.rename(BADGE_PATH, BADGE_BACKUP_PATH)) return false;
+    if (!store.rename(paths.primary, paths.backup)) return false;
   }
-  if (!FFat.rename(BADGE_TEMP_PATH, BADGE_PATH)) {
+  if (!store.rename(paths.temporary, paths.primary)) {
     // If prior .bin was healthy, restore from the backup. For a recovered
     // boot the valid .bak remains available for the next startup.
     if (hadOld && !badgeRecoveredFromBackup)
-      FFat.rename(BADGE_BACKUP_PATH, BADGE_PATH);
+      store.rename(paths.backup, paths.primary);
     return false;
   }
   badgeRecoveredFromBackup = false;

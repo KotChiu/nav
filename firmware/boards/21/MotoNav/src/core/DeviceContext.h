@@ -262,7 +262,7 @@ uint32_t coverImageRevision = 0;
 // Electronic photo badge (BLE bulk 6). Allocation and decoding live in
 // BadgeStorage.h; the photo remains viewable without a phone connection.
 uint16_t *badgePixels = nullptr;
-bool badgeActive = false, badgeStored = false, badgeStorageReady = false;
+bool badgeActive = false, badgeStored = false;
 uint32_t badgeRevision = 0;
 String pendingBadgeStatus;
 int musicActions = 0;
