@@ -5,6 +5,7 @@
 #include "../../ui/LvglHomeChrome.h"
 #include "../../ui/LvglWeatherView.h"
 #include "../../ui/LvglMusicStatusView.h"
+#include "../../ui/LvglRasterAssets.h"
 
 static inline lv_color_t lvglColor565(uint16_t color) {
   lv_color_t out;
@@ -15,6 +16,12 @@ static inline lv_color_t lvglColor565(uint16_t color) {
 static MotoNavHomeChrome lvglHomeChrome;
 static MotoNavWeatherView lvglWeatherView;
 static MotoNavMusicStatusView lvglMusicView;
+// 4-bit images from the phone are shared between firmware and PC SDL.
+// Image backing buffers are allocated lazily in PSRAM, not internal RAM.
+static MotoNavRasterAsset lvglTextAssets[5];
+static const int lvglTextSlots[5] = {3, 4, 5, 6, 12};
+static MotoNavCoverAsset lvglAlbumCover;
+static void *motonavRasterPsramAlloc(size_t bytes) { return ps_malloc(bytes); }
 static lv_disp_draw_buf_t lvglDrawBuf;
 static lv_disp_drv_t lvglDispDrv;
 static lv_indev_t *lvglPointer = nullptr;
@@ -349,6 +356,9 @@ static void createLvglOverlay() {
   motonavHomeChromeCreate(lvglHomeChrome, screen, CX, C_UI_ACCENT, C_UI_ACCENT2);
   motonavWeatherViewCreate(lvglWeatherView, screen);
   motonavMusicStatusCreate(lvglMusicView, screen);
+  for (int i = 0; i < 5; ++i)
+    motonavRasterCreate(lvglTextAssets[i], screen, motonavRasterPsramAlloc, free);
+  motonavCoverCreate(lvglAlbumCover, screen, motonavRasterPsramAlloc, free);
 
   for (int i = 0; i < 3; i++) {
     musicButtons[i] = makeMusicButton(i);
@@ -771,6 +781,34 @@ static void lvglHybridTick() {
                              musicLyricsShownLVGL, musicStatusLVGL.c_str(),
                              musicFooterLVGL.c_str(), musicAck == 4);
   }
+  const bool linkedMusic = showMusic && bleConnected && bleAuthed &&
+                           !(hidMusicMode && !appleMedia.available);
+  const bool showCover = showMusic && coverValid && coverImg;
+  for (int i = 0; i < 5; ++i) {
+    const int slot = lvglTextSlots[i];
+    const bool use = slot < 5 ? showWeather && wxHave
+      : slot == 12 ? linkedMusic && musicLyricsShownLVGL : linkedMusic;
+    if (use) {
+      const TextImg &source = imgs[slot];
+      const int y = slot == 3 ? 56 : slot == 4 ? 232
+        : slot == 5 ? (showCover ? 194 : 158)
+        : slot == 6 ? (showCover ? 240 : 210) : 242;
+      const uint8_t tint = slot == 4 ? 0xC0 : slot == 6 ? 0xBB
+        : slot == 12 ? 0xDD : 0xFF;
+      lvglTextAssetReady[slot] = motonavRasterSetText(lvglTextAssets[i],
+        source.show, IMG_MAX, source.showW, source.showH, y, tint,
+        textImageRevision[slot]);
+    }
+    motonavRasterSetHidden(lvglTextAssets[i].image,
+                           !use || !lvglTextAssets[i].ready);
+  }
+  if (showCover) {
+    lvglCoverAssetReady = motonavCoverSet(lvglAlbumCover, coverImg,
+                                           coverW, coverH, coverImageRevision);
+  } else if (!coverValid) {
+    lvglCoverAssetReady = false;
+  }
+  motonavCoverVisible(lvglAlbumCover, showCover);
   bool showSettings = page == 3 && !sliding && !pairOn && !callOn && !fxOn;
   bool showRobot = page == 4 && !sliding && !pairOn && !callOn && !fxOn;
   bool showStock = page == 5 && !sliding && !pairOn && !callOn && !fxOn;
