@@ -1,4 +1,5 @@
 #pragma once
+#include "../../ui/MapProjection.h"
 // 地图主题、路线缓冲及位置状态。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
 // ---- 进度环动画 ----
 float ringShown = 0, ringTarget = 0;
