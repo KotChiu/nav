@@ -43,7 +43,7 @@
 | 分类 | 项目 | 触发与状态 |
 |---|---|---|
 | Display | Brightness | 滑杆 5–180，立即控制背光，松手后延迟写入 `bright` |
-| Display | Orientation | 每点击逆? **顺时针 +90°**；与现有屏幕转向矩阵共享，已有延迟持久化到 `rotd` 与 `rot` |
+| Display | Orientation | 每次点击 **顺时针 +90°**；与现有屏幕转向矩阵共享，已有延迟持久化到 `rotd` 与 `rot` |
 | Ride | Minimal map | 切换 `cleanOn`，重绘地图，持久化键 `cleanmap`；手机后续指令可能覆盖本地偏好 |
 | Ride | Trip ring | 切换 `progOn`，重绘导航，持久化键 `progring`；手机后续指令可能覆盖本地偏好 |
 | Link | Music keys | `HID` 与 `APP` 真实两种模式，执行原有 `#HM` 同款状态清理与持久化到 `mediahid`；手机端模式仍需匹配 |
