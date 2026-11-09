@@ -5,6 +5,11 @@
 #include "../../ui/LvglHomeChrome.h"
 #include "../../ui/LvglWeatherView.h"
 #include "../../ui/LvglMusicStatusView.h"
+#include "../../ui/LvglNavigationHud.h"
+#include "../../ui/LvglNavigationCues.h"
+#include "../../ui/LvglMapCanvas.h"
+#include "../../ui/FrameOwnership.h"
+#include "../../ui/LvglPageSlide.h"
 #include "../../ui/LvglRasterAssets.h"
 #include "../../ui/LvglBadgeView.h"
 
@@ -17,6 +22,68 @@ static inline lv_color_t lvglColor565(uint16_t color) {
 static MotoNavHomeChrome lvglHomeChrome;
 static MotoNavWeatherView lvglWeatherView;
 static MotoNavMusicStatusView lvglMusicView;
+static MotoNavNavigationHud lvglMapHud;
+static MotoNavNavigationCues lvglTurnCues;
+static bool lvglNativeCueSupported() {
+#if MOTONAV_NATIVE_NAV_CUES
+  return motonavCueSupported(motonavCueKind(navDir.c_str()));
+#else
+  return false;
+#endif
+}
+static MotoNavMapCanvas lvglMapCanvas;
+static bool lvglMapCanvasCurrentFrame = false;
+static bool lvglMapCanvasAllocationTried = false;
+static uint16_t *lvglMapCanvasPixels() {
+  return lvglMapCanvas.canvas ? lvglMapCanvas.pixels : nullptr;
+}
+static bool lvglMapCanvasStartFrame() {
+#if MOTONAV_NATIVE_MAP_CANVAS
+  if (!lvglMapCanvas.canvas && !lvglMapCanvasAllocationTried) {
+    lvglMapCanvasAllocationTried = true;
+    // Allocate *after* the existing page-transition snapshots have been
+    // reserved at boot. A PSRAM-constrained device keeps its old map path.
+    constexpr size_t bytes = (size_t)LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t);
+    if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > bytes + 256 * 1024) {
+      uint16_t *pixels = (uint16_t *)ps_malloc(bytes);
+      if (pixels) {
+        memset(pixels, 0, bytes);
+        if (!motonavMapCanvasCreate(lvglMapCanvas, lv_scr_act(), pixels,
+                                    LCD_WIDTH, LCD_HEIGHT)) free(pixels);
+        else Serial.printf("LVGL MAP: %u bytes PSRAM canvas ready\\n",
+                           (unsigned)bytes);
+      }
+    }
+    if (!lvglMapCanvas.canvas)
+      Serial.println("LVGL MAP: allocation unavailable, using legacy path");
+  }
+  // Never let a map source alias its LVGL draw buffer, a DMA transport
+  // snapshot or any already submitted frame.
+  const uint16_t *source = lvglMapCanvas.pixels;
+  if (!motonavFramePointersIndependent(gfx->getFramebuffer(), source,
+                                       fbBuf[1], flushSrc)) return false;
+  return motonavMapCanvasBegin(lvglMapCanvas);
+#else
+  return false;
+#endif
+}
+static void lvglMapCanvasEndFrame() {
+  motonavMapCanvasCommit(lvglMapCanvas);
+  lvglMapCanvasCurrentFrame = true;
+}
+static void lvglMapCanvasFallback() {
+  lvglMapCanvasCurrentFrame = false;
+}
+static bool lvglMapCanvasActive() { return lvglMapCanvas.drawing; }
+static bool lvglMapCanvasLine(const float *x, const float *y, int n,
+                              float width, uint16_t color, bool caps) {
+  return motonavMapCanvasPolyline(lvglMapCanvas, x, y, n, width, color, caps);
+}
+static bool lvglMapCanvasPolygon(const float *x, const float *y,
+                                 int n, uint16_t color) {
+  return motonavMapCanvasPolygon(lvglMapCanvas, x, y, n, color);
+}
+static MotoNavLvglPageSlide lvglSwipeLayer;
 // 4-bit images from the phone are shared between firmware and PC SDL.
 // Image backing buffers are allocated lazily in PSRAM, not internal RAM.
 static MotoNavRasterAsset lvglTextAssets[10];
@@ -356,10 +423,17 @@ static void createLvglOverlay() {
   lv_obj_t *screen = lv_scr_act();
   lv_obj_set_style_bg_opa(screen, LV_OPA_TRANSP, 0);
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+  // The map Canvas is created lazily after slide buffers are reserved.
+  // This avoids starving startup UI and preserves a low-memory fallback.
   // Home ring is now a native LVGL layer and does not rely on Canvas pixels.
   motonavHomeChromeCreate(lvglHomeChrome, screen, CX, C_UI_ACCENT, C_UI_ACCENT2);
   motonavWeatherViewCreate(lvglWeatherView, screen);
   motonavMusicStatusCreate(lvglMusicView, screen);
+  motonavNavigationHudCreate(lvglMapHud, screen);
+  motonavNavigationCuesCreate(lvglTurnCues, screen);
+  // The existing PSRAM snapshots will be shown as two LVGL image objects.
+  // It is not another framebuffer allocation.
+  motonavLvglSlideCreate(lvglSwipeLayer, screen, LCD_WIDTH, LCD_HEIGHT);
   for (int i = 0; i < 10; ++i)
     motonavRasterCreate(lvglTextAssets[i], screen, motonavRasterPsramAlloc, free);
   motonavCoverCreate(lvglAlbumCover, screen, motonavRasterPsramAlloc, free);
@@ -704,6 +778,23 @@ static void lvglHybridInit() {
   lvglUiReady = true;
 }
 
+// Only the fully LVGL 3/4/5 pages enable this path for now. All other page
+// transitions still use the legacy compositor until real hardware QA.
+static bool lvglSwipeBegin(const uint16_t *oldFrame, const uint16_t *newFrame) {
+  if (!lvglUiReady) return false;
+  return motonavLvglSlideBegin(lvglSwipeLayer, oldFrame, newFrame);
+}
+static bool lvglSwipePaint(int amount, bool horizontal, int direction) {
+  if (!lvglSwipeLayer.active) return false;
+  motonavLvglSlideMove(lvglSwipeLayer, amount, horizontal, direction);
+  // Must draw while the main loop deliberately skips lvglHybridTick().
+  lv_refr_now(nullptr);
+  return true;
+}
+static void lvglSwipeFinish() {
+  motonavLvglSlideEnd(lvglSwipeLayer);
+}
+
 static void lvglCancelPendingPress() {
   if (lvglPointer) lv_indev_reset(lvglPointer, nullptr);
 }
@@ -784,6 +875,37 @@ static void lvglHybridTick() {
       weather.forecastLowOrRain[i] = wxFl[i];
     }
     motonavWeatherViewUpdate(lvglWeatherView, weather);
+  }
+  motonavMapCanvasVisible(lvglMapCanvas,
+    lvglMapCanvasCurrentFrame && page == PAGE_HOME && inNav &&
+    mapModeActive() && !sliding && !pairOn && !callOn && !fxOn && !staleShown);
+  bool showMapHud = page == PAGE_HOME && inNav && mapModeActive() &&
+                    !sliding && !pairOn && !callOn && !fxOn;
+  motonavNavigationHudVisible(lvglMapHud, showMapHud);
+  if (showMapHud) {
+    const bool over = hasCam && camLimit > 0 && speedKmh > camLimit;
+    String cameraRange = distText(camDist);
+    motonavNavigationHudUpdate(lvglMapHud, speedKmh, hasCam, camLimit,
+                               cameraRange.c_str(), over,
+                               lvglColor565(mapHudColor565()), lvglColor565(C_RED));
+  }
+  bool showNativeCues = showMapHud && lvglMapCanvasCurrentFrame &&
+                        lvglNativeCueSupported() && !cruiseOn;
+  motonavNavigationCuesVisible(lvglTurnCues, showNativeCues);
+  if (showNativeCues) {
+    float angle = 0;
+    const bool far = navDir != "S" && navDist > mapUiFarStageMeters();
+    if (!far) (void)dirAngle(navDir, angle);
+    const bool near = navDir != "S" && navDist <= mapUiNearMeters();
+    const bool veryNear = navDir != "S" && navDist <= mapUiNearStageMeters();
+    float progress = mapUiRingActive() ? mapUiRingShown() : tripFrac();
+    const bool trip = !mapUiRingActive() && progress >= 0;
+    const bool track = navDir != "S" && !trip;
+    String distance = distText(navDist);
+    motonavNavigationCuesUpdate(lvglTurnCues, motonavCueKind(navDir.c_str()),
+      angle, distance.c_str(),
+      near, progress, mapUiRingActive(), track, trip,
+      lvglColor565(trip ? TRIP_DONE_C : veryNear ? C_ORANGE : C_YELLOW));
   }
   bool showMusic = page == PAGE_MUSIC && !sliding && !pairOn && !callOn && !fxOn;
   motonavMusicStatusVisible(lvglMusicView, showMusic);
@@ -1048,6 +1170,9 @@ static void lvglHybridTick() {
   if (lvglOverlayDirty) {
     lvglOverlayDirty = false;
     needFlush = true;
-    frameIsMap = false;
+    // A changing native map HUD must not force the continuous map feed
+    // into the synchronous non-map display path on every speed update.
+    if (!(page == PAGE_HOME && inNav && mapModeActive()))
+      frameIsMap = false;
   }
 }

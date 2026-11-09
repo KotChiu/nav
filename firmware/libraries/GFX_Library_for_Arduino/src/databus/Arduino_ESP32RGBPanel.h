@@ -113,7 +113,8 @@ public:
       uint16_t hsync_polarity, uint16_t hsync_front_porch, uint16_t hsync_pulse_width, uint16_t hsync_back_porch,
       uint16_t vsync_polarity, uint16_t vsync_front_porch, uint16_t vsync_pulse_width, uint16_t vsync_back_porch,
       uint16_t pclk_active_neg = 0, int32_t prefer_speed = GFX_NOT_DEFINED, bool useBigEndian = false,
-      uint16_t de_idle_high = 0, uint16_t pclk_idle_high = 0, size_t bounce_buffer_size_px = 0);
+      uint16_t de_idle_high = 0, uint16_t pclk_idle_high = 0, size_t bounce_buffer_size_px = 0,
+      bool frame_boundary_swap = false);
 
   bool begin(int32_t speed = GFX_NOT_DEFINED);
 
@@ -125,6 +126,9 @@ public:
   uint16_t *getFrameBuffer(uint8_t index);
   bool drawFrameBuffer(uint16_t *frame_buffer, int16_t w, int16_t h);
 
+  // When enabled, only the returned inactive frame may be modified.
+  bool frameBoundarySwapActive() const { return _frame_available != nullptr; }
+  uint16_t *acquireFrameBuffer(TickType_t timeout);
   bool refresh();
   bool waitVsync();
 
@@ -149,6 +153,13 @@ private:
   uint16_t _de_idle_high;
   uint16_t _pclk_idle_high;
   size_t _bounce_buffer_size_px;
+  bool _frame_boundary_swap;
+  SemaphoreHandle_t _frame_available = nullptr;
+  portMUX_TYPE _frame_lock = portMUX_INITIALIZER_UNLOCKED;
+  int _scanning_frame = 0;
+  int _queued_frame = -1;
+  static bool _fillBounceBuffer(esp_lcd_panel_handle_t panel, void *buffer,
+                               int position_px, int bytes, void *user_ctx);
 
   esp_lcd_panel_handle_t _panel_handle = NULL;
   uint16_t *_frame_buffers[2] = {nullptr, nullptr};

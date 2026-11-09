@@ -4,6 +4,7 @@
 #include <SDL.h>
 #include <lvgl.h>
 #include <algorithm>
+#include <cassert>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -11,13 +12,21 @@
 #include <iterator>
 #include <ctime>
 #include <string>
+#include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <vector>
 
 #include "../../firmware/boards/21/MotoNav/ui/LvglHomeChrome.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglWeatherView.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglMusicStatusView.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglBadgeView.h"
+#include "../../firmware/boards/21/MotoNav/ui/LvglNavigationHud.h"
+#include "../../firmware/boards/21/MotoNav/ui/LvglNavigationCues.h"
+#include "../../firmware/boards/21/MotoNav/ui/LvglPageSlide.h"
+#include "../../firmware/boards/21/MotoNav/ui/TransitionPolicy.h"
+#include "../../firmware/boards/21/MotoNav/ui/MapProjection.h"
+#include "../../firmware/boards/21/MotoNav/ui/LvglMapCanvas.h"
 
 namespace {
 constexpr int W = 466, H = 466, PANEL = 480, BORDER = (PANEL - W) / 2;
@@ -25,7 +34,11 @@ constexpr uint16_t CYAN = 0x04B6, MAGENTA = 0xF815;
 constexpr uint32_t BG = 0x000000, PANEL_BG = 0x101820, SUB = 0x98A5B4;
 lv_color_t renderBuffer[W * 36];
 uint16_t framebuffer[W * H] = {};
+uint16_t demoMapPixels[W * H] = {};
+MotoNavMapCanvas demoMapCanvas;
 uint16_t roundedFrame[W * H] = {};
+uint16_t slideOldPixels[W * H] = {};
+uint16_t slideNewPixels[W * H] = {};
 lv_disp_draw_buf_t lvDraw;
 lv_disp_drv_t lvDisp;
 lv_indev_drv_t lvPointer;
@@ -33,6 +46,9 @@ int cursorX = W / 2, cursorY = H / 2;
 bool pressed = false, dirty = true;
 int pageIndex = 0, brightness = 70, speed = 68;
 bool navigation = false, linkReady = true, playing = true;
+float demoTurnDegrees = 90.f, demoProgress = 0.45f;
+MotoNavCueKind demoCueKind = MotoNavCueKind::Right;
+bool demoNearTurn = false;
 bool dragging = false;
 int downX = 0, downY = 0;
 MotoNavHomeChrome chrome;
@@ -40,9 +56,16 @@ MotoNavMusicStatusView demoMusicWidgets;
 MotoNavBadgeView demoBadge;
 uint16_t demoBadgePixels[MotoNavBadge::SIZE * MotoNavBadge::SIZE] = {};
 bool badgeFixtureLoaded = false;
+MotoNavNavigationHud demoNavigationHud;
+MotoNavNavigationCues demoTurnCues;
+MotoNavLvglPageSlide demoSwipe;
+bool demoSlideActive = false, demoSlideHorizontal = true;
+int demoSlideDirection = -1;
+uint32_t demoSlideAt = 0;
 lv_obj_t *brightnessValue = nullptr;
 lv_obj_t *musicState = nullptr;
 static const char *pageNames[] = {"HOME", "WEATHER", "MUSIC", "COMPANION", "STOCKS", "SETTINGS", "BADGE"};
+constexpr int PAGE_COUNT = std::size(pageNames);
 
 lv_obj_t *label(lv_obj_t *parent, const char *text, int x, int y,
                 uint32_t color = 0xFFFFFF, const lv_font_t *font = &lv_font_montserrat_20) {
@@ -75,10 +98,11 @@ lv_obj_t *box(lv_obj_t *parent, int x, int y, int w, int h, uint32_t bg,
   return b;
 }
 void showPage(int target);
+void transitionToPage(int target, bool horizontal, int direction);
 void pageEvent(lv_event_t *ev) {
   if (lv_event_get_code(ev) != LV_EVENT_CLICKED) return;
   const int destination = static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(ev)));
-  showPage(destination);
+  transitionToPage(destination, true, -1);
 }
 void navEvent(lv_event_t *ev) {
   if (lv_event_get_code(ev) != LV_EVENT_CLICKED) return;
@@ -128,17 +152,57 @@ void home(lv_obj_t *screen) {
   button(screen, "WEATHER", 240, 350, 133, pageEvent, 1);
 }
 void navigationPage(lv_obj_t *screen) {
-  centerLabel(screen, "SIMULATED NAVIGATION", 53, 0x29DCE9, &lv_font_montserrat_16);
-  char text[24];
-  std::snprintf(text, sizeof(text), "%d", speed);
-  centerLabel(screen, text, 93, 0xFFFFFF, &lv_font_montserrat_40);
-  centerLabel(screen, "km/h", 147, SUB, &lv_font_montserrat_16);
-  static lv_point_t route[] = {{96, 277}, {190, 277}, {190, 220}, {294, 220}, {294, 178}};
-  lv_obj_t *line = lv_line_create(screen);
-  lv_line_set_points(line, route, sizeof(route) / sizeof(route[0]));
-  lv_obj_set_style_line_color(line, lv_color_hex(0x19DCEB), 0);
-  lv_obj_set_style_line_width(line, 12, 0);
-  lv_obj_set_style_line_rounded(line, true, 0);
+  demoMapCanvas = MotoNavMapCanvas{};
+  if (!motonavMapCanvasCreate(demoMapCanvas, screen, demoMapPixels, W, H) ||
+      !motonavMapCanvasBegin(demoMapCanvas)) {
+    std::fprintf(stderr, "Cannot create native LVGL map canvas\n");
+    return;
+  }
+  // A deterministic stand-in for the BLE raster tiles. The *drawing*
+  // functions here are the same as the firmware's native polygon/route API.
+  for (int y = 0; y < H; ++y) {
+    for (int x = 0; x < W; ++x) {
+      demoMapPixels[y * W + x] = ((x / 35 + y / 42) & 1) ? 0x09EA : 0x0949;
+    }
+  }
+  const float parkX[] = {48, 152, 166, 67};
+  const float parkY[] = {175, 145, 226, 258};
+  const float lakeX[] = {310, 409, 414, 340};
+  const float lakeY[] = {195, 177, 260, 283};
+  if (!motonavMapCanvasPolygon(demoMapCanvas, parkX, parkY, 4, 0x3C8A) ||
+      !motonavMapCanvasPolygon(demoMapCanvas, lakeX, lakeY, 4, 0x1595))
+    std::fprintf(stderr, "Native LVGL map polygon failed\n");
+  centerLabel(screen, "SIMULATED NAVIGATION", 12, 0x29DCE9, &lv_font_montserrat_16);
+  demoNavigationHud = MotoNavNavigationHud{};
+  motonavNavigationHudCreate(demoNavigationHud, screen);
+  motonavNavigationHudUpdate(demoNavigationHud, speed, true, 80,
+                             "320 m", speed > 80, lv_color_hex(0xFFFFFF),
+                             lv_color_hex(0xFF4257));
+  motonavNavigationHudVisible(demoNavigationHud, true);
+  // The geometry uses the same world-to-screen projection as the ESP32 road
+  // renderer; source points are deliberately mock map data.
+  static const float worldPoints[5][2] = {
+      {-137, -15}, {-43, -15}, {-43, 42}, {61, 42}, {61, 84}};
+  float routeX[5] = {}, routeY[5] = {};
+  for (int i = 0; i < 5; ++i) {
+    float x = 0, y = 0;
+    motonavProjectDelta(worldPoints[i][0], worldPoints[i][1],
+                        1.0f, 1.0f, 0.0f, W / 2, 262, x, y);
+    routeX[i] = x;
+    routeY[i] = y;
+  }
+  motonavMapCanvasPolyline(demoMapCanvas, routeX, routeY, 5, 18, 0xFFFFFF, true);
+  motonavMapCanvasPolyline(demoMapCanvas, routeX, routeY, 5, 11, 0x067D, true);
+  motonavMapCanvasCommit(demoMapCanvas);
+  motonavMapCanvasVisible(demoMapCanvas, true);
+  demoTurnCues = MotoNavNavigationCues{};
+  motonavNavigationCuesCreate(demoTurnCues, screen);
+  motonavNavigationCuesUpdate(demoTurnCues, demoCueKind, demoTurnDegrees,
+                              demoNearTurn ? "35m" : "250m",
+                              demoNearTurn, demoProgress,
+                              true, true, false,
+                              lv_color_hex(demoNearTurn ? 0xFFAA33 : 0xFDE15A));
+  motonavNavigationCuesVisible(demoTurnCues, true);
   centerLabel(screen, "TURN RIGHT IN 250m", 304, 0xFFFFFF, &lv_font_montserrat_20);
   button(screen, "END MOCK ROUTE", 125, 363, 216, navEvent);
 }
@@ -263,7 +327,7 @@ void badge(lv_obj_t *screen) {
   }
 }
 void showPage(int target) {
-  pageIndex = (target + 7) % 7;
+  pageIndex = (target + PAGE_COUNT) % PAGE_COUNT;
   brightnessValue = nullptr; musicState = nullptr;
   lv_obj_t *screen = lv_scr_act();
   lv_obj_clean(screen);
@@ -281,6 +345,34 @@ void showPage(int target) {
   if (pageIndex != 6 && (pageIndex != 0 || !navigation)) footer(screen);
   dirty = true;
 }
+
+// On LVGL-only destinations the same two-frame LVGL image transition as the
+// ESP32 animates the slide. Other pages still use immediate navigation.
+void transitionToPage(int target, bool horizontal, int direction) {
+  target = (target + PAGE_COUNT) % PAGE_COUNT;
+  if (demoSlideActive) {
+    motonavLvglSlideEnd(demoSwipe);
+    demoSlideActive = false;
+  }
+  const int from = pageIndex;
+  const bool nativePair = motonavNativeSwipeAllowed(from, target, navigation, true);
+  if (!nativePair) { showPage(target); return; }
+  lv_refr_now(nullptr);
+  std::copy(std::begin(framebuffer), std::end(framebuffer), std::begin(slideOldPixels));
+  showPage(target);
+  lv_refr_now(nullptr);
+  std::copy(std::begin(framebuffer), std::end(framebuffer), std::begin(slideNewPixels));
+  if (!demoSwipe.root &&
+      !motonavLvglSlideCreate(demoSwipe, lv_layer_top(), W, H)) return;
+  if (!motonavLvglSlideBegin(demoSwipe, slideOldPixels, slideNewPixels)) return;
+  demoSlideHorizontal = horizontal;
+  demoSlideDirection = direction;
+  demoSlideAt = SDL_GetTicks();
+  demoSlideActive = true;
+  motonavLvglSlideMove(demoSwipe, 0, horizontal, direction);
+  lv_refr_now(nullptr);
+  dirty = true;
+}
 void flush(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *colors) {
   const int width = area->x2 - area->x1 + 1;
   for (int y = area->y1; y <= area->y2; ++y) {
@@ -295,6 +387,36 @@ void readPointer(lv_indev_drv_t *, lv_indev_data_t *data) {
   data->state = pressed ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
   data->point.x = cursorX;
   data->point.y = cursorY;
+}
+static void savePanelPpm(const std::string &path) {
+  // Write the exact logical LVGL RGB565 draw result, centered in the
+  // physical 480x480 circular panel. No SDL screenshot dependence.
+  std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+  if (!stream) throw std::runtime_error("Cannot write " + path);
+  stream << "P6\n" << PANEL << " " << PANEL << "\n255\n";
+  const int r2 = (W / 2 - 2) * (W / 2 - 2);
+  for (int y = 0; y < PANEL; ++y) {
+    for (int x = 0; x < PANEL; ++x) {
+      const int px = x - BORDER, py = y - BORDER;
+      const int dx = px - W / 2, dy = py - H / 2;
+      uint16_t c = 0;
+      if (px >= 0 && py >= 0 && px < W && py < H && dx * dx + dy * dy <= r2)
+        c = framebuffer[py * W + px];
+      const unsigned char rgb[3] = {
+        static_cast<unsigned char>(((c >> 11) & 31) * 255 / 31),
+        static_cast<unsigned char>(((c >> 5) & 63) * 255 / 63),
+        static_cast<unsigned char>((c & 31) * 255 / 31)
+      };
+      stream.write(reinterpret_cast<const char *>(rgb), sizeof(rgb));
+    }
+  }
+  if (!stream) throw std::runtime_error("Failed writing " + path);
+}
+static void captureScenario(const std::string &folder, const char *name) {
+  lv_tick_inc(40);
+  lv_timer_handler();
+  lv_refr_now(nullptr);
+  savePanelPpm(folder + "/" + name + ".ppm");
 }
 void render(SDL_Renderer *renderer, SDL_Texture *texture) {
   std::memcpy(roundedFrame, framebuffer, sizeof(roundedFrame));
@@ -318,7 +440,7 @@ void render(SDL_Renderer *renderer, SDL_Texture *texture) {
 static bool loadBadgeFile(const std::string &path) {
   std::ifstream file(path, std::ios::binary | std::ios::ate);
   if (!file || file.tellg() != std::streampos(MotoNavBadge::PACKET_BYTES)) {
-    std::fprintf(stderr, "Badge file must be exactly %zu bytes: %s\\n",
+    std::fprintf(stderr, "Badge file must be exactly %zu bytes: %s\n",
                  MotoNavBadge::PACKET_BYTES, path.c_str());
     return false;
   }
@@ -326,7 +448,7 @@ static bool loadBadgeFile(const std::string &path) {
   std::vector<uint8_t> data(MotoNavBadge::PACKET_BYTES);
   if (!file.read(reinterpret_cast<char *>(data.data()), data.size()) ||
       !MotoNavBadge::valid(data.data(), data.size())) {
-    std::fprintf(stderr, "Invalid BDG1 packet, dimensions or CRC32: %s\\n", path.c_str());
+    std::fprintf(stderr, "Invalid BDG1 packet, dimensions or CRC32: %s\n", path.c_str());
     return false;
   }
   std::memcpy(demoBadgePixels, data.data() + MotoNavBadge::HEADER_BYTES,
@@ -337,12 +459,22 @@ static bool loadBadgeFile(const std::string &path) {
 
 int main(int argc, char **argv) {
   bool smoke = false;
+  std::string captureDir;
   for (int i = 1; i < argc; ++i) {
     if (std::string(argv[i]) == "--smoke-test") smoke = true;
+    else if (std::string(argv[i]) == "--capture-dir" && i + 1 < argc)
+      captureDir = argv[++i];
     else if (std::string(argv[i]) == "--badge-file" && i + 1 < argc) {
       if (!loadBadgeFile(argv[++i])) return 2;
     } else {
-      std::fprintf(stderr, "Usage: %s [--smoke-test] [--badge-file image.bdg]\\n", argv[0]);
+      std::fprintf(stderr, "Usage: %s [--smoke-test] [--capture-dir DIR] [--badge-file image.bdg]\n", argv[0]);
+      return 2;
+    }
+  }
+  if (!captureDir.empty()) {
+    try { std::filesystem::create_directories(captureDir); }
+    catch (const std::exception &e) {
+      std::fprintf(stderr, "Cannot create capture dir: %s\n", e.what());
       return 2;
     }
   }
@@ -368,11 +500,46 @@ int main(int argc, char **argv) {
   lv_indev_drv_init(&lvPointer);
   lvPointer.type = LV_INDEV_TYPE_POINTER; lvPointer.read_cb = readPointer;
   lv_indev_drv_register(&lvPointer);
+  if (!captureDir.empty()) {
+    static const char *scenes[PAGE_COUNT] = {"home", "weather", "music", "companion", "stocks", "settings", "badge"};
+    for (int p = 0; p < PAGE_COUNT; ++p) {
+      showPage(p);
+      captureScenario(captureDir, scenes[p]);
+    }
+    navigation = true;
+    linkReady = true;
+    const float headings[] = {0, -90, 90, 90, 90, 0, 0};
+    const MotoNavCueKind kinds[] = {
+      MotoNavCueKind::Straight, MotoNavCueKind::Left,
+      MotoNavCueKind::Right, MotoNavCueKind::Right,
+      MotoNavCueKind::Right, MotoNavCueKind::UTurn, MotoNavCueKind::Arrive
+    };
+    const char *names[] = {"nav-straight", "nav-left", "nav-right", "nav-near",
+                            "nav-overspeed", "nav-uturn", "nav-arrive"};
+    for (int i = 0; i < 7; ++i) {
+      demoCueKind = kinds[i];
+      demoTurnDegrees = headings[i];
+      demoNearTurn = i == 3;
+      demoProgress = i == 3 ? 0.95f : 0.45f;
+      speed = i == 4 ? 92 : 68;
+      showPage(0);
+      captureScenario(captureDir, names[i]);
+    }
+    navigation = false;
+    demoNearTurn = false;
+    demoTurnDegrees = 90;
+    demoCueKind = MotoNavCueKind::Right;
+    speed = 68;
+    linkReady = false;
+    showPage(0);
+    captureScenario(captureDir, "home-offline");
+    linkReady = true;
+  }
   showPage(badgeFixtureLoaded ? 6 : 0);
   if (smoke) {
     // Exercise every page in CI, not just the splash/home scene.
     // Rendering must reach the RGB565 framebuffer without hardware.
-    for (int p = 0; p < 7; ++p) {
+    for (int p = 0; p < PAGE_COUNT; ++p) {
       showPage(p);
       lv_tick_inc(40);
       lv_timer_handler();
@@ -380,7 +547,7 @@ int main(int argc, char **argv) {
       size_t visible = 0;
       for (uint16_t px : framebuffer) if (px != 0) ++visible;
       if (visible < 100) {
-        std::fprintf(stderr, "LVGL smoke failed: page=%d pixels=%zu\\n", p, visible);
+        std::fprintf(stderr, "LVGL smoke failed: page=%d pixels=%zu\n", p, visible);
         SDL_DestroyTexture(texture);
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
@@ -389,6 +556,61 @@ int main(int argc, char **argv) {
       }
       std::fill(std::begin(framebuffer), std::end(framebuffer), 0);
     }
+    // Also exercise the *same* navigation HUD model and swipe image layer as
+    // the firmware, not only the simulated static pages.
+    navigation = true;
+    showPage(0);
+    lv_refr_now(nullptr);
+    if (!demoMapCanvas.canvas || demoMapCanvas.nativeLines < 2 ||
+        demoMapCanvas.nativePolygons < 2 || !demoTurnCues.root ||
+        !demoTurnCues.ring || !demoTurnCues.arrow) {
+      std::fprintf(stderr, "Native LVGL map geometry smoke failed\n");
+      return 4;
+    }
+    assert(lv_obj_get_child_cnt(lv_scr_act()) > 0);
+    navigation = false;
+    showPage(3);
+    lv_refr_now(nullptr);
+    transitionToPage(4, true, -1);
+    if (!demoSlideActive || !demoSwipe.active) {
+      std::fprintf(stderr, "LVGL swipe layer failed to start\n");
+      return 3;
+    }
+    motonavLvglSlideMove(demoSwipe, W / 2, true, -1);
+    lv_refr_now(nullptr);
+    motonavLvglSlideEnd(demoSwipe);
+    demoSlideActive = false;
+    showPage(0);
+    transitionToPage(1, true, -1); // home -> weather
+    if (!demoSlideActive) {
+      std::fprintf(stderr, "LVGL mixed weather-page swipe failed\n");
+      return 5;
+    }
+    motonavLvglSlideMove(demoSwipe, W / 2, true, -1);
+    lv_refr_now(nullptr);
+    motonavLvglSlideEnd(demoSwipe);
+    demoSlideActive = false;
+    showPage(1);
+    transitionToPage(2, true, -1); // weather -> music
+    if (!demoSlideActive) {
+      std::fprintf(stderr, "LVGL mixed music-page swipe failed\n");
+      return 6;
+    }
+    motonavLvglSlideEnd(demoSwipe);
+    demoSlideActive = false;
+    navigation = true;
+    showPage(0);
+    transitionToPage(1, true, -1);
+    if (demoSlideActive) {
+      std::fprintf(stderr, "Native slide unexpectedly replaced active navigation\n");
+      return 7;
+    }
+    navigation = false;
+    showPage(PAGE_COUNT - 2);
+    transitionToPage(PAGE_COUNT - 1, true, -1);
+    if (pageIndex != PAGE_COUNT - 1 || demoSlideActive) return 8;
+    transitionToPage(PAGE_COUNT, true, -1);
+    if (pageIndex != 0 || demoSlideActive) return 8;
     showPage(badgeFixtureLoaded ? 6 : 0);
   }
 
@@ -401,14 +623,15 @@ int main(int argc, char **argv) {
       if (event.type == SDL_QUIT) running = false;
       if (event.type == SDL_KEYDOWN) {
         if (event.key.keysym.sym == SDLK_ESCAPE) running = false;
-        if (event.key.keysym.sym == SDLK_LEFT) showPage(pageIndex - 1);
-        if (event.key.keysym.sym == SDLK_RIGHT) showPage(pageIndex + 1);
+        if (event.key.keysym.sym == SDLK_LEFT) transitionToPage(pageIndex - 1, true, +1);
+        if (event.key.keysym.sym == SDLK_RIGHT) transitionToPage(pageIndex + 1, true, -1);
         if (event.key.keysym.sym == SDLK_n) { navigation = !navigation; showPage(0); }
         if (event.key.keysym.sym == SDLK_b) { linkReady = !linkReady; showPage(pageIndex); }
         if (event.key.keysym.sym == SDLK_UP) { speed = std::min(180, speed + 5); showPage(pageIndex); }
         if (event.key.keysym.sym == SDLK_DOWN) { speed = std::max(0, speed - 5); showPage(pageIndex); }
       }
-      if (event.type == SDL_MOUSEWHEEL) showPage(pageIndex + (event.wheel.y < 0 ? 1 : -1));
+      if (event.type == SDL_MOUSEWHEEL) transitionToPage(pageIndex + (event.wheel.y < 0 ? 1 : -1), true,
+                                                        event.wheel.y < 0 ? -1 : +1);
       if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
         pressed = true; dragging = true;
         downX = event.button.x - BORDER; downY = event.button.y - BORDER;
@@ -416,8 +639,9 @@ int main(int argc, char **argv) {
       if (event.type == SDL_MOUSEBUTTONUP && event.button.button == SDL_BUTTON_LEFT) {
         pressed = false;
         const int x = event.button.x - BORDER, y = event.button.y - BORDER;
-        if (dragging && std::abs(x - downX) > 56) showPage(pageIndex + (x < downX ? 1 : -1));
-        else if (dragging && y - downY > 56) showPage(0);
+        if (dragging && std::abs(x - downX) > 56)
+          transitionToPage(pageIndex + (x < downX ? 1 : -1), true, x < downX ? -1 : +1);
+        else if (dragging && y - downY > 56) transitionToPage(0, false, +1);
         dragging = false;
       }
       if (event.type == SDL_MOUSEMOTION || event.type == SDL_MOUSEBUTTONDOWN) {
@@ -430,6 +654,17 @@ int main(int argc, char **argv) {
     uint32_t elapsed = now - lastTick;
     if (elapsed) { lv_tick_inc(elapsed); lastTick = now; }
     lv_timer_handler();
+    if (demoSlideActive) {
+      const uint32_t elapsedMs = SDL_GetTicks() - demoSlideAt;
+      const int progress = elapsedMs >= 240 ? W : int(elapsedMs * W / 240);
+      motonavLvglSlideMove(demoSwipe, progress, demoSlideHorizontal, demoSlideDirection);
+      if (progress >= W) {
+        motonavLvglSlideEnd(demoSwipe);
+        demoSlideActive = false;
+      }
+      lv_refr_now(nullptr);
+      dirty = true;
+    }
     if (dirty || frames < 3) render(renderer, texture);
     if (smoke && ++frames >= 12) running = false;
     SDL_Delay(8);

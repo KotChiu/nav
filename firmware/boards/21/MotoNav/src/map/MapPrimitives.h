@@ -110,6 +110,11 @@ void __attribute__((optimize("O3"))) viceAACircle(float cx, float cy, float radi
 }
 
 void __attribute__((optimize("O3"))) mapPolyline(const float *xs, const float *ys, int n, float w, uint16_t c, bool caps) {
+  // Roads, ghost paths and navigation routes share this code path. LVGL
+  // rasterizes bounded polylines into the map Canvas directly; huge projected
+  // features and Vice City AA remain on the proven Canvas pixel fallback.
+  if (lvglMapCanvasActive() && styleIdx() != 1 &&
+      lvglMapCanvasLine(xs, ys, n, w, c, caps)) return;
   bool vice = styleIdx() == 1;
   if (vice) initViceSampling();
   float r = w / 2;
@@ -147,6 +152,9 @@ void __attribute__((optimize("O3"))) mapPolyline(const float *xs, const float *y
 // 实心多边形（扫描线，奇偶规则）
 void mapFillPoly(const float *xs, const float *ys, int n, uint16_t c) {
   if (n < 3) return;
+  // LVGL's polygon fill handles roads/parks/water within safe bounds. Very
+  // complex or far-away shapes still use the established scanline rasterizer.
+  if (lvglMapCanvasActive() && lvglMapCanvasPolygon(xs, ys, n, c)) return;
   float ymin = 1e9f, ymax = -1e9f, xmin = 1e9f, xmax = -1e9f;
   for (int i = 0; i < n; i++) {
     ymin = fminf(ymin, ys[i]); ymax = fmaxf(ymax, ys[i]);

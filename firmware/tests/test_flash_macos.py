@@ -37,6 +37,60 @@ class FlashTests(unittest.TestCase):
             version, _ = flash.validate_images('175', root)
             self.assertEqual(version, '7.12.9-junction.11')
 
+    def test_qa_image_is_separate_and_never_accepted_as_normal_image(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "firmware/boards/21/MotoNav/src/core/FirmwareConfig.h"
+            source.parent.mkdir(parents=True)
+            source.write_text('#define FW_VERSION "v7.13.0-companion"\n')
+            qa_dir = root / "firmware/dist/21/panel0/qa-autotest"
+            qa_dir.mkdir(parents=True)
+            app = bytes([0xE9]) + b"qa application"
+            files = [
+                ("qa_app_0x10000.bin", app),
+                ("qa_full_0x0.bin", bytes(0x10000) + app),
+            ]
+            entries = []
+            for name, data in files:
+                (qa_dir / name).write_bytes(data)
+                entries.append({"file": name, "bytes": len(data),
+                                "sha256": hashlib.sha256(data).hexdigest()})
+            (qa_dir / "qa_manifest.json").write_text(json.dumps({
+                "firmware": "7.13.0-companion",
+                "board": flash.BOARDS["21"]["name"],
+                "qaEnabled": True,
+                "qaAutoRunOnEveryBoot": True,
+                "files": entries,
+            }))
+            version, images = flash.validate_images("21", root, qa=True)
+            self.assertEqual(version, "7.13.0-companion")
+            self.assertEqual(images["upgrade"].name, "qa_app_0x10000.bin")
+            self.assertEqual(images["full"].name, "qa_full_0x0.bin")
+            with self.assertRaisesRegex(ValueError, "仅支持"):
+                flash.validate_images("175", root, qa=True)
+            with self.assertRaisesRegex(ValueError, "缺少"):
+                flash.validate_images("21", root, qa=False)
+            # A manifest with a forged QA flag cannot masquerade as the
+            # ordinary production image, even when moved to its directory.
+            normal_dir = root / "firmware/dist/21/panel0"
+            for name, data in files:
+                (normal_dir / name).write_bytes(data)
+            (normal_dir / "qa_manifest.json").write_bytes(
+                (qa_dir / "qa_manifest.json").read_bytes())
+            with self.assertRaisesRegex(ValueError, "缺少"):
+                flash.validate_images("21", root, qa=False)
+
+    def test_qa_check_is_non_destructive_and_explicit(self):
+        with mock.patch.object(flash, "find_tool", return_value="esptool"), \
+             mock.patch.object(flash, "validate_images",
+                               return_value=("7.13.0-companion", {})) as validate, \
+             mock.patch.object(flash, "usb_ports", return_value=[]), \
+             mock.patch.object(flash.subprocess, "run") as run, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(flash.main(["--board", "21", "--qa", "--check"]), 0)
+            validate.assert_called_once_with("21", qa=True)
+            run.assert_not_called()
+
     def test_upgrade_and_full_addresses(self):
         upgrade = flash.flash_command("esptool", "port", Path("app.bin"))
         full = flash.flash_command("esptool", "port", Path("full.bin"), True)

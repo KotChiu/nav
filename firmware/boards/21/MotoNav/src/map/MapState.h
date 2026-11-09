@@ -1,8 +1,13 @@
 #pragma once
+#include "../../ui/MapProjection.h"
 // 地图主题、路线缓冲及位置状态。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
 // ---- 进度环动画 ----
 float ringShown = 0, ringTarget = 0;
+static inline bool mapUiRingActive();
+static inline float mapUiRingShown();
 bool ringActive = false;
+static inline bool mapUiRingActive() { return ringActive; }
+static inline float mapUiRingShown() { return ringShown; }
 String ringDir = "";
 
 // ================= v2.0 小地图 =================
@@ -10,7 +15,8 @@ String ringDir = "";
 #define ROUTE_MAX    (96 * 1024)    // 路线最大字节数
 #define FEAT_MAX     7200           // 地图块最多要素数
 #define ROUTE_PTS    24000          // 路线最多点数
-#define MAP_NEAR_M   150            // 近路口转向提示放大；车道单独跟随转弯倒计时
+#define MAP_NEAR_M   150
+static inline int mapUiNearMeters() { return MAP_NEAR_M; }            // 近路口转向提示放大；车道单独跟随转弯倒计时
 #define MAP_PY       262            // 车头在屏幕上的 y 位置（偏下，多看前方）
 #include "../../CircleRowBounds.h"
 #include "../../RouteSegmentCache.h"
@@ -75,6 +81,7 @@ static inline int styleIdx() { return (nightOn && themeIdx == ST_PAPER) ? ST_NEO
 #define C_WATER  (TH.water)
 #define C_ROUTE  (TH.route)
 #define C_ROUTE2 (TH.route2)
+static inline uint16_t mapHudColor565() { return TH.hud; }
 
 static inline int16_t rd16(const uint8_t *p) { return (int16_t)(p[0] | (p[1] << 8)); }
 static inline uint16_t rdu16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }

@@ -6,6 +6,13 @@ on:
       - 'tools/lvgl-simulator/**'
       - 'firmware/boards/21/MotoNav/ui/**'
       - 'firmware/tests/RasterBridgeTest.cpp'
+      - 'firmware/tests/PageSlideGeometryTest.cpp'
+      - 'firmware/tests/MapProjectionTest.cpp'
+      - 'firmware/tests/FrameOwnershipTest.cpp'
+      - 'firmware/tests/TransitionPolicyTest.cpp'
+      - 'firmware/tests/TurnCueGeometryTest.cpp'
+      - 'firmware/tests/NavigationCueModelTest.cpp'
+      - 'firmware/tests/Rgb565PlaneTest.cpp'
       - 'firmware/tests/BadgePacketTest.cpp'
       - 'firmware/boards/21/MotoNav/src/display/LvglOverlay.h'
       - '.github/workflows/lvgl-simulator.yml'
@@ -30,6 +37,24 @@ jobs:
         run: |
           g++ -std=c++17 -Wall -Wextra -pedantic firmware/tests/BadgePacketTest.cpp -o /tmp/motonav-badge-test
           /tmp/motonav-badge-test
+      - name: Verify LVGL swipe transition geometry
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror firmware/tests/PageSlideGeometryTest.cpp -o /tmp/motonav-slide-geometry
+          /tmp/motonav-slide-geometry
+      - name: Verify Canvas/LVGL map projection parity
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror firmware/tests/MapProjectionTest.cpp -o /tmp/motonav-map-projection
+          /tmp/motonav-map-projection
+      - name: Verify framebuffer ownership and LVGL swipe rollout
+        run: |
+          for test in FrameOwnershipTest TransitionPolicyTest TurnCueGeometryTest NavigationCueModelTest Rgb565PlaneTest; do
+            g++ -std=c++17 -Wall -Wextra -Werror -pedantic "firmware/tests/${test}.cpp" -o "/tmp/${test}"
+            "/tmp/${test}"
+          done
+      - name: Check QA packaging and non-destructive flash selector
+        run: |
+          python3 -m py_compile firmware/build.py firmware/flash_macos.py tools/hardware-qa/collect.py
+          python3 -m unittest discover -s firmware/tests -p 'test_flash_macos.py' -v
       - name: Configure
         run: cmake -S tools/lvgl-simulator -B build/lvgl-simulator -DCMAKE_BUILD_TYPE=Release
       - name: Build
@@ -52,3 +77,18 @@ jobs:
             echo "Corrupted badge packet was accepted" >&2
             exit 1
           fi
+      - name: Render all mocked pages and critical navigation states
+        run: |
+          mkdir -p build/motonav-visual
+          xvfb-run -a ./build/lvgl-simulator/motonav-lvgl-simulator --smoke-test \
+            --capture-dir build/motonav-visual
+          python3 tools/lvgl-simulator/verify_captures.py build/motonav-visual
+      - name: Publish simulator gallery for offline UI review
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: motonav-lvgl-visual-gallery
+          path: |
+            build/motonav-visual/index.html
+            build/motonav-visual/*.png
+          retention-days: 14
