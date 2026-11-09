@@ -93,7 +93,7 @@ object BleLink {
         val old = gatt
         gatt = null
         old?.let { session.clear(it) }
-        ready = false; verified = false; buildingsSupported = false
+        ready = false; verified = false; buildingsSupported = false; badgeSupported = false
         capabilityQuerySent = false; rxChar = null; mtu = 23
         phyText = "?"; burstStart = 0L
         synchronized(lock) { writing = false; queue.clear(); bulkQ.clear() }
@@ -158,6 +158,7 @@ object BleLink {
     private fun adapter(): BluetoothAdapter? =
         (appContext?.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
+    @Volatile var badgeSupported: Boolean = false
     val isConnected: Boolean get() = ready
 
     // ================= 连接 =================
@@ -367,6 +368,9 @@ object BleLink {
     private fun onNotify(bytes: ByteArray?) {
         val msg = bytes?.toString(Charsets.UTF_8)?.trim() ?: return
         if (BleSession.confirms(msg, capabilityQuerySent)) markVerified()
+        if(msg=="CAP,BADGE,1") { badgeSupported = true; return }
+        if(msg=="BDG,SAVED,1") { BadgeTransfer.onStored(true); return }
+        if(msg=="BDG,SAVED,0") { BadgeTransfer.onStored(false); return }
         if(msg=="CAP,HID,1") { handler.post { sendEvent("#HM,0") }; return }
         if(msg=="CAP,BLD,1") {
             handler.post { if(!buildingsSupported) { buildingsSupported=true;MapFeeder.onBuildingCapability() } }
@@ -409,6 +413,7 @@ object BleLink {
             val t = p[1].toIntOrNull() ?: return
             val id = p[2].toIntOrNull() ?: return
             MapFeeder.onAck(t, id)
+            BadgeTransfer.onAck(t, id)
         }
     }
 
