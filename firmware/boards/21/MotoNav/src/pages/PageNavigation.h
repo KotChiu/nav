@@ -141,6 +141,9 @@ float dragP = 0, dragV = 0;                 // 新页面已经进来多少像素
 unsigned long dragT = 0;
 unsigned long dragFrameAt = 0;
 bool slideSettling = false;
+// The LVGL snapshot layer is enabled only for transitions between 3/4/5
+// (settings, companion, stocks). Other pages still have Canvas dependencies.
+static bool lvglSwipeTransition = false;
 bool slideSettleGo = false;
 float slideSettleFrom = 0, slideSettleTo = 0;
 unsigned long slideSettleAt = 0, slideSettleFrameAt = 0;
@@ -191,6 +194,10 @@ bool slidePrepare(int target) {
     page = previous;
   }
   memcpy(slideNew, gfx->getFramebuffer(), BYTES);
+  lvglSwipeTransition = lvglUiReady && !inNav &&
+    page >= PAGE_SETTINGS && page <= PAGE_STOCKS &&
+    target >= PAGE_SETTINGS && target <= PAGE_STOCKS &&
+    lvglSwipeBegin(slideOld, slideNew);
   sliding = true;
   lvglClearDirtyArea();
   needFlush = false; frameIsMap = false;
@@ -202,6 +209,14 @@ void slideCompose(int p) {
   const int W = LCD_WIDTH, H = LCD_HEIGHT;
   if (p < 0) p = 0;
   if (p > (dragHoriz ? W : H)) p = dragHoriz ? W : H;
+  if (lvglSwipeTransition && lvglSwipePaint(p, dragHoriz, dragVisualSign)) {
+    // Only LVGL image objects move: zero per-row memcpy on this path.
+    flushSetFullFrame();
+    flushAsync();
+    needFlush = false;
+    frameIsMap = false;
+    return;
+  }
   uint16_t *fb = gfx->getFramebuffer();
   if (dragHoriz) {
     for (int y = 0; y < H; y++) {
@@ -249,6 +264,8 @@ void slideCompose(int p) {
 // 换页完成
 void slideCommit() {
   const size_t BYTES = (size_t)LCD_WIDTH * LCD_HEIGHT * 2;
+  if (lvglSwipeTransition) lvglSwipeFinish();
+  lvglSwipeTransition = false;
   sliding = false; dragging = false;
   page = dragTarget;
   pageAt = millis();
@@ -276,6 +293,8 @@ void slideCommit() {
 
 // 没换成：回到原页面
 void slideCancel() {
+  if (lvglSwipeTransition) lvglSwipeFinish();
+  lvglSwipeTransition = false;
   sliding = false; dragging = false;
   renderPage(page);
   if (lvglUiReady) lvglHybridTick();
@@ -376,6 +395,8 @@ void dragEnd() {
 // 来电等情况：直接放弃拖动
 void dragAbort() {
   if (!dragging && !slideSettling) return;
+  if (lvglSwipeTransition) lvglSwipeFinish();
+  lvglSwipeTransition = false;
   sliding = false; dragging = false; slideSettling = false;
   renderPage(page);
   if (lvglUiReady) lvglHybridTick();
