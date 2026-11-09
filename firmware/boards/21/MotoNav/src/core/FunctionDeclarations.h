@@ -150,6 +150,7 @@ void handleBulk(const uint8_t *d, int n);
 void batPoll();
 void sendPendingAck();
 bool mapModeActive();
+uint16_t mapHudColor565();
 static void viceBlendPixel(uint16_t *row, int x, uint16_t color, float coverage);
 void mapFillPoly(const float *xs, const float *ys, int n, uint16_t c);
 void drawPlayer(float x, float y);
