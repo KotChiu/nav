@@ -279,6 +279,15 @@ void loop() {
   if (mapNow != wasMap) { wasMap = mapNow; navDirty = true; }   // 进出地图模式时整帧重画
   if (mapNow) navDirty = true;
 
+  // Navigation takes precedence over the decorative badge. Never leave the
+  // screen displaying a static photo while an active route needs attention.
+  if (inNav && page == PAGE_BADGE) {
+    if (sliding) dragAbort();
+    page = PAGE_HOME;
+    navDirty = true;
+    forceFullFlush = true;
+    needFlush = true;
+  }
   touchPoll();                                         // v5.2 按住接听 / v5.3 滑动换页
   batPoll();                                           // v6.8 电量
   // 4. 需要时重画导航画面
