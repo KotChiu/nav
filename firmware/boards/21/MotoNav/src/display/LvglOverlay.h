@@ -555,7 +555,8 @@ static void lvglHybridTick() {
   // Navigation keeps the top edge clear for the ring / N marker / speed HUD,
   // so the battery readout only shows on idle pages. No readout when no
   // battery is attached (batPct < 0).
-  setLvglHidden(batteryLabel, batPct < 0 || pairOn || callOn || fxOn || inNav || page == PAGE_PHOTO);
+  setLvglHidden(batteryLabel, batPct < 0 || pairOn || callOn || fxOn ||
+                inNav || page == PAGE_PHOTO || page == PAGE_HOME);
   char batteryText[24];
   if (batPct >= 0) snprintf(batteryText, sizeof(batteryText), "%d%%", batPct);
   else snprintf(batteryText, sizeof(batteryText), "--");
@@ -586,24 +587,27 @@ static void lvglHybridTick() {
     setLvglTextColor(musicButtonLabels[i], lvglColor565(primary ? C_UI_BG : enabled ? C_UI_TEXT : C_UI_SUB));
   }
 
-  setLvglHidden(settingsSlider, !showSettings);
-  setLvglHidden(settingsBrightnessLabel, !showSettings);
-  setLvglHidden(settingsTitleLabel, !showSettings);
-  setLvglHidden(settingsSubLabel, !showSettings);
-  setLvglHidden(settingsHintLabel, !showSettings);
-  setLvglHidden(settingsCard, !showSettings);
-  if (showSettings && !lv_obj_has_state(settingsSlider, LV_STATE_PRESSED)) {
-    if (lv_slider_get_value(settingsSlider) != screenBrightness) {
-      lv_slider_set_value(settingsSlider, screenBrightness, LV_ANIM_OFF);
-    }
-    char brightness[16];
-    snprintf(brightness, sizeof(brightness), "%d%%", (screenBrightness * 100 + 92) / 180);
-    setLvglLabelText(settingsBrightnessLabel, brightness);
+  MotoNavUI::settingsUpdate(showSettings);
+
+  setLvglHidden(musicHeaderLabel, !showMusic);
+  setLvglHidden(musicStatusLabel, !showMusic);
+  setLvglHidden(musicFooterLabel, !showMusic);
+  if (showMusic) {
+    const char *musicState = !(bleConnected && bleAuthed)
+        ? "PHONE OFFLINE" : hidMusicMode && !appleMedia.available
+        ? "OPEN A MUSIC APP" : !musicHave ? "NO PLAYER"
+        : musicPlaying ? "PLAYING" : "PAUSED";
+    setLvglLabelText(musicStatusLabel, musicState);
+    setLvglTextColor(musicStatusLabel, lv_color_hex(
+      musicPlaying ? MotoNavUI::Mint : MotoNavUI::Muted));
+    lv_obj_align(musicStatusLabel, LV_ALIGN_TOP_MID, 0, 275);
   }
 
   bool homeTextChanged = false;
   setLvglHidden(homeTitleLabel, !showHome);
-  setLvglHidden(homeStatusLabel, !showHome);
+  setLvglHidden(homeStatusChip, !showHome);
+  setLvglHidden(homeWeatherCard, !showHome);
+  for (int i = 0; i < 3; ++i) setLvglHidden(homeOrbit[i], !showHome);
   setLvglHidden(homeHintLabel, !showHome);
   if (showHome) {
     const char *status = waitSt == WAIT_LOST ? "Link lost" : ((bleConnected && bleAuthed) ? "Ready" : "No link");
@@ -613,7 +617,7 @@ static void lvglHybridTick() {
     setLvglTextColor(homeStatusLabel, lvglColor565(statusColor));
   }
 
-  setLvglHidden(watchTimeLabel, !showHome || !clockNowEpoch());
+  setLvglHidden(watchTimeLabel, !showHome);
   setLvglHidden(watchDateLabel, !showHome);
   // Temperature + forecast stay on the watch face, but are transparent and
   // pulled in from the dial edge so they never sit on the theme ring.
@@ -654,49 +658,7 @@ static void lvglHybridTick() {
   // fillScreen() also invalidates every visible widget for us.
   if ((homeTextChanged || homeJustShown) && showHome && !sliding) drawWaiting(waitSt);
 
-  setLvglHidden(robotHalo, !showRobot);
-  setLvglHidden(robotBody, !showRobot);
-  setLvglHidden(robotTitleLabel, !showRobot);
-  setLvglHidden(robotMoodLabel, !showRobot);
-  if (showRobot) {
-    const uint32_t now = millis();
-    if (!robotWasVisible) {
-      robotWasVisible = true;
-      robotSampleAt = now;
-      robotPoseKey = -1;
-    }
-    robotVisibleTime += now - robotSampleAt;
-    robotSampleAt = now;
-    if (now - robotLastAnimAt >= 80 || robotPoseKey < 0) {
-      robotLastAnimAt = now;
-      // Slow idle variation; a tapped expression remains for at least 12s.
-      if (robotVisibleTime - robotManualAt > 12000 && robotExpression != CompanionFace::Sleepy) {
-        static const CompanionFace::Expression idle[] = {
-          CompanionFace::Calm, CompanionFace::Curious, CompanionFace::Happy, CompanionFace::Calm};
-        robotExpression = idle[(robotVisibleTime / 8000) % 4];
-      }
-      const bool blink = robotVisibleTime % 4800 < 160;
-      const bool lookRight = robotVisibleTime % 7000 > 5600;
-      const int key = static_cast<int>(robotExpression) * 4 + (blink ? 1 : 0) + (lookRight ? 2 : 0);
-      if (key != robotPoseKey) {
-        robotPoseKey = key;
-        const CompanionFace::Pose pose = CompanionFace::pose(robotExpression, blink, lookRight);
-        for (int i = 0; i < 2; i++) {
-          lv_obj_set_pos(robotEyes[i], pose.eye[i].x, pose.eye[i].y);
-          lv_obj_set_size(robotEyes[i], pose.eye[i].w, pose.eye[i].h);
-        }
-        String mood = String(pose.name) + " / TAP TO CHANGE";
-        if (mood != robotLastMood) {
-          robotLastMood = mood;
-          lv_label_set_text(robotMoodLabel, robotLastMood.c_str());
-        }
-      }
-    }
-  } else {
-    robotWasVisible = false;
-    robotLastAnimAt = 0;
-    robotPoseKey = -1;
-  }
+  MotoNavUI::rideUpdate(showRobot);
 
   setLvglHidden(stockList, !showStock);
   setLvglHidden(stockTitleLabel, !showStock);
