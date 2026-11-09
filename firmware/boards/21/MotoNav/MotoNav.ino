@@ -76,7 +76,8 @@ void setup() {
   }
   Serial.println("stage gfx begin");
   if (!gfx->begin(qspiMHz * 1000000)) Serial.println("gfx->begin() failed!");
-  Serial.println("stage gfx ready");
+  Serial.printf("stage gfx ready, RGB scanout=%s\n",
+                board21Rgb->frameBoundarySwapActive() ? "frame-boundary" : "single");
   panel->setBrightness(screenBrightness);
 
   iconBuf = (uint16_t *)ps_malloc(ICON_BUF_W * ICON_BUF_H * 2);   // v1.8.1 图标缓存

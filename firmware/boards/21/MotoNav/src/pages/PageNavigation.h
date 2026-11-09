@@ -145,6 +145,8 @@ bool slideSettling = false;
 // The LVGL snapshot layer uses any completed non-navigation page snapshots.
 // Navigation-active swipes remain on the legacy compositor until road QA.
 static bool lvglSwipeTransition = false;
+static bool panelSwipeTransition = false;
+static int lastPanelSwipePosition = -1;
 bool slideSettleGo = false;
 float slideSettleFrom = 0, slideSettleTo = 0;
 unsigned long slideSettleAt = 0, slideSettleFrameAt = 0;
@@ -177,6 +179,7 @@ void renderPage(int p) {
 
 // 准备滑动：存下屏幕上的旧画面，在画布上画好目标页面存起来
 bool slidePrepare(int target) {
+  const uint32_t prepareAt = micros();
   const size_t BYTES = (size_t)LCD_WIDTH * LCD_HEIGHT * 2;
   slideBuffersInit();
   if (!slideOld || !slideNew) return false;
@@ -195,8 +198,15 @@ bool slidePrepare(int target) {
     page = previous;
   }
   memcpy(slideNew, gfx->getFramebuffer(), BYTES);
-  lvglSwipeTransition = motonavNativeSwipeAllowed(
-    page, target, inNav, lvglUiReady) && lvglSwipeBegin(slideOld, slideNew);
+  const bool nativeSwipe = motonavNativeSwipeAllowed(page, target, inNav, lvglUiReady);
+  panelSwipeTransition = nativeSwipe && panelSlideAvailable();
+  lastPanelSwipePosition = -1;
+  static bool reportedPanelSwipe = false;
+  if (panelSwipeTransition && !reportedPanelSwipe) {
+    reportedPanelSwipe = true;
+    Serial.printf("SLIDE panel-direct prepare=%luus\n", (unsigned long)(micros() - prepareAt));
+  }
+  lvglSwipeTransition = nativeSwipe && !panelSwipeTransition && lvglSwipeBegin(slideOld, slideNew);
   sliding = true;
   lvglClearDirtyArea();
   needFlush = false; frameIsMap = false;
@@ -204,17 +214,25 @@ bool slidePrepare(int target) {
 }
 
 // 合成一帧：新页面已经进来 p 像素（盖在上面），旧页面往同方向退 30%、变暗，交界处一道阴影
-void slideCompose(int p) {
+bool slideCompose(int p) {
   const int W = LCD_WIDTH, H = LCD_HEIGHT;
   if (p < 0) p = 0;
   if (p > (dragHoriz ? W : H)) p = dragHoriz ? W : H;
+  if (panelSwipeTransition) {
+    if (p == lastPanelSwipePosition) return true;
+    // Keep sampling touch while the worker is busy; the next attempt uses the
+    // newest position instead of building a queue of stale frames.
+    if (!tryFlushPanelSlide(slideOld, slideNew, p, dragHoriz, dragVisualSign)) return false;
+    lastPanelSwipePosition = p;
+    return true;
+  }
   if (lvglSwipeTransition && lvglSwipePaint(p, dragHoriz, dragVisualSign)) {
     // Only LVGL image objects move: zero per-row memcpy on this path.
     flushSetFullFrame();
     flushAsync();
     needFlush = false;
     frameIsMap = false;
-    return;
+    return true;
   }
   uint16_t *fb = gfx->getFramebuffer();
   if (dragHoriz) {
@@ -258,6 +276,7 @@ void slideCompose(int p) {
   flushSetFullFrame();
   flushAsync();
   needFlush = false; frameIsMap = false;
+  return true;
 }
 
 // 换页完成
@@ -265,6 +284,8 @@ void slideCommit() {
   const size_t BYTES = (size_t)LCD_WIDTH * LCD_HEIGHT * 2;
   if (lvglSwipeTransition) lvglSwipeFinish();
   lvglSwipeTransition = false;
+  panelSwipeTransition = false;
+  forceFullFlush = true;
   sliding = false; dragging = false;
   page = dragTarget;
   pageAt = millis();
@@ -294,6 +315,8 @@ void slideCommit() {
 void slideCancel() {
   if (lvglSwipeTransition) lvglSwipeFinish();
   lvglSwipeTransition = false;
+  panelSwipeTransition = false;
+  forceFullFlush = true;
   sliding = false; dragging = false;
   renderPage(page);
   if (lvglUiReady) lvglHybridTick();
@@ -321,11 +344,16 @@ void slideTick() {
   if (!slideSettling) return;
   unsigned long now = millis();
   float t = min(1.0f, (now - slideSettleAt) / (float)slideSettleMs);
-  if (t < 1 && slideSettleFrameAt && now - slideSettleFrameAt < 32) return;
-  slideSettleFrameAt = now;
-  float e = 1 - (1 - t) * (1 - t) * (1 - t);
-  slideCompose((int)lroundf(slideSettleFrom + (slideSettleTo - slideSettleFrom) * e));
-  if (t < 1) return;
+  if (t < 1) {
+    if (!panelSwipeTransition && slideSettleFrameAt && now - slideSettleFrameAt < 32) return;
+    const float remaining = 1 - t;
+    const float e = 1 - remaining * remaining * (panelSwipeTransition ? 1 : remaining);
+    if (slideCompose((int)lroundf(slideSettleFrom + (slideSettleTo - slideSettleFrom) * e)))
+      slideSettleFrameAt = now;
+    return;
+  }
+  // The normal page flush presents the endpoint once, after the last preview.
+  if (!panelSwipeTransition) slideCompose((int)slideSettleTo);
   slideSettling = false;
   if (slideSettleGo) slideCommit();
   else slideCancel();
@@ -375,9 +403,8 @@ void dragMove(int dx, int dy, unsigned long now) {
   dragP = p; dragT = now;
   // The RGB panel can show at most one new frame per VSYNC. Coalesce faster
   // touch samples while retaining the latest position for release velocity.
-  if (dragFrameAt == 0 || now - dragFrameAt >= 20) {
-    dragFrameAt = now;
-    slideCompose((int)p);
+  if (panelSwipeTransition || dragFrameAt == 0 || now - dragFrameAt >= 20) {
+    if (slideCompose((int)p)) dragFrameAt = now;
   }
 }
 
@@ -388,7 +415,7 @@ void dragEnd() {
   bool go = dragP > 48 || (dragV > 0.35f && dragP > 24);
   if (dragV < -0.35f) go = false;                       // 往回甩：取消
   float target = go ? full : 0;
-  slideStartSettle(dragP, target, 160, go);
+  slideStartSettle(min(dragP, (float)full), target, 160, go);
 }
 
 // 来电等情况：直接放弃拖动
@@ -396,6 +423,8 @@ void dragAbort() {
   if (!dragging && !slideSettling) return;
   if (lvglSwipeTransition) lvglSwipeFinish();
   lvglSwipeTransition = false;
+  panelSwipeTransition = false;
+  forceFullFlush = true;
   sliding = false; dragging = false; slideSettling = false;
   renderPage(page);
   if (lvglUiReady) lvglHybridTick();

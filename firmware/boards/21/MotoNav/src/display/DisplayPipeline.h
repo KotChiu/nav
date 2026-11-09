@@ -1,4 +1,5 @@
 #pragma once
+#include "../../ui/PageSlideBlit.h"
 // Double buffering and rotation for the Waveshare 2.1-inch RGB panel.
 // Rendering remains at the 466x466 logical size; flush maps it into 480x480.
 
@@ -12,6 +13,14 @@ volatile bool flushFullFrame = true;
 volatile bool forceFullFlush = true;
 volatile int flushRectCount = 0;
 volatile FlushRect flushRects[FLUSH_RECT_MAX];
+
+struct PanelSlideFrame {
+  const uint16_t *oldFrame = nullptr;
+  const uint16_t *newFrame = nullptr;
+  MotoNavSlidePositions positions;
+};
+// Published with flushReq; the worker owns it until giving flushDone.
+static PanelSlideFrame pendingPanelSlide;
 
 int screenRot = 0;
 int screenDeg = 0;
@@ -74,42 +83,77 @@ void flushSetDirtyRects(const FlushRect *rects, int count) {
   }
 }
 
-void flushLogicalFrame(const uint16_t *fb, bool fullFrame,
-                       const FlushRect *rects, int rectCount) {
-  if (!fb) return;
+static void flushPanelFrame(const uint16_t *fb, bool fullFrame,
+                            const FlushRect *rects, int rectCount,
+                            const PanelSlideFrame *slide) {
+  if (!fb && !slide) return;
 
-  uint32_t phaseAt = micros();
-  uint16_t *target = board21Rgb->getFrameBuffer(0);
-  if (!target) return;
+  const uint32_t phaseAt = micros();
+  const bool frameSwap = board21Rgb->frameBoundarySwapActive();
+  uint16_t *target = board21Rgb->acquireFrameBuffer(pdMS_TO_TICKS(250));
+  const uint32_t readyAt = micros();
+  if (!target) {
+    if (frameSwap) {
+      Serial.println("DISPLAY FATAL: scanout buffer unavailable");
+      ESP.restart();
+    }
+    return;
+  }
 
-  if (screenRot == 0 && !rotFree) {
-    static bool cleared = false;
-    if (!cleared) {
+  // The inactive frame is two submissions old. Apply the previous dirty
+  // rectangles as well as the current ones to keep both images equivalent.
+  static FlushRect previousRects[FLUSH_RECT_MAX];
+  static int previousCount = 0;
+  static bool previousFull = true;
+  static bool borderClean[2] = {false, false};
+  const int targetIndex = frameSwap && target == board21Rgb->getFrameBuffer(1);
+  const bool unrotated = slide || (screenRot == 0 && !rotFree);
+  if (unrotated) {
+    if (!borderClean[targetIndex]) {
       memset(target, 0, PANEL_WIDTH * PANEL_HEIGHT * 2);
-      cleared = true;
+      borderClean[targetIndex] = true;
     }
     const int ox = (PANEL_WIDTH - LCD_WIDTH) / 2;
     const int oy = (PANEL_HEIGHT - LCD_HEIGHT) / 2;
-    if (fullFrame) {
+    bool copyFull = fullFrame || (frameSwap && previousFull);
+    if (frameSwap && !copyFull) {
+      auto area = [](const FlushRect *regions, int count) {
+        int pixels = 0;
+        for (int i = 0; i < count; ++i) {
+          const FlushRect &r = regions[i];
+          pixels += (r.x2 - r.x1 + 1) * (r.y2 - r.y1 + 1);
+        }
+        return pixels;
+      };
+      copyFull = area(previousRects, previousCount) + area(rects, rectCount) >=
+                 LCD_WIDTH * LCD_HEIGHT;
+    }
+    if (slide) {
+      motonavBlitPageSlide(target + (size_t)oy * PANEL_WIDTH + ox, PANEL_WIDTH,
+                           slide->oldFrame, slide->newFrame, LCD_WIDTH,
+                           LCD_HEIGHT, slide->positions);
+    } else if (copyFull) {
       for (int y = 0; y < LCD_HEIGHT; y++) {
         memcpy(target + (size_t)(y + oy) * PANEL_WIDTH + ox,
                fb + (size_t)y * LCD_WIDTH, LCD_WIDTH * 2);
       }
     } else {
-      for (int i = 0; i < rectCount; i++) {
-        const FlushRect &r = rects[i];
-        int copyWidth = constrain(r.x2, 0, LCD_WIDTH - 1) -
-                        constrain(r.x1, 0, LCD_WIDTH - 1) + 1;
-        int y1 = constrain(r.y1, 0, LCD_HEIGHT - 1);
-        int y2 = constrain(r.y2, 0, LCD_HEIGHT - 1);
-        int x1 = constrain(r.x1, 0, LCD_WIDTH - 1);
-        if (copyWidth <= 0 || y2 < y1) continue;
-        for (int y = y1; y <= y2; y++) {
-          memcpy(target + (size_t)(y + oy) * PANEL_WIDTH + ox + x1,
-                 fb + (size_t)y * LCD_WIDTH + x1,
-                 (size_t)copyWidth * 2);
+      auto copyRects = [&](const FlushRect *regions, int count) {
+        for (int i = 0; i < count; ++i) {
+          const FlushRect &r = regions[i];
+          const int x1 = constrain(r.x1, 0, LCD_WIDTH - 1);
+          const int width = constrain(r.x2, 0, LCD_WIDTH - 1) - x1 + 1;
+          const int y1 = constrain(r.y1, 0, LCD_HEIGHT - 1);
+          const int y2 = constrain(r.y2, 0, LCD_HEIGHT - 1);
+          if (width <= 0) continue;
+          for (int y = y1; y <= y2; ++y) {
+            memcpy(target + (size_t)(y + oy) * PANEL_WIDTH + ox + x1,
+                   fb + (size_t)y * LCD_WIDTH + x1, (size_t)width * 2);
+          }
         }
-      }
+      };
+      if (frameSwap) copyRects(previousRects, previousCount);
+      copyRects(rects, rectCount);
     }
   } else if (!rotFree) {
     // Quarter turns need only integer addressing, not bilinear resampling.
@@ -124,6 +168,7 @@ void flushLogicalFrame(const uint16_t *fb, bool fullFrame,
       }
     }
   } else {
+    borderClean[targetIndex] = false;
     // Inverse affine mapping: compute a row origin once and advance by adds.
     // Nearest sampling avoids four PSRAM reads and bilinear math per pixel.
     const int32_t center = (LCD_WIDTH - 1) * 32768;
@@ -146,11 +191,21 @@ void flushLogicalFrame(const uint16_t *fb, bool fullFrame,
       if (sampleStep == 2) memcpy(row + PANEL_WIDTH, row, PANEL_WIDTH * sizeof(uint16_t));
     }
   }
-  uint32_t copyAt = micros();
-  board21Rgb->waitVsync();
-  uint32_t vsyncAt = micros();
-  board21Rgb->drawFrameBuffer(target, PANEL_WIDTH, PANEL_HEIGHT);
-  uint32_t drawAt = micros();
+  const uint32_t copyAt = micros();
+  if (!frameSwap) board21Rgb->waitVsync();
+  const uint32_t vsyncAt = micros();
+  if (!board21Rgb->drawFrameBuffer(target, PANEL_WIDTH, PANEL_HEIGHT)) {
+    Serial.println("DISPLAY FATAL: scanout submission failed");
+    ESP.restart();
+    return;
+  }
+  const uint32_t drawAt = micros();
+  if (frameSwap) {
+    previousFull = fullFrame || !unrotated;
+    previousCount = previousFull ? 0 : rectCount;
+    if (previousCount) memcpy(previousRects, rects, previousCount * sizeof(FlushRect));
+  }
+  const uint32_t waitUs = (readyAt - phaseAt) + (vsyncAt - copyAt);
   static uint8_t diagnosticFrames = 0;
   if (diagnosticFrames < 6) {
     diagnosticFrames++;
@@ -158,21 +213,46 @@ void flushLogicalFrame(const uint16_t *fb, bool fullFrame,
       screenDeg, fullFrame, (unsigned long)(copyAt-phaseAt),
       (unsigned long)(vsyncAt-copyAt), (unsigned long)(drawAt-vsyncAt));
   }
-  flushCopyUsAcc += copyAt - phaseAt;
-  flushVsyncUsAcc += vsyncAt - copyAt;
+  flushCopyUsAcc += copyAt - readyAt;
+  flushVsyncUsAcc += waitUs;
   flushDrawUsAcc += drawAt - vsyncAt;
+}
+
+void flushLogicalFrame(const uint16_t *fb, bool fullFrame,
+                       const FlushRect *rects, int rectCount) {
+  flushPanelFrame(fb, fullFrame, rects, rectCount, nullptr);
 }
 
 void flushLogicalFrame(const uint16_t *fb) {
   flushLogicalFrame(fb, true, nullptr, 0);
 }
 
+static bool panelSlideAvailable() {
+  return flushDone && screenDeg == 0 && board21Rgb->frameBoundarySwapActive();
+}
+
+static bool tryFlushPanelSlide(const uint16_t *oldFrame, const uint16_t *newFrame,
+                               int amount, bool horizontal, int direction) {
+  if (xSemaphoreTake(flushDone, 0) != pdTRUE) return false;
+  pendingPanelSlide = {oldFrame, newFrame, motonavSlidePositions(
+      amount, horizontal, direction, LCD_WIDTH, LCD_HEIGHT)};
+  flushFullFrame = true;
+  flushRectCount = 0;
+  xSemaphoreGive(flushReq);
+  return true;
+}
+
 void flushTask(void *arg) {
   for (;;) {
     xSemaphoreTake(flushReq, portMAX_DELAY);
     uint32_t t0 = millis();
-    flushLogicalFrame(flushSrc, flushFullFrame, (const FlushRect *)flushRects,
-                      flushRectCount);
+    if (pendingPanelSlide.oldFrame) {
+      flushPanelFrame(nullptr, true, nullptr, 0, &pendingPanelSlide);
+      pendingPanelSlide = {};
+    } else {
+      flushLogicalFrame(flushSrc, flushFullFrame, (const FlushRect *)flushRects,
+                        flushRectCount);
+    }
     flushMsAcc += millis() - t0;
     flushCnt++;
     xSemaphoreGive(flushDone);

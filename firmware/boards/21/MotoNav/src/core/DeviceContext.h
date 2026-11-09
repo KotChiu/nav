@@ -40,7 +40,7 @@ Arduino_ESP32RGBPanel *board21Rgb = new Arduino_ESP32RGBPanel(
   LCD_DATA0, LCD_DATA1, LCD_DATA2, LCD_DATA3, LCD_DATA4,
   1, 50, 8, 10,
   1, 8, 3, 8,
-  0, 12 * 1000 * 1000, false, 0, 0, PANEL_WIDTH * 10);
+  0, 12 * 1000 * 1000, false, 0, 0, PANEL_WIDTH * 10, true);
 Board21Panel *panel = new Board21Panel(board21Rgb);
 PortScale portScale;
 #define FLUSH_RECT_MAX 12
