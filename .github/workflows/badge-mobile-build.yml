@@ -21,7 +21,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - name: Verify installed Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME/platforms/android-35"
+          test -d "$ANDROID_HOME/build-tools"
       - name: Android assembleDebug
         working-directory: android
         run: |
@@ -36,8 +40,8 @@ jobs:
       - name: CocoaPods locked dependencies
         working-directory: ios
         run: |
-          sudo gem install cocoapods -v 1.16.2 --no-document
-          pod _1.16.2_ install --deployment
+          sudo gem install cocoapods -v 1.17.0 --no-document
+          pod _1.17.0_ install --deployment
       - name: Build unsigned iOS app
         run: |
           set -o pipefail
