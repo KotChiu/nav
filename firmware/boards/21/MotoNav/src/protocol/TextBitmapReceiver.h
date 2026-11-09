@@ -10,6 +10,7 @@ void handleBitmap(const uint8_t *d, int n) {
   TextImg &im = imgs[slot];
   if (w == 0 || h == 0 || parts == 0) {          // 空图：清掉这一栏
     im.showW = 0; im.showH = 0; im.recvId = -1;
+    ++textImageRevision[slot];
     navDirty = true;
     if (slot == 3 || slot == 4) wxDirty = true;
     if (slot == 5 || slot == 6 || slot == 12) musicDirty = true;
@@ -31,6 +32,7 @@ void handleBitmap(const uint8_t *d, int n) {
   if ((im.recvMask & full) == full) {             // 收齐了：换成显示用的图
     uint8_t *t = im.show; im.show = im.recv; im.recv = t;
     im.showW = im.recvW; im.showH = im.recvH;
+    ++textImageRevision[slot];
     im.recvId = -1;
     navDirty = true;
     if (slot == 3 || slot == 4) wxDirty = true;
