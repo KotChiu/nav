@@ -15,10 +15,12 @@
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
+#include <vector>
 
 #include "../../firmware/boards/21/MotoNav/ui/LvglHomeChrome.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglWeatherView.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglMusicStatusView.h"
+#include "../../firmware/boards/21/MotoNav/ui/LvglBadgeView.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglNavigationHud.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglNavigationCues.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglPageSlide.h"
@@ -51,6 +53,9 @@ bool dragging = false;
 int downX = 0, downY = 0;
 MotoNavHomeChrome chrome;
 MotoNavMusicStatusView demoMusicWidgets;
+MotoNavBadgeView demoBadge;
+uint16_t demoBadgePixels[MotoNavBadge::SIZE * MotoNavBadge::SIZE] = {};
+bool badgeFixtureLoaded = false;
 MotoNavNavigationHud demoNavigationHud;
 MotoNavNavigationCues demoTurnCues;
 MotoNavLvglPageSlide demoSwipe;
@@ -59,7 +64,8 @@ int demoSlideDirection = -1;
 uint32_t demoSlideAt = 0;
 lv_obj_t *brightnessValue = nullptr;
 lv_obj_t *musicState = nullptr;
-static const char *pageNames[] = {"HOME", "WEATHER", "MUSIC", "COMPANION", "STOCKS", "SETTINGS"};
+static const char *pageNames[] = {"HOME", "WEATHER", "MUSIC", "COMPANION", "STOCKS", "SETTINGS", "BADGE"};
+constexpr int PAGE_COUNT = std::size(pageNames);
 
 lv_obj_t *label(lv_obj_t *parent, const char *text, int x, int y,
                 uint32_t color = 0xFFFFFF, const lv_font_t *font = &lv_font_montserrat_20) {
@@ -123,7 +129,7 @@ lv_obj_t *button(lv_obj_t *parent, const char *text, int x, int y, int w,
 }
 void footer(lv_obj_t *screen) {
   label(screen, "MOCK DATA", 185, 421, 0x697987, &lv_font_montserrat_14);
-  for (int i = 0; i < 6; ++i) {
+  for (int i = 0; i < 7; ++i) {
     lv_obj_t *dot = box(screen, 173 + 23 * i, 445, 7, 7,
                         i == pageIndex ? 0xFFFFFF : 0x30414D, 7);
     (void)dot;
@@ -297,8 +303,15 @@ void settings(lv_obj_t *screen) {
   lv_label_set_text(brightnessValue, value);
   centerLabel(screen, "PC SIMULATION - NO HARDWARE CONTROL", 362, SUB, &lv_font_montserrat_14);
 }
+void badge(lv_obj_t *screen) {
+  demoBadge = MotoNavBadgeView{};
+  motonavBadgeViewCreate(demoBadge, screen);
+  motonavBadgeViewSet(demoBadge, badgeFixtureLoaded ? demoBadgePixels : nullptr,
+                      1, "SD CARD READY");
+  motonavBadgeViewVisible(demoBadge, true);
+}
 void showPage(int target) {
-  pageIndex = (target + 6) % 6;
+  pageIndex = (target + PAGE_COUNT) % PAGE_COUNT;
   brightnessValue = nullptr; musicState = nullptr;
   lv_obj_t *screen = lv_scr_act();
   lv_obj_clean(screen);
@@ -311,15 +324,16 @@ void showPage(int target) {
     case 3: companion(screen); break;
     case 4: stocks(screen); break;
     case 5: settings(screen); break;
+    case 6: badge(screen); break;
   }
-  if (pageIndex != 0 || !navigation) footer(screen);
+  if (pageIndex != 6 && (pageIndex != 0 || !navigation)) footer(screen);
   dirty = true;
 }
 
 // On LVGL-only destinations the same two-frame LVGL image transition as the
 // ESP32 animates the slide. Other pages still use immediate navigation.
 void transitionToPage(int target, bool horizontal, int direction) {
-  target = (target + 6) % 6;
+  target = (target + PAGE_COUNT) % PAGE_COUNT;
   if (demoSlideActive) {
     motonavLvglSlideEnd(demoSwipe);
     demoSlideActive = false;
@@ -407,6 +421,26 @@ void render(SDL_Renderer *renderer, SDL_Texture *texture) {
 }
 } // namespace
 
+static bool loadBadgeFile(const std::string &path) {
+  std::ifstream file(path, std::ios::binary | std::ios::ate);
+  if (!file || file.tellg() != std::streampos(MotoNavBadge::PACKET_BYTES)) {
+    std::fprintf(stderr, "Badge file must be exactly %zu bytes: %s\n",
+                 MotoNavBadge::PACKET_BYTES, path.c_str());
+    return false;
+  }
+  file.seekg(0);
+  std::vector<uint8_t> data(MotoNavBadge::PACKET_BYTES);
+  if (!file.read(reinterpret_cast<char *>(data.data()), data.size()) ||
+      !MotoNavBadge::valid(data.data(), data.size())) {
+    std::fprintf(stderr, "Invalid BDG1 packet, dimensions or CRC32: %s\n", path.c_str());
+    return false;
+  }
+  std::memcpy(demoBadgePixels, data.data() + MotoNavBadge::HEADER_BYTES,
+              MotoNavBadge::PIXEL_BYTES);
+  badgeFixtureLoaded = true;
+  return true;
+}
+
 int main(int argc, char **argv) {
   bool smoke = false;
   std::string captureDir;
@@ -414,8 +448,10 @@ int main(int argc, char **argv) {
     if (std::string(argv[i]) == "--smoke-test") smoke = true;
     else if (std::string(argv[i]) == "--capture-dir" && i + 1 < argc)
       captureDir = argv[++i];
-    else {
-      std::fprintf(stderr, "Usage: %s [--smoke-test] [--capture-dir DIR]\n", argv[0]);
+    else if (std::string(argv[i]) == "--badge-file" && i + 1 < argc) {
+      if (!loadBadgeFile(argv[++i])) return 2;
+    } else {
+      std::fprintf(stderr, "Usage: %s [--smoke-test] [--capture-dir DIR] [--badge-file image.bdg]\n", argv[0]);
       return 2;
     }
   }
@@ -448,10 +484,9 @@ int main(int argc, char **argv) {
   lv_indev_drv_init(&lvPointer);
   lvPointer.type = LV_INDEV_TYPE_POINTER; lvPointer.read_cb = readPointer;
   lv_indev_drv_register(&lvPointer);
-  showPage(0);
   if (!captureDir.empty()) {
-    static const char *scenes[] = {"home", "weather", "music", "companion", "stocks", "settings"};
-    for (int p = 0; p < 6; ++p) {
+    static const char *scenes[PAGE_COUNT] = {"home", "weather", "music", "companion", "stocks", "settings", "badge"};
+    for (int p = 0; p < PAGE_COUNT; ++p) {
       showPage(p);
       captureScenario(captureDir, scenes[p]);
     }
@@ -483,12 +518,12 @@ int main(int argc, char **argv) {
     showPage(0);
     captureScenario(captureDir, "home-offline");
     linkReady = true;
-    showPage(0);
   }
+  showPage(badgeFixtureLoaded ? 6 : 0);
   if (smoke) {
     // Exercise every page in CI, not just the splash/home scene.
     // Rendering must reach the RGB565 framebuffer without hardware.
-    for (int p = 0; p < 6; ++p) {
+    for (int p = 0; p < PAGE_COUNT; ++p) {
       showPage(p);
       lv_tick_inc(40);
       lv_timer_handler();
@@ -555,7 +590,12 @@ int main(int argc, char **argv) {
       return 7;
     }
     navigation = false;
-    showPage(0);
+    showPage(PAGE_COUNT - 2);
+    transitionToPage(PAGE_COUNT - 1, true, -1);
+    if (pageIndex != PAGE_COUNT - 1 || demoSlideActive) return 8;
+    transitionToPage(PAGE_COUNT, true, -1);
+    if (pageIndex != 0 || demoSlideActive) return 8;
+    showPage(badgeFixtureLoaded ? 6 : 0);
   }
 
   bool running = true;

@@ -10,6 +10,7 @@ void sendPendingAck() {
     txChar->notify();
     txChar->setValue((uint8_t *)"CAP,HID,1", 9); txChar->notify();
     txChar->setValue((uint8_t *)"CAP,LYR,1", 9); txChar->notify();
+    txChar->setValue((uint8_t *)"CAP,BADGE,1", 11); txChar->notify();
     pendingHidStatus = String("HID,") + (hidMusicMode ? 1 : 0) + "," + (hidMediaReady() ? 1 : 0);
     appleMedia.resend();
     pendingLyricsStatus = String("ML,") + (musicLyrics ? 1 : 0);
@@ -29,6 +30,11 @@ void sendPendingAck() {
   }
   if (pendingBuildingCapability) {
     txChar->setValue((uint8_t *)"CAP,BLD,1", 9); txChar->notify(); pendingBuildingCapability=false;
+  }
+  if (pendingBadgeStatus.length()) {
+    txChar->setValue((uint8_t *)pendingBadgeStatus.c_str(), pendingBadgeStatus.length());
+    txChar->notify();
+    pendingBadgeStatus = "";
   }
   if (pendingAck.length()) {
     txChar->setValue((uint8_t *)pendingAck.c_str(), pendingAck.length());

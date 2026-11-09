@@ -1,0 +1,56 @@
+name: Electronic badge mobile builds
+on:
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'ios/MotoNav/ContentView.swift'
+      - 'ios/MotoNav/CoverBridge.swift'
+      - 'ios/MotoNav/BleLink.swift'
+      - '.github/workflows/badge-mobile-build.yml'
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify installed Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME/platforms/android-35"
+          test -d "$ANDROID_HOME/build-tools"
+      - name: Android assembleDebug
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleDebug
+
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: CocoaPods locked dependencies
+        working-directory: ios
+        run: |
+          sudo gem install cocoapods -v 1.17.0 --no-document
+          pod _1.17.0_ install --deployment
+      - name: Build unsigned iOS app
+        run: |
+          set -o pipefail
+          xcodebuild -workspace ios/MotoNav.xcworkspace -scheme MotoNav \
+            -destination 'generic/platform=iOS' -configuration Release \
+            -derivedDataPath /tmp/motonav-badge-derived \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= \
+            build 2>&1 | tee /tmp/motonav-ios-badge-build.log

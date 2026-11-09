@@ -19,6 +19,10 @@
 
 模拟器与设备共享的地图几何画法可以直接观察，但它**不是 GPS 导航/真实交通灯回放，也不代表实机 FPS 或最终画面一致性**。设备端 Native Canvas 内存不足会自动回退；真实车载转向箭头必须另做实机安全验收。
 
+电子吧唧页复用固件的 `LvglBadgeView.h`。默认预览待上传界面，也可载入本地照片预览全屏效果。
+
+**真实照片预览：** 安装 Pillow 后运行 `python3 tools/lvgl-simulator/make_badge.py ~/Pictures/photo.jpg /tmp/photo.bdg`，再运行 `./build/lvgl-simulator/motonav-lvgl-simulator --badge-file /tmp/photo.bdg`，模拟器会直接打开电子吧唧页，使用和 ESP32 同一套 LVGL Image 控件。该功能只从电脑本地读图，不发送 BLE 或访问云服务。损坏的图片协议包会被 CRC32 拒绝。
+
 键盘：← → 换页、数字无；N 开关模拟导航、B 切换模拟手机连接、↑ ↓ 调整模拟车速、Esc 退出。鼠标点击按钮、左右拖动切页、下滑回主页、滚轮切页；设置页滑杆为模拟值，不会操作硬件。
 
 ## macOS

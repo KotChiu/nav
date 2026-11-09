@@ -13,7 +13,7 @@ import sys
 import zlib
 
 SCENES = (
-    "home", "weather", "music", "companion", "stocks", "settings",
+    "home", "weather", "music", "companion", "stocks", "settings", "badge",
     "nav-straight", "nav-left", "nav-right", "nav-near",
     "nav-overspeed", "nav-uturn", "nav-arrive", "home-offline",
 )
@@ -61,6 +61,7 @@ def main(folder: pathlib.Path) -> None:
         ("nav-arrive", "nav-uturn"),
         ("home", "home-offline"),
         ("weather", "home"),
+        ("badge", "home"),
     )
     for a, b in contrasts:
         if pictures[a] == pictures[b]:

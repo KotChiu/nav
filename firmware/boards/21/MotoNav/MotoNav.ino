@@ -29,6 +29,7 @@
 #include "src/map/MapState.h"
 #include "src/map/VectorMapReceiver.h"
 #include "src/map/RasterDecoder.h"
+#include "src/power/BadgeStorage.h"
 #include "src/display/RowWorker.h"
 #include "src/map/RasterRenderer.h"
 #include "src/map/RouteRenderer.h"
@@ -83,6 +84,7 @@ void setup() {
   iconBuf = (uint16_t *)ps_malloc(ICON_BUF_W * ICON_BUF_H * 2);   // v1.8.1 图标缓存
   buildRingLut();                                                   // v1.8.3 抗锯齿圆环查找表
   mapInit();                                                        // v2.0 小地图缓冲
+  badgeInit(); // Never auto-format FFat. Load saved electronic photo if possible.
   for (int i = 0; i < IMG_SLOTS; i++) {
     imgs[i].show = (uint8_t *)ps_malloc(IMG_MAX);
     imgs[i].recv = (uint8_t *)ps_malloc(IMG_MAX);
@@ -117,7 +119,14 @@ void setup() {
   needFlush = false;
   lvglHybridInit();
   slideBuffersInit();
-  drawWaiting(WAIT_NOLINK);
+  if (badgeActive) {
+    // The badge is usable without any phone connection after reboot.
+    page = PAGE_BADGE;
+    renderPage(PAGE_BADGE);
+    lvglHybridTick();
+  } else {
+    drawWaiting(WAIT_NOLINK);
+  }
   flushSync();
   needFlush = false;
 
@@ -282,6 +291,15 @@ void loop() {
   if (mapNow != wasMap) { wasMap = mapNow; navDirty = true; }   // 进出地图模式时整帧重画
   if (mapNow) navDirty = true;
 
+  // Navigation takes precedence over the decorative badge. Never leave the
+  // screen displaying a static photo while an active route needs attention.
+  if (inNav && page == PAGE_BADGE) {
+    if (sliding) dragAbort();
+    page = PAGE_HOME;
+    navDirty = true;
+    forceFullFlush = true;
+    needFlush = true;
+  }
   touchPoll();                                         // v5.2 按住接听 / v5.3 滑动换页
   batPoll();                                           // v6.8 电量
   // 4. 需要时重画导航画面
@@ -296,7 +314,7 @@ void loop() {
     pairOn = false; pairDone = false;
     if (page == 2) musicDirty = true;
     else if (page == 1) wxDirty = true;
-    else if (page >= 3 && page <= 5) needFlush = true;
+    else if (page >= 3 && page <= PAGE_BADGE) needFlush = true;
     else if (inNav) navDirty = true;
     else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
   }
@@ -312,7 +330,7 @@ void loop() {
     wasCall = false;
     if (page == 2) musicDirty = true;
     else if (page == 1) wxDirty = true;
-    else if (page >= 3 && page <= 5) needFlush = true;
+    else if (page >= 3 && page <= PAGE_BADGE) needFlush = true;
     else if (inNav) navDirty = true;
     else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
   }
@@ -332,7 +350,7 @@ void loop() {
     if (!callOn && !pairOn) {
       if (page == 2) musicDirty = true;
       else if (page == 1) wxDirty = true;
-      else if (page >= 3 && page <= 5) needFlush = true;
+      else if (page >= 3 && page <= PAGE_BADGE) needFlush = true;
       else if (inNav) navDirty = true;
       else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
     }
@@ -370,7 +388,7 @@ void loop() {
   } else if(lightShown && !pairOn && !callOn && !fxOn && !sliding) {
     if(page==2)musicDirty=true;
     else if(page==1)wxDirty=true;
-    else if(page>=3 && page<=5)needFlush=true;
+    else if(page>=3 && page<=PAGE_BADGE)needFlush=true;
     else if(inNav)navDirty=true;
     else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
   }
@@ -389,12 +407,12 @@ void loop() {
   static int lastFlushedPage = -1;
   static bool lastFlushedInNav = false;
   if (needFlush && !sliding) {
-    bool lvglOnlyPage = page == 0 ? !inNav : (page >= 3 && page <= 5);
+    bool lvglOnlyPage = page == 0 ? !inNav : (page >= 3 && page <= PAGE_BADGE);
     bool lastLvglOnlyPage = lastFlushedPage == 0 ? !lastFlushedInNav
-      : (lastFlushedPage >= 3 && lastFlushedPage <= 5);
+      : (lastFlushedPage >= 3 && lastFlushedPage <= PAGE_BADGE);
     bool sameMusicPage = page == 2 && lastFlushedPage == 2 && !inNav && !lastFlushedInNav;
     bool sameLvglPage = page == lastFlushedPage && inNav == lastFlushedInNav &&
-      (page == 0 ? !inNav : (page == 2 || (page >= 3 && page <= 5)));
+      (page == 0 ? !inNav : (page == 2 || (page >= 3 && page <= PAGE_BADGE)));
     bool canPartial = sameMusicPage || sameLvglPage ||
       (page != lastFlushedPage && lvglOnlyPage && lastLvglOnlyPage);
     bool partial = canPartial && !forceFullFlush && !frameIsMap &&

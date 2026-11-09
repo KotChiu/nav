@@ -11,6 +11,7 @@
 #include "../../ui/FrameOwnership.h"
 #include "../../ui/LvglPageSlide.h"
 #include "../../ui/LvglRasterAssets.h"
+#include "../../ui/LvglBadgeView.h"
 
 static inline lv_color_t lvglColor565(uint16_t color) {
   lv_color_t out;
@@ -90,6 +91,7 @@ static MotoNavRasterAsset lvglTextAssets[10];
 // QWeather rain/air 7/8 and alerts 9/10/11.
 static const int lvglTextSlots[10] = {3, 4, 5, 6, 12, 7, 8, 9, 10, 11};
 static MotoNavCoverAsset lvglAlbumCover;
+static MotoNavBadgeView lvglBadgeView;
 static void *motonavRasterPsramAlloc(size_t bytes) { return ps_malloc(bytes); }
 static lv_disp_draw_buf_t lvglDrawBuf;
 static lv_disp_drv_t lvglDispDrv;
@@ -435,6 +437,7 @@ static void createLvglOverlay() {
   for (int i = 0; i < 10; ++i)
     motonavRasterCreate(lvglTextAssets[i], screen, motonavRasterPsramAlloc, free);
   motonavCoverCreate(lvglAlbumCover, screen, motonavRasterPsramAlloc, free);
+  motonavBadgeViewCreate(lvglBadgeView, screen);
 
   for (int i = 0; i < 3; i++) {
     musicButtons[i] = makeMusicButton(i);
@@ -838,7 +841,14 @@ static void setLvglTextColor(lv_obj_t *obj, lv_color_t color) {
 static void lvglHybridTick() {
   if (!lvglUiReady) return;
 
-  setLvglHidden(batteryLabel, pairOn || callOn || fxOn || (page == PAGE_HOME && inNav));
+  setLvglHidden(batteryLabel, pairOn || callOn || fxOn ||
+                page == PAGE_BADGE || (page == PAGE_HOME && inNav));
+  const bool showBadge = page == PAGE_BADGE &&
+                         !sliding && !pairOn && !callOn && !fxOn;
+  if (showBadge)
+    motonavBadgeViewSet(lvglBadgeView, badgeActive ? badgePixels : nullptr,
+                       badgeRevision, badgeStorageLabel());
+  motonavBadgeViewVisible(lvglBadgeView, showBadge);
   char batteryText[24];
   if (batPct >= 0) snprintf(batteryText, sizeof(batteryText), "BAT %d%%", batPct);
   else snprintf(batteryText, sizeof(batteryText), "BAT --");

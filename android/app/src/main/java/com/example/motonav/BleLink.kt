@@ -93,7 +93,8 @@ object BleLink {
         val old = gatt
         gatt = null
         old?.let { session.clear(it) }
-        ready = false; verified = false; buildingsSupported = false
+        ready = false; verified = false; buildingsSupported = false; badgeSupported = false
+        BadgeTransfer.connectionLost()
         capabilityQuerySent = false; rxChar = null; mtu = 23
         phyText = "?"; burstStart = 0L
         synchronized(lock) { writing = false; queue.clear(); bulkQ.clear() }
@@ -158,6 +159,7 @@ object BleLink {
     private fun adapter(): BluetoothAdapter? =
         (appContext?.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
+    @Volatile var badgeSupported: Boolean = false
     val isConnected: Boolean get() = ready
 
     // ================= 连接 =================
@@ -367,6 +369,16 @@ object BleLink {
     private fun onNotify(bytes: ByteArray?) {
         val msg = bytes?.toString(Charsets.UTF_8)?.trim() ?: return
         if (BleSession.confirms(msg, capabilityQuerySent)) markVerified()
+        if(msg=="CAP,BADGE,1") { badgeSupported = true; return }
+        if (msg.startsWith("BDG,SAVED,")) {
+            val fields = msg.split(',')
+            if (fields.size == 4) {
+                val id = fields[2].toIntOrNull()
+                if (id != null && (fields[3] == "0" || fields[3] == "1"))
+                    BadgeTransfer.onStored(id, fields[3] == "1")
+            }
+            return
+        }
         if(msg=="CAP,HID,1") { handler.post { sendEvent("#HM,0") }; return }
         if(msg=="CAP,BLD,1") {
             handler.post { if(!buildingsSupported) { buildingsSupported=true;MapFeeder.onBuildingCapability() } }
@@ -409,6 +421,8 @@ object BleLink {
             val t = p[1].toIntOrNull() ?: return
             val id = p[2].toIntOrNull() ?: return
             MapFeeder.onAck(t, id)
+            if (t == 6) BadgeTransfer.onAck(t, id,
+                if (p.size >= 4 && (p[3] == "0" || p[3] == "1")) p[3] == "1" else null)
         }
     }
 
@@ -609,14 +623,14 @@ object BleLink {
      * v2.0 发送一份大块数据（地图块/路线）。同类型还没发完的旧数据直接作废。
      * 每片：'M' 类型 编号 总片数(2) 片序号(2) 总字节(4) 偏移(4) + 数据
      */
-    fun sendBulk(type: Int, id: Int, data: ByteArray) {
+    fun sendBulk(type: Int, id: Int, data: ByteArray): Boolean {
         synchronized(lock) {
             bulkQ.removeAll { it.type == type }
-            if (!ready) return
+            if (!ready) return false
             val payload = maxWrite() - BULK_HEADER
-            if (payload < 100) return                  // 没协商到大数据包就不发
+            if (payload < 100) return false            // BLE MTU too small
             val parts = (data.size + payload - 1) / payload
-            if (parts > 4000) return
+            if (parts == 0 || parts > 4000) return false
             for (p in 0 until parts) {
                 val off = p * payload
                 val len = minOf(payload, data.size - off)
@@ -631,6 +645,7 @@ object BleLink {
             bulkSentKB += data.size / 1024
         }
         pump()
+        return true
     }
 
     /** Cancel queued map fragments while leaving route and position delivery intact. */

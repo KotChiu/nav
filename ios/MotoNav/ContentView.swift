@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreLocation
 import AVFoundation
+import PhotosUI
 
 /// 版本：跟随 App 版本（见 Config.swift）
 ///
@@ -17,6 +18,7 @@ struct ContentView: View {
     @ObservedObject var history = History.shared
     @ObservedObject var favorites = Favorites.shared
     @ObservedObject var stocks = StockBridge.shared
+    @ObservedObject var badge = BadgeBridge.shared
     @State private var page = 0
     @State private var showWebMotor = false
     @State private var independentMode: IndependentMode = .motorcycle
@@ -36,6 +38,7 @@ struct ContentView: View {
     @State private var cruiseNote = ""
     @State private var addingVia = false               // 正在搜途经点
     @State private var stockInput = ""
+    @State private var showBadgePicker = false
 
     static let bg = Color(red: 0.055, green: 0.04, blue: 0.08)
     static let card = Color(red: 0.10, green: 0.08, blue: 0.14)
@@ -89,6 +92,9 @@ struct ContentView: View {
         .sheet(isPresented: $showRides) { NavigationView { RideHistoryView() } }
         .fullScreenCover(isPresented: $showNavi) { NaviScreen() }
         .sheet(isPresented: $showKeys) { KeySetupView() }
+        .sheet(isPresented: $showBadgePicker) {
+            BadgeImagePicker { image in badge.selectedImage = image }
+        }
         .onAppear {                                    // iOS v0.7 打开 App 时，高德或高德 key 没填就提醒一次
             if !ContentView.keyPrompted && settings.keysMissing {
                 ContentView.keyPrompted = true
@@ -484,6 +490,36 @@ struct ContentView: View {
     private var displayCard: some View {
         CardView {
             Text("圆屏显示").foregroundColor(.white).bold()
+            Divider()
+            Text("电子吧唧 · 自定义照片").font(.headline).foregroundColor(Self.cyan)
+            HStack(spacing: 14) {
+                Group {
+                    if let picture = badge.selectedImage {
+                        Image(uiImage: picture).resizable().scaledToFill()
+                    } else {
+                        Image(systemName: "photo.circle").resizable().scaledToFit()
+                            .padding(24).foregroundColor(Self.sub)
+                    }
+                }
+                .frame(width: 112, height: 112)
+                .background(Color.black)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Self.cyan.opacity(0.7), lineWidth: 2))
+                VStack(alignment: .leading, spacing: 10) {
+                    Button("从相册选择照片") { showBadgePicker = true }
+                        .foregroundColor(Self.cyan)
+                    Button(badge.sending ? "正在上传…" : "上传到圆屏") { badge.upload() }
+                        .foregroundColor(Self.pink)
+                        .disabled(badge.selectedImage == nil || badge.sending ||
+                                  !ble.isReady || !ble.badgeSupported)
+                }
+            }
+            Text(badge.status).font(.caption).foregroundColor(Self.sub)
+            Text(ble.badgeSupported
+                 ? "支持独立吧唧页面；从设置页向左滑可打开。图片在手机端居中裁剪到 240×240，上传时请停车。"
+                 : "需要支持电子吧唧的 2.1 英寸新固件，连接认证后会自动识别。")
+                .font(.caption2).foregroundColor(Self.sub)
+            Divider()
             Toggle("路程进度环", isOn: $settings.progressRing).foregroundColor(.white).tint(Self.pink)
             Picker("预判", selection: $settings.leadMs) {
                 Text("关闭").tag(0); Text("0.3秒").tag(300); Text("0.6秒").tag(600)
@@ -831,4 +867,41 @@ struct PillButton: View {
 /// 收起键盘
 func hideKeyboard() {
     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
+
+
+/// iOS 15-compatible system photo picker; no global photo-library permission.
+private struct BadgeImagePicker: UIViewControllerRepresentable {
+    let onPick: (UIImage) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var configuration = PHPickerConfiguration(photoLibrary: .shared())
+        configuration.filter = .images
+        configuration.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: BadgeImagePicker
+        init(parent: BadgeImagePicker) { self.parent = parent }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            guard let item = results.first?.itemProvider, item.canLoadObject(ofClass: UIImage.self) else {
+                parent.dismiss()
+                return
+            }
+            item.loadObject(ofClass: UIImage.self) { [parent] value, _ in
+                DispatchQueue.main.async {
+                    if let image = value as? UIImage { parent.onPick(image) }
+                    parent.dismiss()
+                }
+            }
+        }
+    }
 }

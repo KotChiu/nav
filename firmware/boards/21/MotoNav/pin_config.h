@@ -48,8 +48,7 @@
 // 3.7V battery voltage is measured through GPIO4 on this board.
 #define BAT_ADC_PIN 4
 
-// SD card is available on this board but is not used by the current firmware.
+// 1-bit SDMMC shares the LCD setup clock and command pins.
 #define SDMMC_CLK 2
 #define SDMMC_CMD 1
 #define SDMMC_DATA 42
-#define SDMMC_CS (-1)

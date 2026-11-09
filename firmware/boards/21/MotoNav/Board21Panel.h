@@ -14,6 +14,7 @@
 #define TCA_LCD_RESET_BIT 0
 #define TCA_TOUCH_RESET_BIT 1
 #define TCA_LCD_CS_BIT 2
+#define TCA_SD_CS_BIT 3
 
 static bool tcaWrite(uint8_t reg, uint8_t value) {
   Wire.beginTransmission(TCA9554_ADDR);
@@ -129,7 +130,10 @@ static void st7701Init() {
   deviceConfig.clock_speed_hz = 4000000;
   deviceConfig.spics_io_num = -1;
   deviceConfig.queue_size = 1;
-  if (spi_bus_add_device(SPI2_HOST, &deviceConfig, &board21Spi) != ESP_OK) return;
+  if (spi_bus_add_device(SPI2_HOST, &deviceConfig, &board21Spi) != ESP_OK) {
+    spi_bus_free(SPI2_HOST);
+    return;
+  }
 
   tcaSetBit(TCA_LCD_CS_BIT, false);
   for (const auto &step : ST7701_INIT) {
@@ -138,6 +142,10 @@ static void st7701Init() {
     if (step.delayMs) delay(step.delayMs);
   }
   tcaSetBit(TCA_LCD_CS_BIT, true);
+  // LCD pixels use RGB. Release the command pins for 1-bit SDMMC.
+  spi_bus_remove_device(board21Spi);
+  board21Spi = nullptr;
+  spi_bus_free(SPI2_HOST);
 }
 
 static void board21Backlight(uint8_t brightness) {
@@ -153,7 +161,8 @@ static void board21Backlight(uint8_t brightness) {
 static void board21HardwareInit() {
   Wire.begin(IIC_SDA, IIC_SCL, 400000);
   tcaWrite(TCA9554_CONFIG_REG, 0x00);
-  tcaWrite(TCA9554_OUTPUT_REG, 0x00);
+  // Keep the SD card's DAT3/CS high while sending LCD setup commands.
+  tcaWrite(TCA9554_OUTPUT_REG, (1U << TCA_LCD_CS_BIT) | (1U << TCA_SD_CS_BIT));
   board21LcdReset();
   st7701Init();
   board21TouchReset();
