@@ -710,7 +710,7 @@ static void lvglHybridTick() {
   setLvglHidden(stockStatusLabel, !showStock);
   if (showStock) {
     setLvglLabelText(stockTitleLabel,
-      stockChartPeriod == 'M' ? "MARKET | 1M" : "MARKET | DAY");
+      stockChartPeriod == 'M' ? "MARKETS  /  1M" : "MARKETS  /  TODAY");
     bool refresh = stockRevision != stockLastRevision || stockDirty;
     if (refresh) {
       stockLastRevision = stockRevision;
