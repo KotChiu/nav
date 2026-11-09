@@ -17,9 +17,11 @@ static inline MotoNavTurnArrowGeometry motonavTurnArrowGeometry(
   p.elbowY = centerY - 8;
   p.endX = centerX + 40 * dx;
   p.endY = centerY + 40 * dy;
-  p.leftX = p.endX - 14 * dx - 10 * dy;
-  p.leftY = p.endY - 14 * dy + 10 * dx;
-  p.rightX = p.endX - 14 * dx + 10 * dy;
-  p.rightY = p.endY - 14 * dy - 10 * dx;
+  // Screen coordinates use Y-down: the left normal of (dx,dy)
+  // is (dy,-dx), not (-dy,dx).
+  p.leftX = p.endX - 14 * dx + 10 * dy;
+  p.leftY = p.endY - 14 * dy - 10 * dx;
+  p.rightX = p.endX - 14 * dx - 10 * dy;
+  p.rightY = p.endY - 14 * dy + 10 * dx;
   return p;
 }
