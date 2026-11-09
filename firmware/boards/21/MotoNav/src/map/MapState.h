@@ -83,7 +83,7 @@ static inline int32_t rd32(const uint8_t *p) { return (int32_t)((uint32_t)p[0] |
 // ---- 大块数据接收（'M'）----
 struct Bulk {
   uint8_t *buf; uint32_t cap;
-  int id; uint32_t total; uint16_t parts; uint16_t got; bool done;
+  int id; uint32_t total; uint32_t receivedBytes; uint16_t parts; uint16_t got; bool done;
   uint8_t mask[512];        // 每片一位，最多 4096 片
 };
 Bulk bulks[6];              // 下标 1 = 地图块，2 = 路线，3 = 图片地图（v2.5），4 = 原路线（v4.4），5 = 音乐封面（v7.12.10-cover）

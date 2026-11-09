@@ -1,0 +1,24 @@
+name: MotoNav logic tests
+on:
+  pull_request:
+  push:
+    branches: [feature/board-2.1]
+
+jobs:
+  firmware-logic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: C++ firmware policy and BLE bulk tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test in firmware/tests/*Test.cpp; do
+            echo "Testing $test"
+            g++ -std=c++17 -Wall -Wextra "$test" -o /tmp/motonav-test
+            /tmp/motonav-test
+          done
+          cc firmware/tests/idle-power-off-test.c -o /tmp/motonav-idle
+          /tmp/motonav-idle
+      - name: macOS flasher policy unit tests (host-independent)
+        run: python3 -m unittest discover -s firmware/tests -p 'test_flash_macos.py'

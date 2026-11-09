@@ -10,19 +10,27 @@ void handleBulk(const uint8_t *d, int n) {
   Bulk &b = bulks[type];
   if (!b.buf || total == 0 || total > b.cap || parts == 0 || parts > 4096 || seq >= parts) return;
   if (id != b.id || total != b.total || parts != b.parts) {     // 新的一份：从头开始收
-    b.id = id; b.total = total; b.parts = parts; b.got = 0; b.done = false;
+    b.id = id; b.total = total; b.parts = parts; b.got = 0; b.receivedBytes = 0; b.done = false;
     memset(b.mask, 0, sizeof(b.mask));
   }
   if (b.done) { pendingAck = "K," + String(type) + "," + String(id); return; }   // 重复的：再确认一次
-  uint32_t len = n - 15;
-  if (off >= total) return;
-  if (off + len > total) len = total - off;
+  const uint32_t len = (uint32_t)n - 15;
+  // Reject malformed payloads rather than silently truncating them. A short
+  // or overlapping set of parts must never be acknowledged as a full image.
+  if (!len || off >= total || len > total - off) return;
   if (!(b.mask[seq >> 3] & (1 << (seq & 7)))) {
     memcpy(b.buf + off, d + 15, len);
     b.mask[seq >> 3] |= (1 << (seq & 7));
     b.got++;
+    b.receivedBytes += len;
   }
   if (b.got >= b.parts) {
+    if (b.receivedBytes != b.total) {
+      // The sequence count alone does not guarantee all bytes arrived.
+      b.got = 0; b.receivedBytes = 0; b.done = false;
+      memset(b.mask, 0, sizeof(b.mask));
+      return;
+    }
     b.done = true;
     if (type == 1) {
       uint8_t *t = mapShow; mapShow = b.buf; b.buf = t;   // 交换：新图显示，旧缓冲留着收下一块
@@ -36,7 +44,7 @@ void handleBulk(const uint8_t *d, int n) {
     } else {
       if (!parseRaster(b.buf,total)) {
         // 没有成功解码就不回“已确认”，并允许相同编号完整重发。
-        b.done=false; b.got=0; memset(b.mask,0,sizeof(b.mask));
+        b.done=false; b.got=0; b.receivedBytes=0; memset(b.mask,0,sizeof(b.mask));
         return;
       }
     }

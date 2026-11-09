@@ -174,6 +174,7 @@ volatile bool securityRequested = false;
 struct RxMsg { uint16_t len; uint8_t data[RXQ_MAX]; };
 RxMsg rxq[RXQ_SLOTS];
 volatile int rxHead = 0, rxTail = 0;
+volatile uint32_t rxDroppedCount = 0; // BLE queue overflow diagnostics (not protocol ACK)
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
 // ===== 导航与行车状态 =====

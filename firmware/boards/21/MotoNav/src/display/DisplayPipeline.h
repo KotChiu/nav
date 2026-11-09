@@ -8,6 +8,10 @@ SemaphoreHandle_t flushReq = nullptr, flushDone = nullptr;
 uint16_t *volatile flushSrc = nullptr;
 volatile uint32_t flushMsAcc = 0, flushCnt = 0;
 volatile uint32_t flushVsyncUsAcc = 0, flushCopyUsAcc = 0, flushDrawUsAcc = 0;
+ // Enable only for a controlled device benchmark: serial output affects timing.
+ #ifndef DISPLAY_PIPELINE_METRICS
+ #define DISPLAY_PIPELINE_METRICS 0
+ #endif
 volatile bool flushFullFrame = true;
 volatile bool forceFullFlush = true;
 volatile int flushRectCount = 0;
@@ -161,6 +165,24 @@ void flushLogicalFrame(const uint16_t *fb, bool fullFrame,
   flushCopyUsAcc += copyAt - phaseAt;
   flushVsyncUsAcc += vsyncAt - copyAt;
   flushDrawUsAcc += drawAt - vsyncAt;
+#if DISPLAY_PIPELINE_METRICS
+  // Report bounded sampling windows, not lifetime averages or advertised FPS.
+  static uint32_t sampleCount = 0, copyTotal = 0, vsyncTotal = 0, submitTotal = 0;
+  static uint32_t copyPeak = 0, vsyncPeak = 0;
+  const uint32_t copyUs = copyAt - phaseAt, vsyncUs = vsyncAt - copyAt;
+  copyTotal += copyUs;
+  vsyncTotal += vsyncUs;
+  submitTotal += drawAt - vsyncAt;
+  if (copyUs > copyPeak) copyPeak = copyUs;
+  if (vsyncUs > vsyncPeak) vsyncPeak = vsyncUs;
+  if (++sampleCount == 64) {
+    Serial.printf("DISPLAYSTAT deg=%d avg_copy=%luus max_copy=%luus avg_vsync=%luus max_vsync=%luus avg_submit=%luus\n",
+      screenDeg, (unsigned long)(copyTotal / sampleCount), (unsigned long)copyPeak,
+      (unsigned long)(vsyncTotal / sampleCount), (unsigned long)vsyncPeak,
+      (unsigned long)(submitTotal / sampleCount));
+    sampleCount = copyTotal = vsyncTotal = submitTotal = copyPeak = vsyncPeak = 0;
+  }
+#endif
 }
 
 void flushLogicalFrame(const uint16_t *fb) {
@@ -180,16 +202,37 @@ void flushTask(void *arg) {
   }
 }
 
+// Never hand a framebuffer back to the producer after a failed wait: the
+// worker may still own it. Restart fail-closed instead of deadlocking forever.
 void flushWait() {
-  if (xSemaphoreTake(flushDone, pdMS_TO_TICKS(3000)) == pdTRUE) return;
-  xSemaphoreTake(flushDone, portMAX_DELAY);
+  if (!flushDone || xSemaphoreTake(flushDone, pdMS_TO_TICKS(3000)) != pdTRUE) {
+    Serial.printf("DISPLAY FATAL: flush timeout or missing semaphore; count=%lu\n",
+                  (unsigned long)flushCnt);
+    ESP.restart();
+    abort();  // Do not reuse potentially in-flight PSRAM if restart returns.
+  }
 }
 
 void flushAsync() {
   if (lvglUiReady && fbBuf[1]) {
     // LVGL keeps its canonical buffer; transport owns an immutable snapshot.
     flushWait();
+#if DISPLAY_PIPELINE_METRICS
+    const uint32_t snapshotAt = micros();
+#endif
     memcpy(fbBuf[1], gfx->getFramebuffer(), LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t));
+#if DISPLAY_PIPELINE_METRICS
+    static uint32_t snapshotCount = 0, snapshotTotal = 0, snapshotPeak = 0;
+    const uint32_t snapshotUs = micros() - snapshotAt;
+    snapshotTotal += snapshotUs;
+    if (snapshotUs > snapshotPeak) snapshotPeak = snapshotUs;
+    if (++snapshotCount == 64) {
+      Serial.printf("SNAPSHOT bytes=%lu avg=%luus max=%luus\n",
+        (unsigned long)(LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t)),
+        (unsigned long)(snapshotTotal / snapshotCount), (unsigned long)snapshotPeak);
+      snapshotCount = snapshotTotal = snapshotPeak = 0;
+    }
+#endif
     flushSrc = fbBuf[1];
     flushFullFrame = true;
     flushRectCount = 0;
@@ -219,13 +262,29 @@ void flushSync() {
   xSemaphoreGive(flushDone);
 }
 
+// An incomplete worker setup must not leave fbBuf[1] looking usable.
+// Direct gfx->flush() is the existing synchronous fallback.
 void initDoubleBuffer() {
   fbBuf[0] = gfx->getFramebuffer();
-  fbBuf[1] = (uint16_t *)heap_caps_aligned_alloc(16, LCD_WIDTH * LCD_HEIGHT * 2, MALLOC_CAP_SPIRAM);
-  if (!fbBuf[1]) return;
-  memcpy(fbBuf[1], fbBuf[0], LCD_WIDTH * LCD_HEIGHT * 2);
-  flushReq = xSemaphoreCreateBinary();
-  flushDone = xSemaphoreCreateBinary();
-  xSemaphoreGive(flushDone);
-  xTaskCreatePinnedToCore(flushTask, "flush", 4096, nullptr, 1, nullptr, 0);
+  if (!fbBuf[0]) {
+    Serial.println("DISPLAY: no primary framebuffer");
+    return;
+  }
+  fbBuf[1] = (uint16_t *)heap_caps_aligned_alloc(
+      16, LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+  if (fbBuf[1]) {
+    flushReq = xSemaphoreCreateBinary();
+    flushDone = xSemaphoreCreateBinary();
+    if (flushReq && flushDone &&
+        xTaskCreatePinnedToCore(flushTask, "flush", 4096, nullptr, 1, nullptr, 0) == pdPASS) {
+      memcpy(fbBuf[1], fbBuf[0], LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t));
+      xSemaphoreGive(flushDone);
+      return;
+    }
+  }
+  // No worker was started: safe to destroy partially created resources.
+  Serial.println("DISPLAY: double-buffer init failed; using synchronous flush");
+  if (flushReq) { vSemaphoreDelete(flushReq); flushReq = nullptr; }
+  if (flushDone) { vSemaphoreDelete(flushDone); flushDone = nullptr; }
+  if (fbBuf[1]) { heap_caps_aligned_free(fbBuf[1]); fbBuf[1] = nullptr; }
 }

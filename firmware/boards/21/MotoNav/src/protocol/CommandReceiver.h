@@ -351,7 +351,7 @@ void handleText(const String &m) {
     screenBrightness = constrain(b, 5, 180);
     brightnessSaveAt = millis() + 800;
     if (flushDone) {                                    // v2.2 刷屏任务在用总线时先等它推完
-      xSemaphoreTake(flushDone, portMAX_DELAY);
+      flushWait(); // Same bounded, fail-closed wait as other display updates.
       panel->setBrightness(screenBrightness);
       xSemaphoreGive(flushDone);
     } else {
@@ -484,6 +484,7 @@ void handleText(const String &m) {
 }
 
 void handleMessage(const uint8_t *d, int n) {
+  if (!d || n <= 0) return;
   lastRxMs = millis();
   if (staleShown) { staleShown = false; navDirty = true; }   // 收到任何消息，清掉数据中断提示
   if (d[0] == 'B') { handleBitmap(d, n); return; }

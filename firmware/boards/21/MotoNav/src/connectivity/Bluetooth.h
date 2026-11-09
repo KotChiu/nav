@@ -170,7 +170,10 @@ class RxCB : public BLECharacteristicCallbacks {
     if (n > RXQ_MAX) n = RXQ_MAX;
     portENTER_CRITICAL(&mux);
     int next = (rxHead + 1) % RXQ_SLOTS;
-    if (next == rxTail) rxTail = (rxTail + 1) % RXQ_SLOTS;   // 队列满：丢掉最旧的一条
+    if (next == rxTail) {
+      rxTail = (rxTail + 1) % RXQ_SLOTS; // Existing behavior; now observable.
+      ++rxDroppedCount;
+    }
     rxq[rxHead].len = n;
     memcpy(rxq[rxHead].data, c->getData(), n);
     rxHead = next;
