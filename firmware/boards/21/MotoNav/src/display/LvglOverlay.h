@@ -32,11 +32,39 @@ static bool lvglNativeCueSupported() {
 }
 static MotoNavMapCanvas lvglMapCanvas;
 static bool lvglMapCanvasCurrentFrame = false;
+static bool lvglMapCanvasAllocationTried = false;
 static uint16_t *lvglMapCanvasPixels() {
   return lvglMapCanvas.canvas ? lvglMapCanvas.pixels : nullptr;
 }
 static bool lvglMapCanvasStartFrame() {
+#if MOTONAV_NATIVE_MAP_CANVAS
+  if (!lvglMapCanvas.canvas && !lvglMapCanvasAllocationTried) {
+    lvglMapCanvasAllocationTried = true;
+    // Allocate *after* the existing page-transition snapshots have been
+    // reserved at boot. A PSRAM-constrained device keeps its old map path.
+    constexpr size_t bytes = (size_t)LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t);
+    if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > bytes + 256 * 1024) {
+      uint16_t *pixels = (uint16_t *)ps_malloc(bytes);
+      if (pixels) {
+        memset(pixels, 0, bytes);
+        if (!motonavMapCanvasCreate(lvglMapCanvas, lv_scr_act(), pixels,
+                                    LCD_WIDTH, LCD_HEIGHT)) free(pixels);
+        else Serial.printf("LVGL MAP: %u bytes PSRAM canvas ready\\n",
+                           (unsigned)bytes);
+      }
+    }
+    if (!lvglMapCanvas.canvas)
+      Serial.println("LVGL MAP: allocation unavailable, using legacy path");
+  }
+  // Never let a map source alias its LVGL draw buffer, a DMA transport
+  // snapshot or any already submitted frame.
+  const uint16_t *source = lvglMapCanvas.pixels;
+  if (!source || source == gfx->getFramebuffer() || source == fbBuf[1] ||
+      source == flushSrc) return false;
   return motonavMapCanvasBegin(lvglMapCanvas);
+#else
+  return false;
+#endif
 }
 static void lvglMapCanvasEndFrame() {
   motonavMapCanvasCommit(lvglMapCanvas);
@@ -393,25 +421,8 @@ static void createLvglOverlay() {
   lv_obj_t *screen = lv_scr_act();
   lv_obj_set_style_bg_opa(screen, LV_OPA_TRANSP, 0);
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
-#if MOTONAV_NATIVE_MAP_CANVAS
-  // Separate RGB565 storage: the LVGL image source must never alias its
-  // display draw buffer or an in-flight DMA snapshot. A failed allocation
-  // keeps the entire prior Canvas map renderer active.
-  constexpr size_t mapBytes = (size_t)LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t);
-  if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > mapBytes + 256 * 1024) {
-    uint16_t *mapPixels = (uint16_t *)ps_malloc(mapBytes);
-    if (mapPixels) {
-      memset(mapPixels, 0, mapBytes);
-      if (!motonavMapCanvasCreate(lvglMapCanvas, screen, mapPixels,
-                                  LCD_WIDTH, LCD_HEIGHT)) {
-        free(mapPixels);
-      } else {
-        Serial.printf("LVGL MAP: allocated %u bytes in PSRAM\\n", (unsigned)mapBytes);
-      }
-    }
-  }
-  if (!lvglMapCanvas.canvas) Serial.println("LVGL MAP: Canvas unavailable; legacy fallback");
-#endif
+  // The map Canvas is created lazily after slide buffers are reserved.
+  // This avoids starving startup UI and preserves a low-memory fallback.
   // Home ring is now a native LVGL layer and does not rely on Canvas pixels.
   motonavHomeChromeCreate(lvglHomeChrome, screen, CX, C_UI_ACCENT, C_UI_ACCENT2);
   motonavWeatherViewCreate(lvglWeatherView, screen);
