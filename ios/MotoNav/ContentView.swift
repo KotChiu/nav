@@ -868,3 +868,40 @@ struct PillButton: View {
 func hideKeyboard() {
     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 }
+
+
+/// iOS 15-compatible system photo picker; no global photo-library permission.
+private struct BadgeImagePicker: UIViewControllerRepresentable {
+    let onPick: (UIImage) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var configuration = PHPickerConfiguration(photoLibrary: .shared())
+        configuration.filter = .images
+        configuration.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: BadgeImagePicker
+        init(parent: BadgeImagePicker) { self.parent = parent }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            guard let item = results.first?.itemProvider, item.canLoadObject(ofClass: UIImage.self) else {
+                parent.dismiss()
+                return
+            }
+            item.loadObject(ofClass: UIImage.self) { [parent] value, _ in
+                DispatchQueue.main.async {
+                    if let image = value as? UIImage { parent.onPick(image) }
+                    parent.dismiss()
+                }
+            }
+        }
+    }
+}
