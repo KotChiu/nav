@@ -22,17 +22,17 @@
 | 8..11 | 后续像素数据的 IEEE CRC32（uint32 little-endian） |
 | 12..115211 | 240×240 RGB565，**每像素 little-endian** |
 
-总计 **115212 字节（约 112.5 KiB）**。设备只有完成分片并通过长度、magic、宽高和 CRC 才返回 `K,6,<id>,<saved>`（尾部 saved=1/0，兼容只读取前三字段的旧客户端）。丢片、CRC 错或写入界限错误不得 ACK。
+总计 **115212 字节（约 112.5 KiB）**。设备只有完成分片并通过长度、magic、宽高和 CRC 才返回 `K,6,<id>,<saved>`（尾部 saved=1/0，兼容只读取前三字段的旧客户端）。重复包确认也携带相同保存结果。iOS/Android **只接受与当前上传 ID 一致的确认**，蓝牙队列失败或 120 秒无响应会提示重试。丢片、CRC 错或写入界限错误不得 ACK。
 
 设备在已认证连接建立时发送 `CAP,BADGE,1`。App 只在收到能力通知后开放上传。设备显示成功后额外发送：
-- `BDG,SAVED,1`：FAT 文件持久保存成功；
-- `BDG,SAVED,0`：RAM 显示成功，但 FAT 未能挂载/写入，**下次断电可能丢失**。
+- `BDG,SAVED,<id>,1`：FAT 文件持久保存成功；
+- `BDG,SAVED,<id>,0`：RAM 显示成功，但 FAT 未能挂载/写入，**下次断电可能丢失**。\n\n确认包含上传 ID，避免上一张照片的迟到通知误报下一张照片的状态。
 
 ## 存储安全
 
 本实现使用当前板型 `app3M_fat9M_16MB` 分区方案的 FAT 数据分区（`FFat.begin(false)`）。**不会因新功能自动格式化、擦除该分区**。如果设备从未格式化过 FAT 或 FAT 被禁用，图像仍可显示，但保存状态为 0。后续可提供清晰的用户确认流程为 FAT 首次初始化（需先备份其它文件），而非自动执行。
 
-完整替换写入使用临时文件以降低写入中断风险；尚未提供多版本回滚，不应把这张图片视为唯一备份。所有图片均从本地手机选择，经 BLE 发给已验证的设备，不经过自建云服务。
+替换时先完整写入并检查临时文件长度，再把旧图保留在 `.bak`，最后提交新图；如果断电或新图损坏，启动时会尝试从上一个已校验的 `.bak` 恢复。**这不是数据库级事务**，仍可能受到 FAT 分区损坏、介质故障影响；手机原图应保留。所有图片均从本地手机选择，经 BLE 发给已验证的设备，不经过自建云服务。
 
 ## 构建与测试
 
@@ -45,7 +45,7 @@ cmake -S tools/lvgl-simulator -B build/lvgl-simulator
 cmake --build build/lvgl-simulator
 ./build/lvgl-simulator/motonav-lvgl-simulator
 
-# 纯逻辑协议测试
+# 用电脑上的真实照片预览：本地裁剪编码，不上传网络，也不烧录\npython3 -m pip install Pillow\npython3 tools/lvgl-simulator/make_badge.py ~/Pictures/photo.jpg /tmp/motonav-photo.bdg\n./build/lvgl-simulator/motonav-lvgl-simulator --badge-file /tmp/motonav-photo.bdg\n\n# 纯逻辑协议测试
 g++ -std=c++17 firmware/tests/BadgePacketTest.cpp -o /tmp/badge-test && /tmp/badge-test
 ```
 
