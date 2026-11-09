@@ -102,11 +102,15 @@ void drawWaiting(int st) {
   if (page == 1) { onWaitScreen = false; wxDirty = true; return; }   // v5.3 正在看天气：先不画首页，滑回来时再画
   if (page >= 3 && page <= 5) { onWaitScreen = false; needFlush = true; return; }
   gfx->fillScreen(C_UI_BG);
-  for (int quadrant = 0; quadrant < 4; quadrant++) {
-    float start = 18 + quadrant * 90;
-    gfx->fillArc(CX, CX, 211, 208, start, start + 54, C_UI_ACCENT);
+  if (!lvglUiReady) {
+    // Before LVGL initialization, retain the early-boot Canvas fallback.
+    // After LVGL is ready, shared native widgets draw the ring and dot.
+    for (int quadrant = 0; quadrant < 4; quadrant++) {
+      float start = 18 + quadrant * 90;
+      gfx->fillArc(CX, CX, 211, 208, start, start + 54, C_UI_ACCENT);
+    }
+    aaDisc(CX, 27, 5, C_UI_ACCENT2);
   }
-  aaDisc(CX, 27, 5, C_UI_ACCENT2);
   onWaitScreen = true;
   if (st == WAIT_LOST) drawRedRing();
   if (!lvglUiReady) {
