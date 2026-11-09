@@ -11,6 +11,8 @@
 #include <iterator>
 #include <ctime>
 #include <string>
+#include <fstream>
+#include <vector>
 
 #include "../../firmware/boards/21/MotoNav/ui/LvglHomeChrome.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglWeatherView.h"
@@ -37,6 +39,7 @@ MotoNavHomeChrome chrome;
 MotoNavMusicStatusView demoMusicWidgets;
 MotoNavBadgeView demoBadge;
 uint16_t demoBadgePixels[MotoNavBadge::SIZE * MotoNavBadge::SIZE] = {};
+bool badgeFixtureLoaded = false;
 lv_obj_t *brightnessValue = nullptr;
 lv_obj_t *musicState = nullptr;
 static const char *pageNames[] = {"HOME", "WEATHER", "MUSIC", "COMPANION", "STOCKS", "SETTINGS", "BADGE"};
@@ -239,6 +242,7 @@ void settings(lv_obj_t *screen) {
 void badge(lv_obj_t *screen) {
   // Fixed RGB565 fixture. The simulator shares the actual firmware badge
   // component while mobile apps provide real user photos over BLE.
+  if (!badgeFixtureLoaded) {
   for (int y = 0; y < MotoNavBadge::SIZE; ++y) {
     for (int x = 0; x < MotoNavBadge::SIZE; ++x) {
       const uint8_t red = uint8_t((x * 200) / MotoNavBadge::SIZE + 18);
@@ -248,12 +252,15 @@ void badge(lv_obj_t *screen) {
           uint16_t(((red & 0xF8) << 8) | ((green & 0xFC) << 3) | (blue >> 3));
     }
   }
+  }
   demoBadge = MotoNavBadgeView{};
   motonavBadgeViewCreate(demoBadge, screen);
   motonavBadgeViewSet(demoBadge, demoBadgePixels, 1);
   motonavBadgeViewVisible(demoBadge, true);
-  centerLabel(demoBadge.root, "E-BADGE DEMO", 185, 0xFFFFFF, &lv_font_montserrat_24);
-  centerLabel(demoBadge.root, "UPLOADED PHOTOS DISPLAY HERE", 239, 0xFFFFFF, &lv_font_montserrat_14);
+  if (!badgeFixtureLoaded) {
+    centerLabel(demoBadge.root, "E-BADGE DEMO", 185, 0xFFFFFF, &lv_font_montserrat_24);
+    centerLabel(demoBadge.root, "UPLOADED PHOTOS DISPLAY HERE", 239, 0xFFFFFF, &lv_font_montserrat_14);
+  }
 }
 void showPage(int target) {
   pageIndex = (target + 7) % 7;
@@ -308,8 +315,37 @@ void render(SDL_Renderer *renderer, SDL_Texture *texture) {
 }
 } // namespace
 
+static bool loadBadgeFile(const std::string &path) {
+  std::ifstream file(path, std::ios::binary | std::ios::ate);
+  if (!file || file.tellg() != std::streampos(MotoNavBadge::PACKET_BYTES)) {
+    std::fprintf(stderr, "Badge file must be exactly %zu bytes: %s\\n",
+                 MotoNavBadge::PACKET_BYTES, path.c_str());
+    return false;
+  }
+  file.seekg(0);
+  std::vector<uint8_t> data(MotoNavBadge::PACKET_BYTES);
+  if (!file.read(reinterpret_cast<char *>(data.data()), data.size()) ||
+      !MotoNavBadge::valid(data.data(), data.size())) {
+    std::fprintf(stderr, "Invalid BDG1 packet, dimensions or CRC32: %s\\n", path.c_str());
+    return false;
+  }
+  std::memcpy(demoBadgePixels, data.data() + MotoNavBadge::HEADER_BYTES,
+              MotoNavBadge::PIXEL_BYTES);
+  badgeFixtureLoaded = true;
+  return true;
+}
+
 int main(int argc, char **argv) {
-  bool smoke = argc > 1 && std::string(argv[1]) == "--smoke-test";
+  bool smoke = false;
+  for (int i = 1; i < argc; ++i) {
+    if (std::string(argv[i]) == "--smoke-test") smoke = true;
+    else if (std::string(argv[i]) == "--badge-file" && i + 1 < argc) {
+      if (!loadBadgeFile(argv[++i])) return 2;
+    } else {
+      std::fprintf(stderr, "Usage: %s [--smoke-test] [--badge-file image.bdg]\\n", argv[0]);
+      return 2;
+    }
+  }
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0) {
     std::fprintf(stderr, "SDL init failed: %s\n", SDL_GetError());
     return 1;
@@ -332,7 +368,7 @@ int main(int argc, char **argv) {
   lv_indev_drv_init(&lvPointer);
   lvPointer.type = LV_INDEV_TYPE_POINTER; lvPointer.read_cb = readPointer;
   lv_indev_drv_register(&lvPointer);
-  showPage(0);
+  showPage(badgeFixtureLoaded ? 6 : 0);
   if (smoke) {
     // Exercise every page in CI, not just the splash/home scene.
     // Rendering must reach the RGB565 framebuffer without hardware.
@@ -353,7 +389,7 @@ int main(int argc, char **argv) {
       }
       std::fill(std::begin(framebuffer), std::end(framebuffer), 0);
     }
-    showPage(0);
+    showPage(badgeFixtureLoaded ? 6 : 0);
   }
 
   bool running = true;
