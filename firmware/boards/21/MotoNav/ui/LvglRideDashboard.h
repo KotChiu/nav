@@ -32,8 +32,8 @@ static void rideCreate(lv_obj_t *parent) {
   arc(ride.root, 60, 86, 346, 210, 330, Line, 2);
 
   ride.progress = lv_arc_create(ride.root);
-  lv_obj_set_pos(ride.progress, 85, 111);
-  lv_obj_set_size(ride.progress, 296, 296);
+  lv_obj_set_pos(ride.progress, 95, 121);
+  lv_obj_set_size(ride.progress, 276, 276);
   lv_arc_set_range(ride.progress, 0, 1000);
   lv_arc_set_rotation(ride.progress, 270);
   lv_arc_set_bg_angles(ride.progress, 0, 360);
@@ -46,29 +46,29 @@ static void rideCreate(lv_obj_t *parent) {
   noInteraction(ride.progress);
 
   ride.mode = label(ride.root, "RIDE READY", &lv_font_montserrat_20, Text);
-  lv_obj_align(ride.mode, LV_ALIGN_TOP_MID, 0, 122);
+  lv_obj_align(ride.mode, LV_ALIGN_TOP_MID, 0, 155);
   ride.speed = label(ride.root, "--", &lv_font_montserrat_48, Text);
-  lv_obj_align(ride.speed, LV_ALIGN_TOP_MID, 0, 163);
+  lv_obj_align(ride.speed, LV_ALIGN_TOP_MID, 0, 195);
   ride.speedUnit = label(ride.root, "KM / H", &lv_font_montserrat_16, Muted);
-  lv_obj_align(ride.speedUnit, LV_ALIGN_TOP_MID, 0, 229);
+  lv_obj_align(ride.speedUnit, LV_ALIGN_TOP_MID, 0, 260);
 
   lv_obj_t *divider = lv_obj_create(ride.root);
   lv_obj_remove_style_all(divider);
   lv_obj_set_size(divider, 110, 1);
   lv_obj_set_style_bg_color(divider, color(Line), 0);
   lv_obj_set_style_bg_opa(divider, LV_OPA_COVER, 0);
-  lv_obj_align(divider, LV_ALIGN_TOP_MID, 0, 271);
+  lv_obj_align(divider, LV_ALIGN_TOP_MID, 0, 299);
   noInteraction(divider);
 
   ride.status = label(ride.root, "WAITING FOR PHONE",
                       &lv_font_montserrat_20, Warm);
-  lv_obj_align(ride.status, LV_ALIGN_TOP_MID, 0, 294);
+  lv_obj_align(ride.status, LV_ALIGN_TOP_MID, 0, 323);
   ride.subtext = label(ride.root, "THE ROAD IS YOURS.",
                        &lv_font_montserrat_16, Muted);
-  lv_obj_align(ride.subtext, LV_ALIGN_TOP_MID, 0, 339);
+  lv_obj_align(ride.subtext, LV_ALIGN_TOP_MID, 0, 366);
   lv_obj_t *foot = label(ride.root, "FOCUS  /  FLOW  /  FREEDOM",
                          &lv_font_montserrat_16, Faint);
-  lv_obj_align(foot, LV_ALIGN_TOP_MID, 0, 400);
+  lv_obj_align(foot, LV_ALIGN_TOP_MID, 0, 413);
 }
 static void rideUpdate(bool visible) {
   if (!ride.root) return;
@@ -90,7 +90,7 @@ static void rideUpdate(bool visible) {
     if (speed < 0) strcpy(buffer, "--");
     else snprintf(buffer, sizeof(buffer), "%d", speed);
     lv_label_set_text(ride.speed, buffer);
-    lv_obj_align(ride.speed, LV_ALIGN_TOP_MID, 0, 163);
+    lv_obj_align(ride.speed, LV_ALIGN_TOP_MID, 0, 195);
   }
   float progress = tripOn && inNav ? tripFrac() : -1.f;
   const int currentProgress = progress < 0.f ? 0 :
