@@ -4,6 +4,7 @@
 #include <SDL.h>
 #include <lvgl.h>
 #include <algorithm>
+#include <cassert>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -370,6 +371,24 @@ int main(int argc, char **argv) {
       }
       std::fill(std::begin(framebuffer), std::end(framebuffer), 0);
     }
+    // Also exercise the *same* navigation HUD model and swipe image layer as
+    // the firmware, not only the simulated static pages.
+    navigation = true;
+    showPage(0);
+    lv_refr_now(nullptr);
+    assert(lv_obj_get_child_cnt(lv_scr_act()) > 0);
+    navigation = false;
+    showPage(3);
+    lv_refr_now(nullptr);
+    transitionToPage(4, true, -1);
+    if (!demoSlideActive || !demoSwipe.active) {
+      std::fprintf(stderr, "LVGL swipe layer failed to start\\n");
+      return 3;
+    }
+    motonavLvglSlideMove(demoSwipe, W / 2, true, -1);
+    lv_refr_now(nullptr);
+    motonavLvglSlideEnd(demoSwipe);
+    demoSlideActive = false;
     showPage(0);
   }
 
