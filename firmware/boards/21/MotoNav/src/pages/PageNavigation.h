@@ -44,7 +44,9 @@ void drawMusic() {
   onWaitScreen = false;
   frameIsMap = false;
   bool coverShow = coverValid && coverImg;
-  if (coverShow) {
+  // The LVGL image owns the visible cover once its PSRAM buffer is ready.
+  // Preserve the original direct-framebuffer path on allocation failure.
+  if (coverShow && (!lvglUiReady || !lvglCoverAssetReady)) {
     aaDisc(CX, 110, 67, C_UI_PANEL_2);                 // 封面底环（半径 67，贴图半径 64，留 3px 环）
     uint16_t *fb = gfx->getFramebuffer();
     int cy = 110, cx0 = CX - 64, cy0 = cy - 64;
@@ -74,11 +76,14 @@ void drawMusic() {
     printCentered("PHONE MEDIA KEYS", CX, coverShow ? 194 : 158, 2, C_WHITE);
     printCentered("OPEN MUSIC APP ON PHONE", CX, coverShow ? 220 : 210, 2, C_UI_SUB);
   } else if (linked) {
-    drawTextImg(5, coverShow ? 194 : 158, 0xFF);
-    drawTextImg(6, coverShow ? 240 : 210, 0xBB);
+    if (!lvglUiReady || !lvglTextAssetReady[5])
+      drawTextImg(5, coverShow ? 194 : 158, 0xFF);
+    if (!lvglUiReady || !lvglTextAssetReady[6])
+      drawTextImg(6, coverShow ? 240 : 210, 0xBB);
   } else printCentered("PHONE OFFLINE", CX, coverShow ? 205 : 170, 3, C_UI_SUB);
   bool showLyrics = linked && hidMusicMode && musicLyrics && appleMedia.available && imgs[12].showW > 0 && !coverShow;
-  if (showLyrics) drawTextImg(12, 242, 0xDD);
+  if (showLyrics && (!lvglUiReady || !lvglTextAssetReady[12]))
+    drawTextImg(12, 242, 0xDD);
   musicLyricsShownLVGL = showLyrics;
   const char *feedback[] = {"", "SENT", "PHONE RECEIVED", "DONE", "NO RESPONSE", "NO PLAYER", "HID SENT", "HID NOT READY", "HID SEND FAILED", "AMS SENT", "AMS SEND FAILED", "AMS QUEUED"};
   String state = linked && musicHave ? (musicPlaying ? "PLAYING" : "PAUSED") : "NO PLAYER";
