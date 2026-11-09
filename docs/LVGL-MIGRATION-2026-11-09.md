@@ -45,8 +45,10 @@ ST7701S RGB 显示的初始化、DMA、VSYNC、背光、480×480 物理缓冲由
 - `MapFrame.h`：开始地图帧时临时切换绘制目标，绘完立即恢复主逻辑 framebuffer，再通知 LVGL 图层失效重绘。尚未迁移的交通灯提示可能覆盖地图，因此检测到交通灯覆盖时本帧自动使用旧路径。低 PSRAM、来电、配对、滑动和异常情况也会回退。不会让 PSRAM 地图图片与已提交的 RGB DMA 源互相别名。
 - `ui/LvglNavigationCues.h` + `TurnCueGeometry.h`：新实现原生 LVGL 转向箭头/方向与环形进度显示，Mac 模拟器可预览；**固件默认 `MOTONAV_NATIVE_NAV_CUES=0`，真实导航依旧使用旧箭头和进度环**，待实机验证再开放开关。复杂 U 型转弯/终点样式仍有旧路由兜底，不能当作所有箭头已迁移。
 - `ui/TransitionPolicy.h`：非导航时六个页面间的滑动已走 LVGL 图片合成；**导航时仍用原来的逐像素滑动代码**，以免车辆运行中丢失提示。
+- `ui/LvglRasterSurface.h` + `Rgb565Plane.h`：主绘制表面可改为不依赖 `Arduino_Canvas` 的 `Arduino_GFX` 兼容软件表面，直接管理 RGB565 PSRAM；行/列/矩形裁剪有独立 Host 测试。此处保留旧绘图接口用于尚未完全迁移的模块，**尚不等于全量原生 LVGL UI**。
+- `firmware/build.py --board 21 --raster-surface native|legacy`：通过宏切换新绘制表面或原 Canvas 后端，CI 同时编译两个变体以确保回退路径不失效。
 - `ui/FrameOwnership.h` + `DisplayPipeline.h`：明确主逻辑绘制、LVGL Map 源、RGB flush 快照的职责。PSRAM/信号量/任务创建失败时退回同步刷新；VSYNC 等待超时不再无限阻塞，而是记录错误后重启。实际设备若 VSYNC 异常，可能重复重启，**必须实机测试**。
-- 新增纯 C++ `FrameOwnershipTest.cpp`、`TransitionPolicyTest.cpp`、`TurnCueGeometryTest.cpp`，以及 SDL2 原生地图 Polygon/Polyline/Canvas 冒烟与缓存共享测试。箭头朝向测试在 CI 中曾识别并拦截一次左右翼反向错误，已修复。
+- 新增纯 C++ `FrameOwnershipTest.cpp`、`TransitionPolicyTest.cpp`、`TurnCueGeometryTest.cpp`、`NavigationCueModelTest.cpp`、`Rgb565PlaneTest.cpp`，以及 SDL2 原生地图 Polygon/Polyline/Canvas、14 个页面/导航状态圆屏截图及像素有效性检查。箭头朝向测试在 CI 中曾识别并拦截一次左右翼反向错误，已修复。
 
 ### 仍未完成（不能称为全量 LVGL）
 
