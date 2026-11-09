@@ -2,6 +2,9 @@
 // 进度环动画和导航页面。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
 #include "../../TurnRingMotion.h"
 TurnRingMotion turnRingMotion;
+// Stage thresholds live in the existing navigation motion definitions.
+int mapUiFarStageMeters() { return STAGE_FAR_M; }
+int mapUiNearStageMeters() { return STAGE_NEAR_M; }
 uint32_t ringAnimationDrawAt = 0;
 void updateRingTarget() {
   bool hasRing = (navDir != "S") && navDist <= STAGE_FAR_M;
