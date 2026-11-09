@@ -12,6 +12,7 @@
 #include <string>
 
 #include "../../firmware/boards/21/MotoNav/ui/LvglHomeChrome.h"
+#include "../../firmware/boards/21/MotoNav/ui/LvglWeatherView.h"
 
 namespace {
 constexpr int W = 466, H = 466, PANEL = 480, BORDER = (PANEL - W) / 2;
@@ -133,15 +134,31 @@ void navigationPage(lv_obj_t *screen) {
   button(screen, "END MOCK ROUTE", 125, 363, 216, navEvent);
 }
 void weather(lv_obj_t *screen) {
-  centerLabel(screen, "WEATHER", 50, 0x25DFED, &lv_font_montserrat_28);
-  centerLabel(screen, "24°", 106, 0xFFFFFF, &lv_font_montserrat_40);
-  centerLabel(screen, "SUNNY  ·  26% RAIN", 173, SUB, &lv_font_montserrat_16);
-  box(screen, 55, 235, 356, 113, PANEL_BG, 14, 0x203B47);
-  const int bars[9] = {13, 18, 14, 24, 35, 26, 18, 9, 6};
-  for (int i = 0; i < 9; ++i) {
-    box(screen, 83 + 35 * i, 321 - bars[i], 13, bars[i], 0x23D5E4, 4);
+  // This is the *same* weather view code compiled by the ESP32. Only the data
+  // source differs: desktop fixtures vs. decoded BLE weather on the device.
+  static MotoNavWeatherView weatherWidgets;
+  weatherWidgets = MotoNavWeatherView{};
+  motonavWeatherViewCreate(weatherWidgets, screen);
+  MotoNavWeatherModel fixture;
+  fixture.available = true;
+  fixture.connected = linkReady;
+  fixture.icon = 0;
+  fixture.temperature = 24;
+  fixture.hourly = true;
+  fixture.forecastCount = 5;
+  fixture.aqi = 42;
+  fixture.updated = "SIMULATED";
+  const int hours[] = {14, 15, 16, 17, 18};
+  const int temps[] = {25, 24, 23, 22, 21};
+  const int rain[] = {0, 0, 10, 25, 5};
+  for (int i = 0; i < 5; ++i) {
+    fixture.forecastHourOrWeek[i] = hours[i];
+    fixture.forecastHigh[i] = temps[i];
+    fixture.forecastLowOrRain[i] = rain[i];
   }
-  centerLabel(screen, "NEXT 60 MIN  ·  SIMULATED", 365, SUB, &lv_font_montserrat_14);
+  motonavWeatherViewUpdate(weatherWidgets, fixture);
+  motonavWeatherViewVisible(weatherWidgets, true);
+  centerLabel(screen, "WEATHER FROM PHONE", 55, SUB, &lv_font_montserrat_14);
 }
 void musicEvent(lv_event_t *ev) {
   if (lv_event_get_code(ev) != LV_EVENT_CLICKED) return;
