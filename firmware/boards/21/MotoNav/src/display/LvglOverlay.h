@@ -8,6 +8,7 @@
 #include "../../ui/LvglNavigationHud.h"
 #include "../../ui/LvglNavigationCues.h"
 #include "../../ui/LvglMapCanvas.h"
+#include "../../ui/FrameOwnership.h"
 #include "../../ui/LvglPageSlide.h"
 #include "../../ui/LvglRasterAssets.h"
 
@@ -59,8 +60,8 @@ static bool lvglMapCanvasStartFrame() {
   // Never let a map source alias its LVGL draw buffer, a DMA transport
   // snapshot or any already submitted frame.
   const uint16_t *source = lvglMapCanvas.pixels;
-  if (!source || source == gfx->getFramebuffer() || source == fbBuf[1] ||
-      source == flushSrc) return false;
+  if (!motonavFramePointersIndependent(gfx->getFramebuffer(), source,
+                                       fbBuf[1], flushSrc)) return false;
   return motonavMapCanvasBegin(lvglMapCanvas);
 #else
   return false;
