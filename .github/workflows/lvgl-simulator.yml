@@ -32,3 +32,19 @@ jobs:
         run: cmake --build build/lvgl-simulator --parallel 4
       - name: Smoke test
         run: xvfb-run -a ctest --test-dir build/lvgl-simulator --output-on-failure
+      - name: Test actual BDG1 fixture loading and corrupt CRC rejection
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import struct, zlib
+          from pathlib import Path
+          pixels = bytes([0x00, 0xF8]) * (240 * 240)
+          packet = b'BDG1' + struct.pack('<HHI', 240, 240, zlib.crc32(pixels)) + pixels
+          Path('/tmp/motonav-test-photo.bdg').write_bytes(packet)
+          Path('/tmp/motonav-invalid-photo.bdg').write_bytes(packet[:-1] + b'X')
+          PY
+          xvfb-run -a ./build/lvgl-simulator/motonav-lvgl-simulator --smoke-test --badge-file /tmp/motonav-test-photo.bdg
+          if ./build/lvgl-simulator/motonav-lvgl-simulator --smoke-test --badge-file /tmp/motonav-invalid-photo.bdg; then
+            echo "Corrupted badge packet was accepted" >&2
+            exit 1
+          fi
