@@ -20,13 +20,17 @@ void handleBitmap(const uint8_t *d, int n) {
   if (slot == 12 && (!musicLyrics || !hidMusicMode || !appleMedia.available ||
       lyricImageGeneration != appleMedia.generation || lyricImageTitleRevision != appleMedia.values[0].revision || lyricImageArtistRevision != appleMedia.values[1].revision)) return;
   int total = ((w + 1) / 2) * h;
-  if (total > IMG_MAX || parts > 32) return;
+  // Reject invalid fragments before any write or bit shift. BLE messages are
+  // untrusted; a malformed offset must never be turned into a negative memcpy
+  // length. Keep the original wire format and in-order/any-order behavior.
+  if (total <= 0 || total > IMG_MAX || parts > 32 || part >= parts ||
+      part >= 32 || !im.recv || !im.show || off >= total ||
+      n <= 10 || n - 10 > total - off) return;
   if (id != im.recvId) {                          // 新的一张图：重新开始接收
     im.recvId = id; im.recvW = w; im.recvH = h; im.recvParts = parts; im.recvMask = 0;
   }
-  int len = n - 10;
-  if (off + len > total) len = total - off;
-  if (len > 0) memcpy(im.recv + off, d + 10, len);
+  const int len = n - 10;
+  memcpy(im.recv + off, d + 10, len);
   im.recvMask |= (1UL << part);
   uint32_t full = (parts >= 32) ? 0xFFFFFFFFUL : ((1UL << parts) - 1);
   if ((im.recvMask & full) == full) {             // 收齐了：换成显示用的图
