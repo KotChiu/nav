@@ -73,6 +73,14 @@ bool parseBadge(const uint8_t *packet, uint32_t len) {
   ++badgeRevision;
   badgeStored = badgePersist(packet, len);
   pendingBadgeStatus = badgeStored ? "BDG,SAVED,1" : "BDG,SAVED,0";
+  // A new photo appears immediately when idle, without a swipe through
+  // navigation pages. Never replace the screen during active navigation,
+  // a call, pairing or an animation.
+  if (!inNav && !sliding && !pairOn && !callOn && !fxOn) {
+    page = PAGE_BADGE;
+    pageAt = millis();
+    drawBadgePage();
+  }
   if (page == PAGE_BADGE) {
     forceFullFlush = true;
     needFlush = true;
