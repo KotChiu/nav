@@ -11,6 +11,12 @@ struct MotoNavMusicStatusView {
   lv_obj_t *footer = nullptr;
 };
 
+static inline void motonavMusicHide(lv_obj_t *obj, bool hidden) {
+  if (!obj || lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN) == hidden) return;
+  if (hidden) lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
+}
+
 static inline void motonavMusicSetText(lv_obj_t *obj, const char *text) {
   if (!obj) return;
   const char *value = text ? text : "";
@@ -43,14 +49,12 @@ static inline void motonavMusicStatusCreate(MotoNavMusicStatusView &view,
   view.status = motonavMusicText(view.root, 252, &lv_font_montserrat_16, 0x9EB0BF);
   view.footer = motonavMusicText(view.root, 403, &lv_font_montserrat_14, 0x9EB0BF);
   lv_obj_move_background(view.root);
-  lv_obj_add_flag(view.root, LV_OBJ_FLAG_HIDDEN);
+  motonavMusicHide(view.root, true);
 }
 
 static inline void motonavMusicStatusVisible(MotoNavMusicStatusView &view, bool visible) {
   if (!view.root) return;
-  bool hidden = lv_obj_has_flag(view.root, LV_OBJ_FLAG_HIDDEN);
-  if (visible && hidden) lv_obj_clear_flag(view.root, LV_OBJ_FLAG_HIDDEN);
-  else if (!visible && !hidden) lv_obj_add_flag(view.root, LV_OBJ_FLAG_HIDDEN);
+  motonavMusicHide(view.root, !visible);
 }
 
 static inline void motonavMusicStatusUpdate(MotoNavMusicStatusView &view,
@@ -58,13 +62,15 @@ static inline void motonavMusicStatusUpdate(MotoNavMusicStatusView &view,
                                              const char *state, const char *footer,
                                              bool error) {
   if (!view.root) return;
-  if (coverVisible) lv_obj_add_flag(view.heading, LV_OBJ_FLAG_HIDDEN);
-  else lv_obj_clear_flag(view.heading, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_set_y(view.status, lyricsVisible ? 272 : coverVisible ? 276 : 257);
-  lv_obj_set_style_text_color(view.status, lv_color_hex(error ? 0xF815A8 : 0x9EB0BF), 0);
+  motonavMusicHide(view.heading, coverVisible);
+  const int statusY = lyricsVisible ? 272 : coverVisible ? 276 : 257;
+  if (lv_obj_get_y(view.status) != statusY) lv_obj_set_y(view.status, statusY);
+  const lv_color_t statusColor = lv_color_hex(error ? 0xF815A8 : 0x9EB0BF);
+  if (lv_color_to16(lv_obj_get_style_text_color(view.status, 0)) != lv_color_to16(statusColor))
+    lv_obj_set_style_text_color(view.status, statusColor, 0);
   motonavMusicSetText(view.status, state);
-  lv_obj_set_y(view.footer, coverVisible ? 410 : 402);
+  const int footerY = coverVisible ? 410 : 402;
+  if (lv_obj_get_y(view.footer) != footerY) lv_obj_set_y(view.footer, footerY);
   motonavMusicSetText(view.footer, footer);
-  if (footer && footer[0]) lv_obj_clear_flag(view.footer, LV_OBJ_FLAG_HIDDEN);
-  else lv_obj_add_flag(view.footer, LV_OBJ_FLAG_HIDDEN);
+  motonavMusicHide(view.footer, !footer || !footer[0]);
 }
