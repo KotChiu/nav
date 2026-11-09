@@ -484,6 +484,7 @@ void handleText(const String &m) {
 }
 
 void handleMessage(const uint8_t *d, int n) {
+  if (!d || n <= 0) return;
   lastRxMs = millis();
   if (staleShown) { staleShown = false; navDirty = true; }   // 收到任何消息，清掉数据中断提示
   if (d[0] == 'B') { handleBitmap(d, n); return; }
