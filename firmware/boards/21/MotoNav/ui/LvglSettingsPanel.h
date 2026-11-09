@@ -212,8 +212,9 @@ static void settingsCreate(lv_obj_t *screen) {
 }
 static void settingsUpdate(bool visible) {
   if (!settings.root) return;
-  if (visible) lv_obj_clear_flag(settings.root, LV_OBJ_FLAG_HIDDEN);
-  else lv_obj_add_flag(settings.root, LV_OBJ_FLAG_HIDDEN);
+  const bool hidden = lv_obj_has_flag(settings.root, LV_OBJ_FLAG_HIDDEN);
+  if (visible && hidden) lv_obj_clear_flag(settings.root, LV_OBJ_FLAG_HIDDEN);
+  else if (!visible && !hidden) lv_obj_add_flag(settings.root, LV_OBJ_FLAG_HIDDEN);
   if (visible) {
     if (!lv_obj_has_state(settings.brightness, LV_STATE_PRESSED) &&
         lv_slider_get_value(settings.brightness) != screenBrightness)
