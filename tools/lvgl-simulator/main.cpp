@@ -18,6 +18,7 @@
 #include "../../firmware/boards/21/MotoNav/ui/LvglMusicStatusView.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglNavigationHud.h"
 #include "../../firmware/boards/21/MotoNav/ui/LvglPageSlide.h"
+#include "../../firmware/boards/21/MotoNav/ui/MapProjection.h"
 
 namespace {
 constexpr int W = 466, H = 466, PANEL = 480, BORDER = (PANEL - W) / 2;
@@ -140,7 +141,18 @@ void navigationPage(lv_obj_t *screen) {
                              "320 m", speed > 80, lv_color_hex(0xFFFFFF),
                              lv_color_hex(0xFF4257));
   motonavNavigationHudVisible(demoNavigationHud, true);
-  static lv_point_t route[] = {{96, 277}, {190, 277}, {190, 220}, {294, 220}, {294, 178}};
+  // The geometry uses the same world-to-screen projection as the ESP32 road
+  // renderer; source points are deliberately mock map data.
+  static const float worldPoints[5][2] = {
+      {-137, -15}, {-43, -15}, {-43, 42}, {61, 42}, {61, 84}};
+  static lv_point_t route[5] = {};
+  for (int i = 0; i < 5; ++i) {
+    float x = 0, y = 0;
+    motonavProjectDelta(worldPoints[i][0], worldPoints[i][1],
+                        1.0f, 1.0f, 0.0f, W / 2, 262, x, y);
+    route[i].x = static_cast<lv_coord_t>(x);
+    route[i].y = static_cast<lv_coord_t>(y);
+  }
   lv_obj_t *line = lv_line_create(screen);
   lv_line_set_points(line, route, sizeof(route) / sizeof(route[0]));
   lv_obj_set_style_line_color(line, lv_color_hex(0x19DCEB), 0);
