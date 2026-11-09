@@ -55,6 +55,17 @@ void flushLogicalFrame(const uint16_t *fb, bool fullFrame,
 // v2.2：可以切换画布内存的画布，用来做双缓冲
 bool lvglCanvasRepainted = false;
 extern volatile bool forceFullFlush;
+
+// Experimental code-complete removal of the Arduino_Canvas *class* from the
+// UI renderer. Legacy raster algorithms are still used through Arduino_GFX
+// methods; LVGL owns the map/page visual layers. Both variants compile in PR.
+#ifndef MOTONAV_USE_RASTER_SURFACE
+#define MOTONAV_USE_RASTER_SURFACE 1
+#endif
+#if MOTONAV_USE_RASTER_SURFACE
+#include "../../ui/LvglRasterSurface.h"
+using SwapCanvas = MotoNavRasterSurface;
+#else
 class SwapCanvas : public Arduino_Canvas {
 public:
   SwapCanvas(int16_t w, int16_t h, Arduino_G *out) : Arduino_Canvas(w, h, out) {}
@@ -69,6 +80,7 @@ public:
     if (_framebuffer) flushLogicalFrame(_framebuffer);
   }
 };
+#endif
 SwapCanvas *gfx = new SwapCanvas(LCD_WIDTH, LCD_HEIGHT, panel);
 bool needFlush = false;
 bool frameIsMap = false;          // v2.2 这一帧是小地图（整帧重画，可以异步刷屏）
