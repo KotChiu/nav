@@ -6,6 +6,7 @@
 #include "../../ui/LvglWeatherView.h"
 #include "../../ui/LvglMusicStatusView.h"
 #include "../../ui/LvglNavigationHud.h"
+#include "../../ui/LvglMapCanvas.h"
 #include "../../ui/LvglPageSlide.h"
 #include "../../ui/LvglRasterAssets.h"
 
@@ -19,6 +20,30 @@ static MotoNavHomeChrome lvglHomeChrome;
 static MotoNavWeatherView lvglWeatherView;
 static MotoNavMusicStatusView lvglMusicView;
 static MotoNavNavigationHud lvglMapHud;
+static MotoNavMapCanvas lvglMapCanvas;
+static bool lvglMapCanvasCurrentFrame = false;
+static uint16_t *lvglMapCanvasPixels() {
+  return lvglMapCanvas.canvas ? lvglMapCanvas.pixels : nullptr;
+}
+static bool lvglMapCanvasStartFrame() {
+  return motonavMapCanvasBegin(lvglMapCanvas);
+}
+static void lvglMapCanvasEndFrame() {
+  motonavMapCanvasCommit(lvglMapCanvas);
+  lvglMapCanvasCurrentFrame = true;
+}
+static void lvglMapCanvasFallback() {
+  lvglMapCanvasCurrentFrame = false;
+}
+static bool lvglMapCanvasActive() { return lvglMapCanvas.drawing; }
+static bool lvglMapCanvasLine(const float *x, const float *y, int n,
+                              float width, uint16_t color, bool caps) {
+  return motonavMapCanvasPolyline(lvglMapCanvas, x, y, n, width, color, caps);
+}
+static bool lvglMapCanvasPolygon(const float *x, const float *y,
+                                 int n, uint16_t color) {
+  return motonavMapCanvasPolygon(lvglMapCanvas, x, y, n, color);
+}
 static MotoNavLvglPageSlide lvglSwipeLayer;
 // 4-bit images from the phone are shared between firmware and PC SDL.
 // Image backing buffers are allocated lazily in PSRAM, not internal RAM.
@@ -358,6 +383,25 @@ static void createLvglOverlay() {
   lv_obj_t *screen = lv_scr_act();
   lv_obj_set_style_bg_opa(screen, LV_OPA_TRANSP, 0);
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+#if MOTONAV_NATIVE_MAP_CANVAS
+  // Separate RGB565 storage: the LVGL image source must never alias its
+  // display draw buffer or an in-flight DMA snapshot. A failed allocation
+  // keeps the entire prior Canvas map renderer active.
+  constexpr size_t mapBytes = (size_t)LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t);
+  if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > mapBytes + 256 * 1024) {
+    uint16_t *mapPixels = (uint16_t *)ps_malloc(mapBytes);
+    if (mapPixels) {
+      memset(mapPixels, 0, mapBytes);
+      if (!motonavMapCanvasCreate(lvglMapCanvas, screen, mapPixels,
+                                  LCD_WIDTH, LCD_HEIGHT)) {
+        free(mapPixels);
+      } else {
+        Serial.printf("LVGL MAP: allocated %u bytes in PSRAM\\n", (unsigned)mapBytes);
+      }
+    }
+  }
+  if (!lvglMapCanvas.canvas) Serial.println("LVGL MAP: Canvas unavailable; legacy fallback");
+#endif
   // Home ring is now a native LVGL layer and does not rely on Canvas pixels.
   motonavHomeChromeCreate(lvglHomeChrome, screen, CX, C_UI_ACCENT, C_UI_ACCENT2);
   motonavWeatherViewCreate(lvglWeatherView, screen);
@@ -801,6 +845,9 @@ static void lvglHybridTick() {
     }
     motonavWeatherViewUpdate(lvglWeatherView, weather);
   }
+  motonavMapCanvasVisible(lvglMapCanvas,
+    lvglMapCanvasCurrentFrame && page == PAGE_HOME && inNav &&
+    mapModeActive() && !sliding && !pairOn && !callOn && !fxOn && !staleShown);
   bool showMapHud = page == PAGE_HOME && inNav && mapModeActive() &&
                     !sliding && !pairOn && !callOn && !fxOn;
   motonavNavigationHudVisible(lvglMapHud, showMapHud);
