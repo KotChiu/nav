@@ -13,7 +13,12 @@ void handleBulk(const uint8_t *d, int n) {
     b.id = id; b.total = total; b.parts = parts; b.got = 0; b.done = false;
     memset(b.mask, 0, sizeof(b.mask));
   }
-  if (b.done) { pendingAck = "K," + String(type) + "," + String(id); return; }   // 重复的：再确认一次
+  if (b.done) {
+    pendingAck = "K," + String(type) + "," + String(id);
+    if (type == MotoNavBadge::BULK_TYPE)
+      pendingAck += (badgeStored ? ",1" : ",0");
+    return;  // Lost ACK: repeat the same committed result, not a new write.
+  }
   uint32_t len = n - 15;
   if (off >= total) return;
   // Badge photos are CRC-checked; never silently truncate one of their pieces.
