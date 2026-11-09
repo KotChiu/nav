@@ -11,6 +11,10 @@ on:
       - '.github/workflows/lvgl-simulator.yml'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-smoke:
     runs-on: ubuntu-24.04
