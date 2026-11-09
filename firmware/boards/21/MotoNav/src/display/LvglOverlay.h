@@ -6,6 +6,7 @@
 #include "../../ui/LvglWeatherView.h"
 #include "../../ui/LvglMusicStatusView.h"
 #include "../../ui/LvglNavigationHud.h"
+#include "../../ui/LvglPageSlide.h"
 #include "../../ui/LvglRasterAssets.h"
 
 static inline lv_color_t lvglColor565(uint16_t color) {
@@ -18,6 +19,7 @@ static MotoNavHomeChrome lvglHomeChrome;
 static MotoNavWeatherView lvglWeatherView;
 static MotoNavMusicStatusView lvglMusicView;
 static MotoNavNavigationHud lvglMapHud;
+static MotoNavLvglPageSlide lvglSwipeLayer;
 // 4-bit images from the phone are shared between firmware and PC SDL.
 // Image backing buffers are allocated lazily in PSRAM, not internal RAM.
 static MotoNavRasterAsset lvglTextAssets[10];
@@ -361,6 +363,9 @@ static void createLvglOverlay() {
   motonavWeatherViewCreate(lvglWeatherView, screen);
   motonavMusicStatusCreate(lvglMusicView, screen);
   motonavNavigationHudCreate(lvglMapHud, screen);
+  // The existing PSRAM snapshots will be shown as two LVGL image objects.
+  // It is not another framebuffer allocation.
+  motonavLvglSlideCreate(lvglSwipeLayer, screen, LCD_WIDTH, LCD_HEIGHT);
   for (int i = 0; i < 10; ++i)
     motonavRasterCreate(lvglTextAssets[i], screen, motonavRasterPsramAlloc, free);
   motonavCoverCreate(lvglAlbumCover, screen, motonavRasterPsramAlloc, free);
@@ -702,6 +707,23 @@ static void lvglHybridInit() {
   lvglLastPage = -1;
   lvglLastSliding = false;
   lvglUiReady = true;
+}
+
+// Only the fully LVGL 3/4/5 pages enable this path for now. All other page
+// transitions still use the legacy compositor until real hardware QA.
+static bool lvglSwipeBegin(const uint16_t *oldFrame, const uint16_t *newFrame) {
+  if (!lvglUiReady) return false;
+  return motonavLvglSlideBegin(lvglSwipeLayer, oldFrame, newFrame);
+}
+static bool lvglSwipePaint(int amount, bool horizontal, int direction) {
+  if (!lvglSwipeLayer.active) return false;
+  motonavLvglSlideMove(lvglSwipeLayer, amount, horizontal, direction);
+  // Must draw while the main loop deliberately skips lvglHybridTick().
+  lv_refr_now(nullptr);
+  return true;
+}
+static void lvglSwipeFinish() {
+  motonavLvglSlideEnd(lvglSwipeLayer);
 }
 
 static void lvglCancelPendingPress() {
