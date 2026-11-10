@@ -357,6 +357,10 @@ void dragMove(int dx, int dy, unsigned long now) {
     if (max(abs(dx), abs(dy)) < 12) return;
     touchGestureAxis = abs(dx) >= abs(dy) ? 1 : 2;
   }
+  // Home owns only vertical card-stack gestures. Leave horizontal swipes to
+  // the proven circular page-transition compositor; never steal maps or
+  // Settings slider gestures.
+  if (!dragging && homeStackTouchMove(dx, dy, now)) return;
   if (!dragging && page == PAGE_STOCKS && touchGestureAxis == 2) return;
   if (!dragging) {
     int threshold = page == 2 ? 20 : DRAG_START;
@@ -386,6 +390,7 @@ void dragMove(int dx, int dy, unsigned long now) {
 
 // Complete a deliberate drag or a fast flick; a reverse flick cancels it.
 void dragEnd() {
+  if (homeStackTouchEnd()) return;
   if (!dragging) return;
   int full = dragHoriz ? LCD_WIDTH : LCD_HEIGHT;
   const float velocity = millis() - dragT < 90 ? dragV : 0;
@@ -398,6 +403,7 @@ void dragEnd() {
 
 // 来电等情况：直接放弃拖动
 void dragAbort() {
+  homeStackCancel();
   if (!dragging && !slideSettling) return;
   panelSwipeTransition = false;
   forceFullFlush = true;
