@@ -945,19 +945,26 @@ static void lvglHybridTick() {
     }
     stockShowFocused();
     unsigned long now = millis();
-    if (now - stockLastStatusAt >= 5000) {
+    if (!stockLastStatusAt || now - stockLastStatusAt >= 5000) {
       stockLastStatusAt = now;
       String status;
       if (!stockCount) status = "Waiting for iPhone quotes";
-      else if (!(bleConnected && bleAuthed)) status = "Phone offline • showing last quotes";
-      else if (stockUpdatedAt && now - stockUpdatedAt > 180000UL) status = "Quotes stale • open MotoNav on iPhone";
+      else if (!stockUpdatedAt) status = "Received quotes / age unknown";
       else {
-        struct tm local {};
-        if (clockLocalTime(local)) {
-          char text[40];
-          snprintf(text, sizeof(text), "From iPhone • updated %02d:%02d", local.tm_hour, local.tm_min);
-          status = text;
-        } else status = "Synced with iPhone";
+        // stockUpdatedAt is millis() at #STK receipt, NOT an exchange timestamp.
+        // The current wall clock must never be presented as the quote update time.
+        const unsigned long age = now - stockUpdatedAt;
+        const unsigned long minutes = age / 60000UL;
+        char text[64];
+        if (!(bleConnected && bleAuthed))
+          snprintf(text, sizeof(text), "Phone offline / last sync %lu min ago", minutes);
+        else if (age > 180000UL)
+          snprintf(text, sizeof(text), "Quotes stale / %lu min ago", minutes);
+        else if (age < 60000UL)
+          snprintf(text, sizeof(text), "From iPhone / just received");
+        else
+          snprintf(text, sizeof(text), "From iPhone / %lu min ago", minutes);
+        status = text;
       }
       if (status != stockLastStatus) {
         stockLastStatus = status;
