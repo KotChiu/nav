@@ -795,8 +795,7 @@ static void lvglHybridTick() {
   bool showHome = page == 0 && !inNav && !sliding && !pairOn && !callOn && !fxOn && !staleShown;
   const bool showLiveMap = page == PAGE_HOME && inNav && !sliding &&
         !pairOn && !callOn && !fxOn && !staleShown && !cleanOn;
-  const bool mapHasData = (mapValid && mapFrame == posFrame) ||
-                         (rasterValid && rasterFrame == posFrame);
+  const bool mapHasData = navMapHasFrame();
   MotoNavUI::mapOverlayUpdate(showLiveMap, mapHasData,
                                bleConnected && bleAuthed);
   static bool lastShowHome = false;
