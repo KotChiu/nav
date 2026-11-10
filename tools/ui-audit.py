@@ -58,9 +58,19 @@ assert '#define LV_FONT_MONTSERRAT_64 1' in (BOARD / "lv_conf.h").read_text()
 # A connected device should feel like a product, not an engineering console.
 # Time/forecast are blank until actual phone data arrives; their source is
 # an implementation detail, not a homepage headline.
+# Other pages may legitimately report offline phone data (e.g. music).
+# This rule applies only to the home card, which must remain visually quiet.
+home_start = OVERLAY.index("  homeOrbit[2] = MotoNavUI::panel(screen, 67")
+home_end = OVERLAY.index("  homeHintLabel = MotoNavUI::label(screen,", home_start)
+home_card = OVERLAY[home_start:home_end]
 for noisy in ("TIME FROM PHONE", "SYNC PHONE TO SET TIME",
               "WEATHER FROM PHONE", "PHONE OFFLINE"):
-    assert noisy not in OVERLAY, noisy
+    assert noisy not in home_card, noisy
+home_tick_start = OVERLAY.index("  bool homeTextChanged = false;")
+home_tick_end = OVERLAY.index("  MotoNavUI::rideUpdate(showRobot);", home_tick_start)
+for noisy in ("TIME FROM PHONE", "SYNC PHONE TO SET TIME",
+              "WEATHER FROM PHONE", "PHONE OFFLINE"):
+    assert noisy not in OVERLAY[home_tick_start:home_tick_end], noisy
 assert 'MotoNavUI::label(homeOrbit[2], ""' in OVERLAY
 assert '"--:--"' in OVERLAY
 assert 'homeStatusDot' in OVERLAY
