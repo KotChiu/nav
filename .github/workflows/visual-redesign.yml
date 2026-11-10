@@ -43,4 +43,6 @@ jobs:
           /tmp/motonav-circular-layout
           g++ -std=c++17 -O2 -Wall -Wextra -Werror firmware/tests/NavChromePolicyTest.cpp -o /tmp/motonav-nav-chrome
           /tmp/motonav-nav-chrome
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror firmware/tests/HomeStackMotionTest.cpp -o /tmp/motonav-home-stack
+          /tmp/motonav-home-stack
           python3 tools/ui-audit.py
