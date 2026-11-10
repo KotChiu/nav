@@ -82,6 +82,7 @@ bool navMapChromeAllowed() { return styleIdx() != ST_DRAGON; }
 bool navMapCameraHudVisible() {
   return hasCam && !cleanOn && navMapChromeAllowed();
 }
+bool navLanesHudVisible() { return laneN > 0 && ringActive; }
 
 void drawMapFrame() {
   unsigned long t = millis();
