@@ -841,9 +841,15 @@ static void lvglHybridTick() {
 
   MotoNavUI::rideUpdate(showRobot);
 
-  setLvglHidden(stockList, !showStock);
+  setLvglHidden(stockList, !showStock || stockCount == 0);
   setLvglHidden(stockTitleLabel, !showStock);
   setLvglHidden(stockStatusLabel, !showStock);
+  setLvglHidden(stockEmptyCard, !showStock || stockCount != 0);
+  for (int i = 0; i < 2; ++i)
+    setLvglHidden(stockBackCards[i], !showStock || stockCount == 0);
+  setLvglHidden(stockPrevButton, !showStock || stockCount < 2);
+  setLvglHidden(stockNextButton, !showStock || stockCount < 2);
+  setLvglHidden(stockCountLabel, !showStock || stockCount == 0);
   if (showStock) {
     setLvglLabelText(stockTitleLabel,
       stockChartPeriod == 'M' ? "MARKETS  /  1M" : "MARKETS  /  TODAY");
@@ -853,9 +859,14 @@ static void lvglHybridTick() {
       stockDirty = false;
       for (int i = 0; i < STOCK_MAX; i++) {
         bool hasQuote = i < stockCount;
-        setLvglHidden(stockRows[i], !hasQuote);
         if (!hasQuote) continue;
         const StockQuote &q = stockQuotes[i];
+        const bool hasNameBitmap = imgs[13 + i].show &&
+                         imgs[13 + i].showW && imgs[13 + i].showH &&
+                         stockNameCanvases[i];
+        lv_label_set_text(stockCodeLabels[i], q.code.c_str());
+        setLvglHidden(stockCodeLabels[i], hasNameBitmap);
+        setLvglHidden(stockNameCanvases[i], !hasNameBitmap);
         char price[24], change[24];
         snprintf(price, sizeof(price), "%.2f", q.price);
         float delta = fabsf(100 + q.changePct) > 0.001f ? q.price * q.changePct / (100 + q.changePct) : 0;
@@ -870,9 +881,7 @@ static void lvglHybridTick() {
       }
       stockLastStatusAt = 0;
     }
-    for (int i = 0; i < STOCK_MAX; i++) {
-      setLvglHidden(stockRows[i], i >= stockCount);
-    }
+    stockShowFocused();
     unsigned long now = millis();
     if (now - stockLastStatusAt >= 5000) {
       stockLastStatusAt = now;
