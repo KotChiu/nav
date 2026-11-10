@@ -46,6 +46,8 @@ static void settingsRefresh() {
   settingsSetText(settings.musicModeValue, hidMusicMode ? "HID" : "APP");
   settingsSetText(settings.deviceStatus,
                     bleConnected && bleAuthed ? "SECURELY CONNECTED" : "WAITING FOR PHONE");
+  lv_obj_set_style_text_color(settings.deviceStatus,
+                  color(bleConnected && bleAuthed ? Cool : Warm), 0);
   settingsSetText(settings.deviceName, bleName.c_str());
   settingsSetText(settings.firmware, FW_VERSION);
   snprintf(value, sizeof(value), "%u KB FREE",
