@@ -411,10 +411,24 @@ void handleText(const String &m) {
       if (!q.code.equalsIgnoreCase(pending[i].code)) {
         q.candleCount = 0;
         memset(q.candles, 0, sizeof(q.candles));
+        // CJK name bitmaps are indexed by watchlist position, not symbol.
+        // The old image would mislabel the incoming quote until new #B data.
+        TextImg &name = imgs[13 + i];
+        name.showW = 0; name.showH = 0;
+        name.recvId = -1; name.recvMask = 0;
       }
       q.code = pending[i].code;
       q.price = pending[i].price;
       q.changePct = pending[i].changePct;
+    }
+    for (int i = incoming; i < STOCK_MAX; ++i) {
+      StockQuote &q = stockQuotes[i];
+      q.code = "";
+      q.candleCount = 0;
+      memset(q.candles, 0, sizeof(q.candles));
+      TextImg &name = imgs[13 + i];
+      name.showW = 0; name.showH = 0;
+      name.recvId = -1; name.recvMask = 0;
     }
     stockCount = incoming;
     stockUpdatedAt = millis();
