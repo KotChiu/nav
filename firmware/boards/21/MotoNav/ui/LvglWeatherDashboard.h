@@ -2,6 +2,7 @@
 // Main weather page is a quiet instrument card. QWeather bitmap DETAIL
 // screens stay on the existing canvas to preserve the phone's Chinese glyphs.
 #include "VisualLanguage.h"
+#include "LvglIcons.h"
 
 namespace MotoNavUI {
 struct WeatherView {
@@ -55,6 +56,7 @@ static void weatherCreate(lv_obj_t *screen) {
   lv_obj_set_style_bg_color(weather.orb, color(SurfaceRaised), 0);
   lv_obj_set_style_bg_opa(weather.orb, LV_OPA_COVER, 0);
   noInteraction(weather.orb);
+  icon(weather.orb, Icon::Weather, 21, 21, Cool, 2);
 
   weather.temp = label(hero, "--°", &lv_font_montserrat_48, Text);
   lv_obj_set_pos(weather.temp, 119, 22);
