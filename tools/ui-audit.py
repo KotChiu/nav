@@ -14,6 +14,9 @@ SETTINGS = (BOARD / "ui/LvglSettingsPanel.h").read_text()
 RIDE = (BOARD / "ui/LvglRideDashboard.h").read_text()
 TOKENS = (BOARD / "ui/VisualLanguage.h").read_text()
 WEATHER = (BOARD / "ui/LvglWeatherDashboard.h").read_text()
+ICONS = (BOARD / "ui/LvglIcons.h").read_text()
+MAP = (BOARD / "ui/LvglMapOverlay.h").read_text()
+MAP_FRAME = (BOARD / "src/map/MapFrame.h").read_text()
 
 def srgb(c):
     t = c / 255
@@ -54,5 +57,32 @@ for persisted in ("cleanmap", "progring", "mediahid"):
     assert f'"{persisted}"' in SETTINGS, persisted
 assert "lvglCaptureTouch = true" in SETTINGS
 assert "lvglCaptureTouch = false" in SETTINGS
-print("MotoNav UI contract passed: readable palette, unified typography,"
-      " no mascot, functional settings and existing route fallback.")
+
+# Every category has one vector icon; no emoji/bitmap icon font fallback.
+for name in ("Map", "Route", "Weather", "Music", "Stocks", "Settings",
+             "Screen", "Ride", "Link", "Photo", "ChevronLeft",
+             "ChevronRight", "Play", "Pause", "Previous", "Next"):
+    assert f"Icon::{name}" in ICONS
+assert "MotoNavUI::mapOverlayCreate" in OVERLAY
+assert "MotoNavUI::mapOverlayUpdate" in OVERLAY
+assert "drawRasterMap(cx, cy" in MAP_FRAME
+assert "drawRouteRange(" in MAP_FRAME
+assert "drawMapLanes()" in MAP_FRAME
+assert "drawMapBadge()" in MAP_FRAME
+assert "lv_obj_move_foreground" in MAP
+
+# Wallet-style stacked home and quote cards; prices/charts are never laid
+# out in the same horizontal row as an unconstrained CJK stock name.
+assert "MotoNavUI::panel(screen, 67, 115, 332, 245" in OVERLAY
+assert "stockBackCards[0]" in OVERLAY and "stockBackCards[1]" in OVERLAY
+assert "#define STOCK_NAME_W 164" in OVERLAY
+assert "#define STOCK_CHART_W 280" in OVERLAY
+assert "#define STOCK_ROW_H 218" in OVERLAY
+assert "stockShowFocused()" in OVERLAY and "stockStepEvent" in OVERLAY
+assert "lv_label_set_long_mode(stockPriceLabels[i], LV_LABEL_LONG_DOT)" in OVERLAY
+assert "lv_obj_set_scroll_dir(stockList, LV_DIR_VER)" not in OVERLAY
+assert "settings.depth[0]" in SETTINGS
+assert "MotoNavUI::Icon::Weather" in OVERLAY
+assert "MotoNavUI::Icon::Photo" in OVERLAY
+print("MotoNav UI contracts passed: map-first navigation, vector icons,"
+      " round-safe Wallet stacks, fixed stock bounds and real device data.")
