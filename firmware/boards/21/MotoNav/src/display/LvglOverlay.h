@@ -504,11 +504,11 @@ static void createLvglOverlay() {
   lv_label_set_long_mode(watchDateLabel, LV_LABEL_LONG_CLIP);
 
   watchTimeLabel = MotoNavUI::label(homeOrbit[2], "--:--",
-                    &lv_font_montserrat_64, MotoNavUI::Text);
-  lv_obj_set_pos(watchTimeLabel, 19, 60);
-  lv_obj_set_size(watchTimeLabel, 295, 90);
+                    &lv_font_montserrat_48, MotoNavUI::Text);
+  lv_obj_set_pos(watchTimeLabel, 20, 72);
+  lv_obj_set_size(watchTimeLabel, 292, 75);
   lv_label_set_long_mode(watchTimeLabel, LV_LABEL_LONG_CLIP);
-  lv_obj_set_style_text_letter_space(watchTimeLabel, -2, 0);
+  lv_obj_set_style_text_letter_space(watchTimeLabel, 3, 0);
 
   // Small connection indicator; no oversized status banner.
   // This signal is diagnostic enough without dominating the watch face.
@@ -547,9 +547,9 @@ static void createLvglOverlay() {
   MotoNavUI::icon(homeWeatherCard, MotoNavUI::Icon::Weather, 12, 19,
                   MotoNavUI::Cool);
   watchTempLabel = MotoNavUI::label(homeWeatherCard, "--°",
-                    &lv_font_montserrat_40, MotoNavUI::Text);
-  lv_obj_set_pos(watchTempLabel, 47, 7);
-  lv_obj_set_size(watchTempLabel, 90, 51);
+                    &lv_font_montserrat_28, MotoNavUI::Text);
+  lv_obj_set_pos(watchTempLabel, 47, 14);
+  lv_obj_set_size(watchTempLabel, 90, 39);
   lv_label_set_long_mode(watchTempLabel, LV_LABEL_LONG_CLIP);
   watchForecastLabel = MotoNavUI::label(homeWeatherCard, "",
                     &lv_font_montserrat_16, MotoNavUI::Muted);
