@@ -96,7 +96,8 @@ assert 'printCentered(String(speedKmh)' in MAP_HUD
 assert "drawBigIconAt" in MARKERS and "printOutlined(dt" in MARKERS
 assert "NavTurnCard" in MARKERS and "C_UI_PANEL" in MARKERS
 assert "navChromeShowStatus" in OVERLAY and "navChromeShowStatus" in MAP_FRAME
-assert "laneN > 0 && ringActive" in OVERLAY
+assert "navLanesHudVisible()" in OVERLAY
+assert "laneN > 0 && ringActive" in MAP_FRAME
 assert "navMapChromeAllowed()" in OVERLAY
 assert "obsAdd(MotoNavUI::NavMapChip" in MAP_FRAME
 assert "obsAdd(MotoNavUI::NavLinkChip" in MAP_FRAME
