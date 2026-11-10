@@ -22,6 +22,10 @@ MARKERS = (BOARD / "src/map/NavigationMarkers.h").read_text()
 NAV_SPEED = (BOARD / "ui/LvglNavSpeed.h").read_text()
 NAV_DISTANCE = (BOARD / "ui/LvglNavDistance.h").read_text()
 NAV_POLICY = (BOARD / "ui/NavChromePolicy.h").read_text()
+HOME_STACK_POLICY = (BOARD / "ui/HomeStackMotion.h").read_text()
+PAGE_NAV = (BOARD / "src/pages/PageNavigation.h").read_text()
+TOUCH = (BOARD / "src/pages/IncomingCall.h").read_text()
+FUNCTIONS = (BOARD / "src/core/FunctionDeclarations.h").read_text()
 NAV_DECL = (BOARD / "src/core/FunctionDeclarations.h").read_text()
 MARKET_COMMANDS = (BOARD / "src/protocol/CommandReceiver.h").read_text()
 
@@ -151,6 +155,29 @@ assert "if (!complete" in MARKET_COMMANDS
 assert "now - stockUpdatedAt" in OVERLAY
 assert 'From iPhone / just received' in OVERLAY
 assert 'updated %02d:%02d' not in OVERLAY
+
+# Interactive Home card stack: the old clickable peeks remain usable, but
+# vertical drag now owns the whole Home stack and leads to a real expanded
+# three-card layout. Horizontal page snapshots must stay unchanged.
+assert '#include "../../ui/HomeStackMotion.h"' in OVERLAY
+assert "homeStackTouchMove(dx, dy, now)" in PAGE_NAV
+assert "homeStackTouchEnd()" in PAGE_NAV
+assert "homeStackCancel()" in PAGE_NAV
+assert "bool homeStackTouchMove(int dx, int dy, unsigned long now);" in FUNCTIONS
+assert "homeStackGestureActive" in OVERLAY
+assert "&& !homeStackGestureActive" in OVERLAY
+assert "lvglCancelPendingPress();" in OVERLAY
+assert "homeStackTick(showHome);" in OVERLAY
+assert "lv_obj_set_size(homeOrbit[i],r.w,r.h)" in OVERLAY
+assert "homeStackProgress > 0.08f" in OVERLAY
+assert "homeStackExpandedStyle" in OVERLAY
+assert "homeBackSubtitle[0]" in OVERLAY and "homeBackSubtitle[1]" in OVERLAY
+assert "homeBackChevron[0]" in OVERLAY and "homeBackChevron[1]" in OVERLAY
+assert "stackReleaseTarget" in HOME_STACK_POLICY
+assert "stackGestureEnabled" in HOME_STACK_POLICY
+assert "StackOpen[3]" in HOME_STACK_POLICY
+assert "if (callOn || pairOn || touchEat || fxOn) dragAbort();" in TOUCH
+assert "pageForSwipe(page, dragHoriz, dragSign)" in PAGE_NAV
 
 # Wallet-style stacked home and quote cards; prices/charts are never laid
 # out in the same horizontal row as an unconstrained CJK stock name.
