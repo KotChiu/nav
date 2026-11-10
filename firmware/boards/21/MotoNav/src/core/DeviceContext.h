@@ -139,6 +139,7 @@ bool fastFlushOn = false;         // RGB path is handled by the ESP32_Display_Pa
 #define C_UI_LINE    0x31A8  // #343740
 #define C_UI_ACCENT  0xFC4B  // #FF895C
 #define C_UI_ACCENT2 0xF5CE  // #F4BA72
+#define C_UI_INFO    0x8E5F  // #8CCBFF  (connected / weather)
 
 // ===== 屏幕几何：466x466，圆心 (233, 233) =====
 #define CX 233
