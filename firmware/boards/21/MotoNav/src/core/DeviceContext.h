@@ -128,16 +128,17 @@ bool fastFlushOn = false;         // RGB path is handled by the ESP32_Display_Pa
 #define C_SEP    0x31A6   // #333333 车道分隔线
 #define C_SIGNRED 0xE104  // #E02020 限速牌红圈
 // Shared dial surfaces, typography and state colors. Map themes are separate.
-// Quiet Instrument visual system. Navigation map safety colors stay separate.
-#define C_UI_BG      0x00A3  // #07141F
-#define C_UI_PANEL   0x1126  // #122633
-#define C_UI_PANEL_2 0x1988  // #1A3340
-#define C_UI_TEXT    0xF7DF  // #F2F8FB
-#define C_UI_SUB     0x9D98  // #99B2C1
-#define C_UI_DIM     0x63F1  // #627E8D
-#define C_UI_LINE    0x2A4B  // #2A4B5C
-#define C_UI_ACCENT  0x4F18  // #4CE0C3
-#define C_UI_ACCENT2 0xFDAD  // #FFB46E
+// Carbon Racing. RGB565 matches ui/VisualLanguage.h RGB888 tokens.
+// Route/warning semantics (red, green, traffic lights) remain separate.
+#define C_UI_BG      0x0862  // #0B0C10
+#define C_UI_PANEL   0x18C4  // #191B21
+#define C_UI_PANEL_2 0x2126  // #242730
+#define C_UI_TEXT    0xF79D  // #F5F3EE
+#define C_UI_SUB     0xBDD8  // #B8BBC5
+#define C_UI_DIM     0x8452  // #858996
+#define C_UI_LINE    0x31A8  // #343740
+#define C_UI_ACCENT  0xFC4B  // #FF895C
+#define C_UI_ACCENT2 0xF5CE  // #F4BA72
 
 // ===== 屏幕几何：466x466，圆心 (233, 233) =====
 #define CX 233
