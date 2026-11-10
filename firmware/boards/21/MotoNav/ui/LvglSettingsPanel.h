@@ -58,9 +58,9 @@ static void settingsSelectTab(int index) {
   for (int i = 0; i < 4; ++i) {
     bool active = i == index;
     lv_obj_set_style_bg_color(settings.tabs[i],
-         color(active ? Mint : SurfaceRaised), 0);
+         color(active ? Accent : SurfaceRaised), 0);
     lv_obj_set_style_border_color(settings.tabs[i],
-         color(active ? Mint : Line), 0);
+         color(active ? Accent : Line), 0);
     lv_obj_set_style_text_color(settings.tabText[i],
          color(active ? Background : Muted), 0);
     if (active) lv_obj_clear_flag(settings.sections[i], LV_OBJ_FLAG_HIDDEN);
@@ -146,7 +146,7 @@ static void settingsCreate(lv_obj_t *screen) {
   lv_obj_add_flag(settings.root, LV_OBJ_FLAG_HIDDEN);
 
   lv_obj_t *eyebrow = label(settings.root, "MOTONAV / SYSTEM",
-                             &lv_font_montserrat_16, Mint);
+                             &lv_font_montserrat_16, Accent);
   lv_obj_align(eyebrow, LV_ALIGN_TOP_MID, 0, 42);
   lv_obj_set_style_text_letter_space(eyebrow, 2, 0);
   lv_obj_t *title = label(settings.root, "Settings",
@@ -166,7 +166,7 @@ static void settingsCreate(lv_obj_t *screen) {
 
   lv_obj_t *display = settings.sections[0];
   settingsText(display, "BRIGHTNESS", 23, 17, &lv_font_montserrat_16, Muted);
-  settings.brightnessValue = label(display, "70%", &lv_font_montserrat_20, Mint);
+  settings.brightnessValue = label(display, "70%", &lv_font_montserrat_20, Accent);
   lv_obj_align(settings.brightnessValue, LV_ALIGN_TOP_RIGHT, -23, 14);
   settings.brightness = lv_slider_create(display);
   lv_obj_set_size(settings.brightness, 306, 18);
@@ -174,7 +174,7 @@ static void settingsCreate(lv_obj_t *screen) {
   lv_slider_set_range(settings.brightness, 5, 180);
   lv_slider_set_value(settings.brightness, screenBrightness, LV_ANIM_OFF);
   lv_obj_set_style_bg_color(settings.brightness, color(Line), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(settings.brightness, color(Mint), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(settings.brightness, color(Accent), LV_PART_INDICATOR);
   lv_obj_set_style_bg_color(settings.brightness, color(Text), LV_PART_KNOB);
   lv_obj_set_style_pad_all(settings.brightness, 7, LV_PART_KNOB);
   lv_obj_set_style_border_width(settings.brightness, 0, LV_PART_MAIN);
@@ -207,7 +207,7 @@ static void settingsCreate(lv_obj_t *screen) {
   settings.firmware = label(about, FW_VERSION, &lv_font_montserrat_20, Text);
   lv_obj_set_pos(settings.firmware, 22, 109);
   settingsText(about, "FREE PSRAM", 22, 148, &lv_font_montserrat_16, Muted);
-  settings.memory = label(about, "-- KB", &lv_font_montserrat_16, Mint);
+  settings.memory = label(about, "-- KB", &lv_font_montserrat_16, Accent);
   lv_obj_set_pos(settings.memory, 163, 148);
 
   lv_obj_t *foot = label(settings.root, "SWIPE DOWN  /  HOME",
