@@ -6,7 +6,7 @@ using namespace MotoNavUI;
 int main() {
   for (const NavChromeRect r : {
        NavSpeedCard, NavSpeedCardWithCamera,
-       NavTurnCard, NavMapChip, NavLinkChip})
+       NavTurnCard, NavDistanceCard, NavMapChip, NavLinkChip})
     assert(navChromeFits(r));
   assert(!navChromeFits({10,10,400,400}));
   assert(!navChromeFits({0,0,466,466}));
@@ -17,6 +17,10 @@ int main() {
   assert(!navChromeOverlap(NavSpeedCard,NavLinkChip));
   assert(!navChromeOverlap(NavSpeedCardWithCamera,NavMapChip));
   assert(!navChromeOverlap(NavSpeedCardWithCamera,NavLinkChip));
+  assert(navChromeOverlap(NavTurnCard,NavDistanceCard));
+  assert(NavDistanceCard.x >= NavTurnCard.x && NavDistanceCard.y >= NavTurnCard.y);
+  assert(NavDistanceCard.x + NavDistanceCard.w <= NavTurnCard.x + NavTurnCard.w);
+  assert(NavDistanceCard.y + NavDistanceCard.h <= NavTurnCard.y + NavTurnCard.h);
   assert(!navChromeOverlap(NavTurnCard,NavMapChip));
   assert(!navChromeOverlap(NavTurnCard,NavLinkChip));
 
