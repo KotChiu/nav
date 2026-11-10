@@ -29,7 +29,8 @@ volatile uint32_t lvglTextColorChanges = 0;
 static FlushRect lvglDirtyRects[FLUSH_RECT_MAX];
 static int lvglDirtyRectCount = 0;
 static lv_obj_t *musicButtons[3] = {nullptr, nullptr, nullptr};
-static lv_obj_t *musicButtonLabels[3] = {nullptr, nullptr, nullptr};
+static lv_obj_t *musicGlyphs[3] = {nullptr, nullptr, nullptr};
+static lv_obj_t *musicPauseGlyph = nullptr;
 static lv_obj_t *pageDotObjs[4] = {nullptr, nullptr, nullptr, nullptr};
 // Settings is now a separate stateful controller in LvglSettingsPanel.h.
 static lv_obj_t *homeTitleLabel = nullptr;
@@ -185,12 +186,29 @@ static lv_obj_t *makeMusicButton(int index) {
   lv_obj_clear_flag(button, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_event_cb(button, musicButtonEventCb, LV_EVENT_CLICKED, (void *)(intptr_t)index);
 
-  lv_obj_t *label = lv_label_create(button);
-  lv_obj_set_style_text_color(label, lv_color_white(), 0);
-  lv_obj_set_style_text_font(label, &lv_font_montserrat_28, 0);
-  lv_obj_center(label);
-  musicButtonLabels[index] = label;
+  musicGlyphs[index] = MotoNavUI::icon(button,
+     index == 0 ? MotoNavUI::Icon::Previous :
+     index == 2 ? MotoNavUI::Icon::Next : MotoNavUI::Icon::Play,
+     31, 31, MotoNavUI::Text, 3);
+  if (index == 1) {
+    musicPauseGlyph = MotoNavUI::icon(button, MotoNavUI::Icon::Pause,
+                                       31, 31, MotoNavUI::Background, 3);
+    lv_obj_add_flag(musicPauseGlyph, LV_OBJ_FLAG_HIDDEN);
+  }
   return button;
+}
+
+// Icon glyphs are paths, not missing LV_SYMBOL font characters. Update only
+// when the enabled/disabled color changes to avoid per-frame line invalidation.
+static void colorMusicGlyph(lv_obj_t *glyph, uint32_t rgb) {
+  if (!glyph) return;
+  lv_color_t wanted = MotoNavUI::color(rgb);
+  const uint32_t count = lv_obj_get_child_cnt(glyph);
+  for (uint32_t i = 0; i < count; ++i) {
+    lv_obj_t *child = lv_obj_get_child(glyph, i);
+    if (lv_color_to16(lv_obj_get_style_line_color(child, 0)) != lv_color_to16(wanted))
+      lv_obj_set_style_line_color(child, wanted, 0);
+  }
 }
 
 static void configureOpaqueLabel(lv_obj_t *label, int width, int height) {
@@ -763,10 +781,14 @@ static void lvglHybridTick() {
     bool enabled = hidMusicMode ? (hidMediaReady() || appleMedia.controlReady(i)) : (bleConnected && bleAuthed && musicHave);
     const bool primary = enabled && i == 1;
     setLvglBgColor(musicButtons[i], lvglColor565(primary ? C_UI_ACCENT : enabled ? C_UI_PANEL_2 : C_UI_PANEL));
-    const char *symbol = i == 0 ? LV_SYMBOL_PREV : i == 2 ? LV_SYMBOL_NEXT
-      : (musicPlaying ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
-    setLvglLabelText(musicButtonLabels[i], symbol);
-    setLvglTextColor(musicButtonLabels[i], lvglColor565(primary ? C_UI_BG : enabled ? C_UI_TEXT : C_UI_SUB));
+    if (i == 1) {
+      setLvglHidden(musicGlyphs[1], musicPlaying);
+      setLvglHidden(musicPauseGlyph, !musicPlaying);
+    }
+    const uint32_t glyphColor = primary ? MotoNavUI::Background :
+                                enabled ? MotoNavUI::Text : MotoNavUI::Muted;
+    colorMusicGlyph(musicGlyphs[i], glyphColor);
+    if (i == 1) colorMusicGlyph(musicPauseGlyph, glyphColor);
   }
 
   MotoNavUI::settingsUpdate(showSettings);
