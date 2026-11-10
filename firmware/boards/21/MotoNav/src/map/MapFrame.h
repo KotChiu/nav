@@ -46,8 +46,8 @@ static void drawPlaceLabels(float cx, float cy, float sc, float cs, float sn) {
       obsAdd(x - 4, y - 4, x + 4, y + 4);
     }
     obsAdd(left - 3, top - 3, left + w + 3, top + h + 3);
-    gfx->fillRoundRect(left, top, w, h, 9, C_BLACK);
-    gfx->drawRoundRect(left, top, w, h, 9, C_UI_SUB);
+    gfx->fillRoundRect(left, top, w, h, 11, C_UI_PANEL);
+    gfx->drawRoundRect(left, top, w, h, 11, C_UI_LINE);
     const int stride = PlaceLabels::stride(label.width, placeLabels.version);
     for (int row = 0; row < label.height; row++) {
       const uint8_t *const glyph = label.pixels + row * stride;
