@@ -35,6 +35,7 @@ int main(){
   assert(!stackGestureEnabled(true,false,false,false,true));
   assert(!stackGestureEnabled(false,false,false,false,false));
   assert(stackTouchInArea(233,233));
+  assert(stackTouchInArea(233,90)); // compact clock top
   assert(stackTouchInArea(233,395));
   assert(!stackTouchInArea(233,20));
 
