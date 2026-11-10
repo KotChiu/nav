@@ -4,6 +4,7 @@
 #include "../../ui/VisualLanguage.h"
 #include "../../ui/LvglIcons.h"
 #include "../../ui/LvglMapOverlay.h"
+#include "../../ui/LvglNavSpeed.h"
 #include "../../ui/LvglSettingsPanel.h"
 #include "../../ui/LvglRideDashboard.h"
 #include "../../ui/LvglWeatherDashboard.h"
@@ -697,6 +698,7 @@ static void createLvglOverlay() {
   lv_obj_add_flag(stockEmptyCard, LV_OBJ_FLAG_HIDDEN);
 
   MotoNavUI::mapOverlayCreate(screen);
+  MotoNavUI::navSpeedCreate(screen);
 }
 
 static void lvglHybridInit() {
@@ -795,11 +797,20 @@ static void lvglHybridTick() {
   bool showRobot = page == 4 && !sliding && !pairOn && !callOn && !fxOn;
   bool showStock = page == 5 && !sliding && !pairOn && !callOn && !fxOn;
   bool showHome = page == 0 && !inNav && !sliding && !pairOn && !callOn && !fxOn && !staleShown;
-  const bool showLiveMap = page == PAGE_HOME && inNav && !sliding &&
-        !pairOn && !callOn && !fxOn && !staleShown && !cleanOn;
+  // Keep the GFX map, turn instructions, lanes and camera data untouched.
+  // LVGL contributes a type-consistent speed panel only in live map mode.
+  // Side status chips defer to lanes/camera so no informational overlay
+  // can cover a higher-priority navigation cue.
+  const bool liveNavHud = page == PAGE_HOME && inNav && !sliding &&
+        !pairOn && !callOn && !fxOn && !staleShown && mapModeActive();
+  const bool showLiveMap = liveNavHud && !cleanOn;
   const bool mapHasData = navMapHasFrame();
-  MotoNavUI::mapOverlayUpdate(showLiveMap, mapHasData,
+  const bool showStatusChips = MotoNavUI::navChromeShowStatus(
+      showLiveMap, cleanOn, laneN > 0 && ringActive, hasCam);
+  MotoNavUI::mapOverlayUpdate(showStatusChips, mapHasData,
                                bleConnected && bleAuthed);
+  MotoNavUI::navSpeedUpdate(liveNavHud && speedKmh >= 0, speedKmh, hasCam,
+                             hasCam && camLimit > 0 && speedKmh > camLimit);
   static bool lastShowHome = false;
   const bool homeJustShown = showHome && !lastShowHome;
   lastShowHome = showHome;
