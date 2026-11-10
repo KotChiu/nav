@@ -2,6 +2,7 @@
 
 #include <lvgl.h>
 #include "../../ui/VisualLanguage.h"
+#include "../../ui/LvglIcons.h"
 #include "../../ui/LvglSettingsPanel.h"
 #include "../../ui/LvglRideDashboard.h"
 #include "../../ui/LvglWeatherDashboard.h"
@@ -359,13 +360,26 @@ static void createLvglOverlay() {
   }
   lv_obj_add_flag(musicPlaceholder, LV_OBJ_FLAG_HIDDEN);
 
-  // A precise instrument face replaces the old pixel clock and cartoon.
-  homeOrbit[0] = MotoNavUI::arc(screen, 24, 24, 418,
-                              222, 318, MotoNavUI::Accent, 3);
-  homeOrbit[1] = MotoNavUI::arc(screen, 24, 24, 418,
-                              42, 138, MotoNavUI::Line, 2);
-  homeOrbit[2] = MotoNavUI::arc(screen, 44, 44, 378,
-                              154, 206, MotoNavUI::Cool, 2);
+  // Apple Wallet-inspired stack: two peeking layers behind one focused card.
+  // Every corner stays within the 466 logical circular viewport.
+  homeOrbit[0] = MotoNavUI::panel(screen, 104, 360, 258, 57, 24,
+                                 MotoNavUI::SurfaceRaised);
+  MotoNavUI::icon(homeOrbit[0], MotoNavUI::Icon::Stocks, 19, 28,
+                  MotoNavUI::Cool);
+  lv_obj_t *peekMarkets = MotoNavUI::label(homeOrbit[0], "MARKETS",
+                    &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_set_pos(peekMarkets, 54, 32);
+  homeOrbit[1] = MotoNavUI::panel(screen, 88, 344, 290, 55, 23,
+                                 MotoNavUI::Surface);
+  MotoNavUI::icon(homeOrbit[1], MotoNavUI::Icon::Ride, 19, 26,
+                  MotoNavUI::Accent);
+  lv_obj_t *peekRide = MotoNavUI::label(homeOrbit[1], "RIDE  /  READY",
+                    &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_set_pos(peekRide, 55, 29);
+  homeOrbit[2] = MotoNavUI::panel(screen, 67, 115, 332, 245, 29,
+                                 MotoNavUI::SurfaceRaised);
+  MotoNavUI::icon(homeOrbit[2], MotoNavUI::Icon::Map, 279, 15,
+                  MotoNavUI::Accent);
   for (int i = 0; i < 3; i++)
     lv_obj_add_flag(homeOrbit[i], LV_OBJ_FLAG_HIDDEN);
 
@@ -404,9 +418,35 @@ static void createLvglOverlay() {
   lv_label_set_long_mode(watchForecastLabel, LV_LABEL_LONG_DOT);
   lv_obj_set_pos(watchForecastLabel, 119, 30);
 
-  homeHintLabel = MotoNavUI::label(screen, "SWIPE  /  EXPLORE",
+  // The visible homepage is one focused card. Move existing live widgets
+  // into it instead of duplicating their BLE/weather/clock data sources.
+  lv_obj_set_parent(homeTitleLabel, homeOrbit[2]);
+  lv_obj_set_pos(homeTitleLabel, 24, 15);
+  lv_obj_set_parent(watchDateLabel, homeOrbit[2]);
+  lv_obj_set_pos(watchDateLabel, 24, 57);
+  lv_obj_set_parent(watchTimeLabel, homeOrbit[2]);
+  lv_obj_set_pos(watchTimeLabel, 23, 81);
+
+  lv_obj_set_parent(homeStatusChip, homeOrbit[2]);
+  lv_obj_set_pos(homeStatusChip, 18, 143);
+  lv_obj_set_size(homeStatusChip, 204, 37);
+  MotoNavUI::icon(homeStatusChip, MotoNavUI::Icon::Link, 9, 7, MotoNavUI::Cool);
+  lv_obj_set_pos(homeStatusLabel, 37, 10);
+
+  lv_obj_set_parent(homeWeatherCard, homeOrbit[2]);
+  lv_obj_set_pos(homeWeatherCard, 18, 189);
+  lv_obj_set_size(homeWeatherCard, 296, 47);
+  lv_obj_set_style_radius(homeWeatherCard, 17, 0);
+  MotoNavUI::icon(homeWeatherCard, MotoNavUI::Icon::Weather, 13, 11,
+                  MotoNavUI::Cool);
+  lv_obj_set_style_text_font(watchTempLabel, &lv_font_montserrat_28, 0);
+  lv_obj_set_pos(watchTempLabel, 46, 5);
+  lv_obj_set_pos(watchForecastLabel, 118, 13);
+  lv_obj_set_size(watchForecastLabel, 167, 28);
+  lv_label_set_long_mode(watchForecastLabel, LV_LABEL_LONG_DOT);
+
+  homeHintLabel = MotoNavUI::label(screen, "SWIPE TO EXPLORE",
                     &lv_font_montserrat_16, MotoNavUI::Faint);
-  lv_obj_align(homeHintLabel, LV_ALIGN_TOP_MID, 0, 400);
   lv_obj_add_flag(homeHintLabel, LV_OBJ_FLAG_HIDDEN);
 
   MotoNavUI::rideCreate(screen);
@@ -660,16 +700,13 @@ static void lvglHybridTick() {
   setLvglHidden(homeStatusChip, !showHome);
   setLvglHidden(homeWeatherCard, !showHome);
   for (int i = 0; i < 3; ++i) setLvglHidden(homeOrbit[i], !showHome);
-  setLvglHidden(homeHintLabel, !showHome);
+  setLvglHidden(homeHintLabel, true);
   if (showHome) {
     const char *status = waitSt == WAIT_LOST ? "LINK LOST" :
                          ((bleConnected && bleAuthed) ? "CONNECTED" : "PHONE OFFLINE");
     uint32_t statusColor = waitSt == WAIT_LOST ? C_UI_ACCENT2
       : ((bleConnected && bleAuthed) ? C_UI_INFO : C_UI_SUB);
-    if (setLvglLabelText(homeStatusLabel, status)) {
-      homeTextChanged = true;
-      lv_obj_center(homeStatusLabel);
-    }
+    if (setLvglLabelText(homeStatusLabel, status)) homeTextChanged = true;
     setLvglTextColor(homeStatusLabel, lvglColor565(statusColor));
   }
 
