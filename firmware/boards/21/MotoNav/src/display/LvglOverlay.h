@@ -518,69 +518,85 @@ static void createLvglOverlay() {
   lv_obj_align(photoTitleLabel, LV_ALIGN_TOP_MID, 0, 62);
   lv_obj_add_flag(photoTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
-  stockTitleLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(stockTitleLabel, lv_color_white(), 0);
-  lv_obj_set_style_text_font(stockTitleLabel, &lv_font_montserrat_28, 0);
-  lv_label_set_text(stockTitleLabel, "MARKETS  /  TODAY");
-  lv_obj_align(stockTitleLabel, LV_ALIGN_TOP_MID, 0, 52);
+  // Markets = one focused quote with two visible card backs (Apple Wallet
+  // visual grammar), rather than a scrollable list whose charts overflow.
+  stockTitleLabel = MotoNavUI::label(screen, "MARKETS  /  TODAY",
+                                      &lv_font_montserrat_28, MotoNavUI::Text);
+  lv_obj_align(stockTitleLabel, LV_ALIGN_TOP_MID, 0, 49);
   lv_obj_add_flag(stockTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
-  stockStatusLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(stockStatusLabel, lvglColor565(C_UI_SUB), 0);
-  lv_obj_set_style_text_font(stockStatusLabel, &lv_font_montserrat_16, 0);
-  configureOpaqueLabel(stockStatusLabel, 360, 24);
-  lv_label_set_text(stockStatusLabel, "WAITING FOR PHONE QUOTES");
-  lv_obj_align(stockStatusLabel, LV_ALIGN_TOP_MID, 0, 88);
+  stockStatusLabel = MotoNavUI::label(screen, "WAITING FOR PHONE QUOTES",
+                                       &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_set_size(stockStatusLabel, 348, 25);
+  lv_label_set_long_mode(stockStatusLabel, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_text_align(stockStatusLabel, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(stockStatusLabel, LV_ALIGN_TOP_MID, 0, 93);
   lv_obj_add_flag(stockStatusLabel, LV_OBJ_FLAG_HIDDEN);
 
+  stockBackCards[0] = MotoNavUI::panel(screen, 106, 362, 254, 50, 23,
+                                        MotoNavUI::SurfaceRaised);
+  MotoNavUI::icon(stockBackCards[0], MotoNavUI::Icon::Stocks, 20, 23,
+                  MotoNavUI::Cool);
+  lv_obj_t *backTwo = MotoNavUI::label(stockBackCards[0], "WATCHLIST",
+                                  &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_set_pos(backTwo, 58, 29);
+  stockBackCards[1] = MotoNavUI::panel(screen, 86, 345, 294, 49, 23,
+                                        MotoNavUI::Surface);
+  MotoNavUI::icon(stockBackCards[1], MotoNavUI::Icon::TrendUp, 22, 24,
+                  MotoNavUI::Accent);
+  lv_obj_t *backOne = MotoNavUI::label(stockBackCards[1], "NEXT POSITION",
+                                  &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_set_pos(backOne, 58, 28);
+  for (int i = 0; i < 2; ++i)
+    lv_obj_add_flag(stockBackCards[i], LV_OBJ_FLAG_HIDDEN);
+
   stockList = lv_obj_create(screen);
-  lv_obj_set_size(stockList, 344, 290);
-  lv_obj_set_pos(stockList, CX - 172, 115);
-  lv_obj_set_style_pad_all(stockList, 0, 0);
-  lv_obj_set_style_border_width(stockList, 0, 0);
-  lv_obj_set_style_bg_color(stockList, MotoNavUI::color(MotoNavUI::Background), 0);
-  lv_obj_set_style_bg_opa(stockList, LV_OPA_TRANSP, 0);
-  lv_obj_set_scroll_dir(stockList, LV_DIR_VER);
-  lv_obj_set_scrollbar_mode(stockList, LV_SCROLLBAR_MODE_AUTO);
-  lv_obj_add_flag(stockList, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+  lv_obj_remove_style_all(stockList);
+  lv_obj_set_size(stockList, 320, STOCK_ROW_H);
+  lv_obj_set_pos(stockList, 73, 139);
+  lv_obj_clear_flag(stockList, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(stockList, LV_OBJ_FLAG_HIDDEN);
+
   for (int i = 0; i < STOCK_MAX; i++) {
-    lv_obj_t *row = lv_obj_create(stockList);
-    lv_obj_set_size(row, 332, STOCK_ROW_H);
-    lv_obj_set_pos(row, 0, i * (STOCK_ROW_H + 8));
-    lv_obj_set_style_pad_all(row, 0, 0);
-    lv_obj_set_style_radius(row, 17, 0);
-    lv_obj_set_style_border_width(row, 1, 0);
-    lv_obj_set_style_border_color(row, lvglColor565(C_UI_LINE), 0);
-    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(row, lv_color_hex(STOCK_PANEL_COLOR), 0);
-    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *row = MotoNavUI::panel(stockList, 0, 0, 320,
+                                     STOCK_ROW_H, 26, MotoNavUI::SurfaceRaised);
     lv_obj_add_flag(row, LV_OBJ_FLAG_HIDDEN);
     stockRows[i] = row;
 
-    stockCodeLabels[i] = lv_label_create(row);
+    stockCodeLabels[i] = MotoNavUI::label(row, "--",
+                              &lv_font_montserrat_20, MotoNavUI::Text);
+    lv_obj_set_pos(stockCodeLabels[i], 19, 15);
+    lv_obj_set_size(stockCodeLabels[i], 167, 29);
+    lv_label_set_long_mode(stockCodeLabels[i], LV_LABEL_LONG_DOT);
     lv_obj_add_flag(stockCodeLabels[i], LV_OBJ_FLAG_HIDDEN);
 
     stockNameBuffers[i] = (lv_color_t *)ps_malloc(
-      STOCK_NAME_W * STOCK_NAME_H * sizeof(lv_color_t));
+        STOCK_NAME_W * STOCK_NAME_H * sizeof(lv_color_t));
     if (stockNameBuffers[i]) {
       stockNameCanvases[i] = lv_canvas_create(row);
       lv_canvas_set_buffer(stockNameCanvases[i], stockNameBuffers[i],
                            STOCK_NAME_W, STOCK_NAME_H, LV_IMG_CF_TRUE_COLOR);
-      lv_obj_set_pos(stockNameCanvases[i], 10, 8);
-      lv_obj_clear_flag(stockNameCanvases[i], LV_OBJ_FLAG_SCROLLABLE);
-      lv_obj_clear_flag(stockNameCanvases[i], LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_set_pos(stockNameCanvases[i], 19, 16);
+      lv_obj_clear_flag(stockNameCanvases[i],
+                        LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
       updateStockNameCanvas(i);
     }
 
-    stockPriceLabels[i] = lv_label_create(row);
-    lv_obj_set_size(stockPriceLabels[i], 120, 30);
-    lv_label_set_long_mode(stockPriceLabels[i], LV_LABEL_LONG_CLIP);
+    // Price sits on its own line, not on top of a potentially long
+    // CJK instrument name. One price/percent pair is always right-aligned.
+    stockPriceLabels[i] = MotoNavUI::label(row, "--",
+                                 &lv_font_montserrat_28, MotoNavUI::Text);
+    lv_obj_set_pos(stockPriceLabels[i], 20, 49);
+    lv_obj_set_size(stockPriceLabels[i], 279, 37);
+    lv_label_set_long_mode(stockPriceLabels[i], LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(stockPriceLabels[i], LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_style_text_color(stockPriceLabels[i], lv_color_white(), 0);
-    lv_obj_set_style_text_font(stockPriceLabels[i], &lv_font_montserrat_24, 0);
-    lv_label_set_text(stockPriceLabels[i], "--");
-    lv_obj_align(stockPriceLabels[i], LV_ALIGN_TOP_RIGHT, -12, 4);
+
+    stockChangeLabels[i] = MotoNavUI::label(row, "--",
+                                 &lv_font_montserrat_16, MotoNavUI::Muted);
+    lv_obj_set_pos(stockChangeLabels[i], 21, 88);
+    lv_obj_set_size(stockChangeLabels[i], 278, 27);
+    lv_label_set_long_mode(stockChangeLabels[i], LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(stockChangeLabels[i], LV_TEXT_ALIGN_RIGHT, 0);
 
     stockChartBuffers[i] = (lv_color_t *)ps_malloc(
       STOCK_CHART_W * STOCK_CHART_H * sizeof(lv_color_t));
@@ -588,21 +604,43 @@ static void createLvglOverlay() {
       stockChartCanvases[i] = lv_canvas_create(row);
       lv_canvas_set_buffer(stockChartCanvases[i], stockChartBuffers[i],
                            STOCK_CHART_W, STOCK_CHART_H, LV_IMG_CF_TRUE_COLOR);
-      lv_obj_set_pos(stockChartCanvases[i], 13, 42);
-      lv_obj_clear_flag(stockChartCanvases[i], LV_OBJ_FLAG_SCROLLABLE);
-      lv_obj_clear_flag(stockChartCanvases[i], LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_set_pos(stockChartCanvases[i], 20, 123);
+      lv_obj_clear_flag(stockChartCanvases[i],
+                        LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
       updateStockChartCanvas(i);
     }
-
-    stockChangeLabels[i] = lv_label_create(row);
-    lv_obj_set_size(stockChangeLabels[i], 150, 24);
-    lv_label_set_long_mode(stockChangeLabels[i], LV_LABEL_LONG_CLIP);
-    lv_obj_set_style_text_align(stockChangeLabels[i], LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_style_text_color(stockChangeLabels[i], lvglColor565(C_UI_SUB), 0);
-    lv_obj_set_style_text_font(stockChangeLabels[i], &lv_font_montserrat_16, 0);
-    lv_label_set_text(stockChangeLabels[i], "--");
-    lv_obj_align(stockChangeLabels[i], LV_ALIGN_BOTTOM_RIGHT, -12, -4);
   }
+
+  stockPrevButton = MotoNavUI::button(screen, 91, 314, 44, 38, "");
+  lv_obj_del(lv_obj_get_child(stockPrevButton, 0));
+  MotoNavUI::icon(stockPrevButton, MotoNavUI::Icon::ChevronLeft, 10, 6,
+                  MotoNavUI::Text);
+  lv_obj_add_event_cb(stockPrevButton, stockStepEvent, LV_EVENT_ALL,
+                       (void *)(intptr_t)-1);
+  stockNextButton = MotoNavUI::button(screen, 331, 314, 44, 38, "");
+  lv_obj_del(lv_obj_get_child(stockNextButton, 0));
+  MotoNavUI::icon(stockNextButton, MotoNavUI::Icon::ChevronRight, 10, 6,
+                  MotoNavUI::Text);
+  lv_obj_add_event_cb(stockNextButton, stockStepEvent, LV_EVENT_ALL,
+                       (void *)(intptr_t)1);
+  stockCountLabel = MotoNavUI::label(screen, "0 / 0",
+                              &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_align(stockCountLabel, LV_ALIGN_TOP_MID, 0, 324);
+  lv_obj_add_flag(stockPrevButton, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(stockNextButton, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(stockCountLabel, LV_OBJ_FLAG_HIDDEN);
+
+  stockEmptyCard = MotoNavUI::panel(screen, 73, 139, 320, STOCK_ROW_H, 26);
+  MotoNavUI::icon(stockEmptyCard, MotoNavUI::Icon::Stocks, 148, 38,
+                  MotoNavUI::Accent);
+  lv_obj_t *emptyTitle = MotoNavUI::label(stockEmptyCard, "NO QUOTES YET",
+                                    &lv_font_montserrat_20, MotoNavUI::Text);
+  lv_obj_align(emptyTitle, LV_ALIGN_TOP_MID, 0, 91);
+  lv_obj_t *emptyDetail = MotoNavUI::label(stockEmptyCard,
+       "SYNC YOUR WATCHLIST ON PHONE",
+       &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_align(emptyDetail, LV_ALIGN_TOP_MID, 0, 134);
+  lv_obj_add_flag(stockEmptyCard, LV_OBJ_FLAG_HIDDEN);
 
 }
 
