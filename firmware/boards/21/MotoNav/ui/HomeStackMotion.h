@@ -52,7 +52,7 @@ static inline bool stackGestureEnabled(bool home,bool navigation,bool modal,
 }
 static inline bool stackTouchInArea(int x,int y) {
   // Include the main clock and both peeking tabs, but not the system edge.
-  return x>=65 && x<=400 && y>=111 && y<=420;
+  return x>=65 && x<=400 && y>=78 && y<=420;
 }
 static inline float stackDragProgress(float starting,int logicalDeltaY) {
   // Positive y is a downward finger movement: down collapses, up expands.
