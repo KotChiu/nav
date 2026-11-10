@@ -208,7 +208,7 @@ static void configureTransparentLabel(lv_obj_t *label, int width, int height) {
 #define STOCK_CHART_W 306
 #define STOCK_CHART_H 52
 #define STOCK_ROW_H 124
-#define STOCK_PANEL_COLOR 0x122633
+#define STOCK_PANEL_COLOR 0x191B21
 
 static void stockCanvasRect(lv_color_t *buffer, int width, int x, int y,
                             int w, int h, lv_color_t color) {
@@ -365,7 +365,7 @@ static void createLvglOverlay() {
   homeOrbit[1] = MotoNavUI::arc(screen, 24, 24, 418,
                               42, 138, MotoNavUI::Line, 2);
   homeOrbit[2] = MotoNavUI::arc(screen, 44, 44, 378,
-                              154, 206, MotoNavUI::Warm, 2);
+                              154, 206, MotoNavUI::Cool, 2);
   for (int i = 0; i < 3; i++)
     lv_obj_add_flag(homeOrbit[i], LV_OBJ_FLAG_HIDDEN);
 
@@ -665,7 +665,7 @@ static void lvglHybridTick() {
     const char *status = waitSt == WAIT_LOST ? "LINK LOST" :
                          ((bleConnected && bleAuthed) ? "CONNECTED" : "PHONE OFFLINE");
     uint32_t statusColor = waitSt == WAIT_LOST ? C_UI_ACCENT2
-      : ((bleConnected && bleAuthed) ? C_UI_ACCENT : C_UI_SUB);
+      : ((bleConnected && bleAuthed) ? C_UI_INFO : C_UI_SUB);
     if (setLvglLabelText(homeStatusLabel, status)) {
       homeTextChanged = true;
       lv_obj_center(homeStatusLabel);
