@@ -104,3 +104,12 @@ HID 的原加密、订阅、Suspend、Report Mode 与释放报告条件继续生
 AMS 服务发现的操作超时和失败重试从 20 秒缩短为 5 秒，仍在同一个已认证、加密的 BLE 连接上串行执行。手机设置页在 AMS 尚无歌曲时显示“媒体按键已就绪，等待歌曲信息”，歌词开关显示“等待歌曲信息后匹配歌词”，避免空状态被误认为功能未实现。
 
 验证：能力通知调度测试通过；BLECapability 12 项、AMS 元数据 33 项、歌词解析 32 项、歌词开关 12 项通过；2.1 固件和 iOS Release 构建通过。真机确认 HID 状态从 `ready=0` 变为 `ready=1 auth=1 sub=1`，并收到 `#ML,1`。歌曲播放后的 AMS 发现和歌词实际匹配仍需在 iPhone 解锁并播放歌曲时复测。
+
+
+## AMS 广播 solicitation（2026-11-11 继续）
+
+进一步真机日志确认：HID 已认证和订阅，但 AMS 的 GATT service discovery 没有任何回调，直到 5 秒超时。可工作的 NimBLE AMS 参考实现要求配件在主广播包中把 AMS UUID 作为 **128-bit Solicited Service（AD type `0x15`）** 广播；iPhone 完成系统蓝牙绑定后才会向配件暴露 AMS/ANCS 服务。
+
+2.1 主广播现在为 `Flags + AMS solicitation + MN-XXXX 短设备名`，共 30 字节；导航 128-bit 服务、HID 16-bit 服务和 HID Appearance 放在扫描响应中，共 26 字节。App 仍可按导航服务扫描，设备在 iPhone“设置 → 蓝牙”中显示为 `MN-XXXX`。
+
+从旧广播格式升级后，已有 iPhone 可能保留旧 GATT 缓存。需要在 iPhone“设置 → 蓝牙”中忽略原来的 MotoNav，再重新配对 `MN-XXXX`；仅重启圆屏不保证 iOS 刷新 AMS 暴露状态。重新配对后串口应出现 `MEDIA AMS service not found` 之外的发现阶段，最终出现 `MEDIA AMS status=READY`。

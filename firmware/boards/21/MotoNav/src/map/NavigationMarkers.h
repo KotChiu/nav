@@ -51,12 +51,12 @@ void drawMapBadge() {
     int up = tripOn ? 24 : 0;                          // v3.1 有行程信息时整体上移，下面留一行
     drawBigIconAt((isS || far) ? String("S") : navDir, C_UI_TEXT, 395 - up, 1.0f, CX - 48, 368 - up, 418 - up, 60);
     int sz = dt.length() <= 4 ? 4 : 3;
-    printOutlined(dt, CX + 46, (sz == 4 ? 378 : 382) - up, sz, C_WHITE);
+    if (!lvglUiReady) printOutlined(dt, CX + 46, (sz == 4 ? 378 : 382) - up, sz, C_WHITE);
     if (tripOn) drawTripLine(404);
   } else {
     const int top = 344;                               // v3.3 车道移到了上面，底部只放箭头和距离
     drawBigIconAt(navDir, col, top + 30, 1.0f, CX - 58, top, top + 60, 84);
-    printOutlined(dt, CX + 54, top + 14, dt.length() <= 4 ? 5 : 4, col);
+    if (!lvglUiReady) printOutlined(dt, CX + 54, top + 14, dt.length() <= 4 ? 5 : 4, col);
   }
   iconHalo = false;
 }

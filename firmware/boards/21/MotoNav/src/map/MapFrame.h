@@ -127,6 +127,7 @@ void drawMapFrame() {
   profT = micros();
   if (useRaster) drawRasterMap(cx, cy, sc, cs, sn);     // v2.5 天地图图片地图
   else gfx->fillScreen(C_BLOCK);
+  lvglCanvasRepainted = true; // Raster writes also replace unchanged LVGL HUD pixels.
   profMark(0);
   // 地图块里的要素（文件里已按：水面、绿地、细路 → 粗路 排好序）
   float lx = cx - mapOx, ly = cy - mapOy;

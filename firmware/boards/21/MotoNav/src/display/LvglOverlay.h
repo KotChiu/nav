@@ -2,6 +2,7 @@
 
 #include <lvgl.h>
 #include "../../ui/VisualLanguage.h"
+#include "../../ui/LvglPhoneBitmap.h"
 #include "../../ui/LvglIcons.h"
 #include "../../ui/LvglMapOverlay.h"
 #include "../../ui/LvglNavSpeed.h"
@@ -62,6 +63,8 @@ static bool homeStackExpandedStyle = false;
 static lv_obj_t *homeWeatherCard = nullptr;
 static lv_obj_t *homeStatusChip = nullptr;
 static lv_obj_t *homeStatusDot = nullptr;
+static MotoNavUI::PhoneBitmap musicText[3];
+static MotoNavUI::PhoneBitmap homeStockName;
 static lv_obj_t *musicHeaderLabel = nullptr;
 static lv_obj_t *musicPlaceholder = nullptr;
 static lv_obj_t *musicStatusLabel = nullptr;
@@ -80,12 +83,7 @@ static lv_obj_t *batteryLabel = nullptr;
 static lv_obj_t *stockTitleLabel = nullptr;
 static lv_obj_t *stockStatusLabel = nullptr;
 static lv_obj_t *stockList = nullptr;
-static lv_obj_t *stockBackCards[2] = {};
-static lv_obj_t *stockPrevButton = nullptr;
-static lv_obj_t *stockNextButton = nullptr;
-static lv_obj_t *stockCountLabel = nullptr;
 static lv_obj_t *stockEmptyCard = nullptr;
-static int stockFocused = 0;
 static lv_obj_t *stockRows[STOCK_MAX] = {};
 static lv_obj_t *stockCodeLabels[STOCK_MAX] = {};
 static lv_obj_t *stockPriceLabels[STOCK_MAX] = {};
@@ -201,6 +199,7 @@ static void musicButtonEventCb(lv_event_t *event) {
 static lv_obj_t *makeMusicButton(int index) {
   lv_obj_t *button = lv_obj_create(lv_scr_act());
   lv_obj_set_size(button, 86, 86);
+  lv_obj_set_style_pad_all(button, 0, 0);
   lv_obj_set_style_radius(button, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_border_width(button, 1, 0);
   lv_obj_set_style_border_color(button, lvglColor565(C_UI_LINE), 0);
@@ -253,14 +252,13 @@ static void configureTransparentLabel(lv_obj_t *label, int width, int height) {
   lv_obj_set_style_bg_opa(label, LV_OPA_TRANSP, 0);
 }
 
-// All stock content is intentionally bounded within the focused 320x218 card.
-// The previous 344px scrolling list let the chart and price escape at the
-// bottom of the physical circle; the new component never grows horizontally.
+// One vertically scrolling card per quote. Text and chart share the card
+// background; the viewport extends into the lower circular screen.
 #define STOCK_NAME_W 164
 #define STOCK_NAME_H 28
 #define STOCK_CHART_W 280
-#define STOCK_CHART_H 47
-#define STOCK_ROW_H 218
+#define STOCK_CHART_H 98
+#define STOCK_ROW_H 252
 #define STOCK_PANEL_COLOR 0x191B21
 
 static void stockCanvasRect(lv_color_t *buffer, int width, int x, int y,
@@ -300,10 +298,8 @@ static void updateStockNameCanvas(int index) {
       const uint8_t packed = im.show[srcY * bpr + (srcX >> 1)];
       const uint8_t nib = (srcX & 1) ? (packed & 0x0F) : (packed >> 4);
       if (!nib) continue;
-      const uint8_t value = nib * 17;
-      const uint16_t gray = ((value >> 3) << 11) |
-                            ((value >> 2) << 5) | (value >> 3);
-      stockNameBuffers[index][(y0 + y) * STOCK_NAME_W + x] = lvglColor565(gray);
+      stockNameBuffers[index][(y0 + y) * STOCK_NAME_W + x] =
+          lv_color_mix(lv_color_hex(MotoNavUI::Text), bg, nib * 17);
     }
   }
   lv_obj_invalidate(stockNameCanvases[index]);
@@ -327,83 +323,30 @@ static void updateStockChartCanvas(int index) {
     high = max(high, (int)q.candles[i][2]);
   }
   const int span = max(1, high - low);
-  const int slot = max(10, (STOCK_CHART_W - 8) / n);
-  const int bodyWidth = max(5, min(10, slot - 6));
+
   auto py = [&](int value) {
     return 4 + (100 - value) * (STOCK_CHART_H - 8) / 100;
   };
   const lv_color_t grid = lvglColor565(C_UI_LINE);
-  stockCanvasHLine(stockChartBuffers[index], 13, grid);
-  stockCanvasHLine(stockChartBuffers[index], 25, grid);
-  stockCanvasHLine(stockChartBuffers[index], 37, grid);
-  if (n) {
-    int close = q.candles[n - 1][1];
-    int closeY = py((close - low) * 100 / span);
-    stockCanvasHLine(stockChartBuffers[index], closeY, lvglColor565(C_UI_ACCENT2));
+  for (int y : {24, 49, 74}) stockCanvasHLine(stockChartBuffers[index], y, grid);
+  const lv_color_t ink = lv_color_hex(q.changePct >= 0 ? 0xFF657A : 0x66D9A0);
+  int previousX = 4, previousY = py((q.candles[0][1]-low)*100/span);
+  for (int i = 1; i < n; ++i) {
+    const int x = 4 + i * (STOCK_CHART_W-9) / (n-1);
+    const int y = py((q.candles[i][1]-low)*100/span);
+    for (int xx = previousX; xx <= x; ++xx) {
+      const int yy = previousY + (y-previousY)*(xx-previousX)/max(1,x-previousX);
+      stockCanvasRect(stockChartBuffers[index], STOCK_CHART_W, xx, yy, 1, 2, ink);
+    }
+    previousX=x; previousY=y;
   }
-  for (int i = 0; i < n; i++) {
-    int centerX = 4 + i * slot + slot / 2;
-    int open = constrain(q.candles[i][0], low, high);
-    int close = constrain(q.candles[i][1], low, high);
-    int candleHigh = constrain(q.candles[i][2], low, high);
-    int candleLow = constrain(q.candles[i][3], low, high);
-    int openY = py((open - low) * 100 / span);
-    int closeY = py((close - low) * 100 / span);
-    int highY = py((candleHigh - low) * 100 / span);
-    int lowY = py((candleLow - low) * 100 / span);
-    uint16_t color = close >= open ? 0xF800 : 0x07E0;
-    lv_color_t c = lvglColor565(color);
-    stockCanvasRect(stockChartBuffers[index], STOCK_CHART_W, centerX, highY,
-                    1, max(1, lowY - highY + 1), c);
-    int top = min(openY, closeY);
-    int height = max(2, abs(closeY - openY));
-    stockCanvasRect(stockChartBuffers[index], STOCK_CHART_W,
-                    centerX - bodyWidth / 2, top, bodyWidth, height, c);
-  }
+  if (n == 1) stockCanvasRect(stockChartBuffers[index], STOCK_CHART_W, 138, previousY, 4, 3, ink);
   lv_obj_invalidate(stockChartCanvases[index]);
 }
 
-static void stockShowFocused() {
-  const int count = constrain(stockCount, 0, STOCK_MAX);
-  if (count == 0) stockFocused = 0;
-  else stockFocused = constrain(stockFocused, 0, count - 1);
+static void stockShowRows() {
   for (int i = 0; i < STOCK_MAX; ++i)
-    setLvglHidden(stockRows[i], i != stockFocused || i >= count);
-  if (stockCountLabel) {
-    char text[22];
-    snprintf(text, sizeof(text), count ? "%d / %d" : "0 / 0",
-             count ? stockFocused + 1 : 0, count);
-    const char *old = lv_label_get_text(stockCountLabel);
-    if (!old || strcmp(old, text) != 0)
-      lv_label_set_text(stockCountLabel, text);
-  }
-  if (stockEmptyCard) setLvglHidden(stockEmptyCard, count > 0);
-  lv_obj_t *buttons[] = {stockPrevButton, stockNextButton};
-  for (lv_obj_t *button : buttons) {
-    if (!button) continue;
-    const bool disabled = lv_obj_has_state(button, LV_STATE_DISABLED);
-    if (count < 2 && !disabled) lv_obj_add_state(button, LV_STATE_DISABLED);
-    else if (count >= 2 && disabled) lv_obj_clear_state(button, LV_STATE_DISABLED);
-  }
-}
-
-static void stockStepEvent(lv_event_t *event) {
-  const lv_event_code_t code = lv_event_get_code(event);
-  if (code == LV_EVENT_PRESSED) {
-    lvglCaptureTouch = true;
-    return;
-  }
-  if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-    lvglCaptureTouch = false;
-    return;
-  }
-  if (code != LV_EVENT_CLICKED || page != PAGE_STOCKS ||
-      sliding || pairOn || callOn || fxOn || stockCount < 2) return;
-  const int delta = (int)(intptr_t)lv_event_get_user_data(event);
-  const int count = constrain(stockCount, 1, STOCK_MAX);
-  stockFocused = (stockFocused + delta + count) % count;
-  stockShowFocused();
-  needFlush = true;
+    setLvglHidden(stockRows[i], i >= stockCount);
 }
 
 // The page router sends vertical Home drags here BEFORE it starts a
@@ -478,8 +421,10 @@ static void homeStackCardEvent(lv_event_t *event) {
     pendingEvt = "T,S";
     stockDirty = true;
     drawStockPage();
-  } else if (target == PAGE_COMPANION) {
-    drawRobotPage();
+  } else {
+    onWaitScreen = false;
+    renderPage(target);
+    if (target == PAGE_WEATHER) { pendingEvt = "T,W"; wxAskAt = millis(); }
   }
   needFlush = true;
 }
@@ -503,6 +448,8 @@ static void createLvglOverlay() {
     pageDotObjs[i] = dot;
   }
 
+  for (int i=0;i<3;++i) musicText[i].create(screen,63,158+i*44,340,i==0?38:30);
+
   // Dedicated four-section control center (display / ride / link / about).
   MotoNavUI::settingsCreate(screen);
 
@@ -515,7 +462,7 @@ static void createLvglOverlay() {
                         &lv_font_montserrat_20, MotoNavUI::Muted);
   lv_obj_align(musicStatusLabel, LV_ALIGN_TOP_MID, 0, 275);
   lv_obj_add_flag(musicStatusLabel, LV_OBJ_FLAG_HIDDEN);
-  musicFooterLabel = MotoNavUI::label(screen, "SWIPE DOWN  /  HOME",
+  musicFooterLabel = MotoNavUI::label(screen, "",
                         &lv_font_montserrat_16, MotoNavUI::Faint);
   lv_obj_align(musicFooterLabel, LV_ALIGN_TOP_MID, 0, 402);
   lv_obj_add_flag(musicFooterLabel, LV_OBJ_FLAG_HIDDEN);
@@ -547,6 +494,7 @@ static void createLvglOverlay() {
                                  MotoNavUI::SurfaceRaised);
   homeBackIcon[0] = MotoNavUI::icon(homeOrbit[0], MotoNavUI::Icon::Stocks,
                                      13, 21, MotoNavUI::Cool);
+  homeStockName.create(homeOrbit[0],54,8,170,32);
   homeBackTitle[0] = MotoNavUI::label(homeOrbit[0], "MARKETS",
                     &lv_font_montserrat_16, MotoNavUI::Muted);
   lv_obj_set_pos(homeBackTitle[0], 47, 27);
@@ -561,20 +509,20 @@ static void createLvglOverlay() {
                       LV_EVENT_CLICKED, (void *)(intptr_t)PAGE_STOCKS);
   homeOrbit[1] = MotoNavUI::panel(screen, 82, 345, 145, 64, 23,
                                  MotoNavUI::Surface);
-  homeBackIcon[1] = MotoNavUI::icon(homeOrbit[1], MotoNavUI::Icon::Ride,
+  homeBackIcon[1] = MotoNavUI::icon(homeOrbit[1], MotoNavUI::Icon::Weather,
                                      13, 21, MotoNavUI::Accent);
-  homeBackTitle[1] = MotoNavUI::label(homeOrbit[1], "RIDE",
+  homeBackTitle[1] = MotoNavUI::label(homeOrbit[1], "WEATHER",
                     &lv_font_montserrat_16, MotoNavUI::Muted);
   lv_obj_set_pos(homeBackTitle[1], 47, 27);
   homeBackSubtitle[1] = MotoNavUI::label(homeOrbit[1],
-                    "SPEED & TRIP", &lv_font_montserrat_16, MotoNavUI::Muted);
+                    "LIVE CONDITIONS", &lv_font_montserrat_16, MotoNavUI::Muted);
   lv_obj_add_flag(homeBackSubtitle[1], LV_OBJ_FLAG_HIDDEN);
   homeBackChevron[1] = MotoNavUI::icon(homeOrbit[1],
                     MotoNavUI::Icon::ChevronRight, 255, 28, MotoNavUI::Muted);
   lv_obj_add_flag(homeBackChevron[1], LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_flag(homeOrbit[1], LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(homeOrbit[1], homeStackCardEvent,
-                      LV_EVENT_CLICKED, (void *)(intptr_t)PAGE_COMPANION);
+                      LV_EVENT_CLICKED, (void *)(intptr_t)PAGE_WEATHER);
   // One calm, focused surface instead of a stack of technical status labels.
   // The two peeking pages remain reachable with 49px exposed touch bands.
   homeOrbit[2] = MotoNavUI::panel(screen, 67, 115, 332, 245, 29,
@@ -593,14 +541,14 @@ static void createLvglOverlay() {
   // Date stays empty until the actual local date is known.
   watchDateLabel = MotoNavUI::label(homeOrbit[2], "",
                     &lv_font_montserrat_16, MotoNavUI::Muted);
-  lv_obj_set_pos(watchDateLabel, 25, 28);
+  lv_obj_set_pos(watchDateLabel, 22, 16);
   lv_obj_set_size(watchDateLabel, 177, 25);
   lv_label_set_long_mode(watchDateLabel, LV_LABEL_LONG_CLIP);
 
   watchTimeLabel = MotoNavUI::label(homeOrbit[2], "--:--",
                     &lv_font_montserrat_48, MotoNavUI::Text);
-  lv_obj_set_pos(watchTimeLabel, 20, 72);
-  lv_obj_set_size(watchTimeLabel, 292, 75);
+  lv_obj_set_pos(watchTimeLabel, 20, 51);
+  lv_obj_set_size(watchTimeLabel, 280, 65);
   lv_label_set_long_mode(watchTimeLabel, LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_letter_space(watchTimeLabel, 3, 0);
 
@@ -688,8 +636,7 @@ static void createLvglOverlay() {
   lv_obj_align(photoTitleLabel, LV_ALIGN_TOP_MID, 0, 62);
   lv_obj_add_flag(photoTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
-  // Markets = one focused quote with two visible card backs (Apple Wallet
-  // visual grammar), rather than a scrollable list whose charts overflow.
+  // One real card per quote; vertical scrolling owns the content gesture.
   stockTitleLabel = MotoNavUI::label(screen, "MARKETS  /  TODAY",
                                       &lv_font_montserrat_28, MotoNavUI::Text);
   lv_obj_align(stockTitleLabel, LV_ALIGN_TOP_MID, 0, 49);
@@ -703,33 +650,23 @@ static void createLvglOverlay() {
   lv_obj_align(stockStatusLabel, LV_ALIGN_TOP_MID, 0, 93);
   lv_obj_add_flag(stockStatusLabel, LV_OBJ_FLAG_HIDDEN);
 
-  stockBackCards[0] = MotoNavUI::panel(screen, 106, 362, 254, 50, 23,
-                                        MotoNavUI::SurfaceRaised);
-  MotoNavUI::icon(stockBackCards[0], MotoNavUI::Icon::Stocks, 20, 23,
-                  MotoNavUI::Cool);
-  lv_obj_t *backTwo = MotoNavUI::label(stockBackCards[0], "WATCHLIST",
-                                  &lv_font_montserrat_16, MotoNavUI::Muted);
-  lv_obj_set_pos(backTwo, 58, 29);
-  stockBackCards[1] = MotoNavUI::panel(screen, 86, 345, 294, 49, 23,
-                                        MotoNavUI::Surface);
-  MotoNavUI::icon(stockBackCards[1], MotoNavUI::Icon::TrendUp, 22, 24,
-                  MotoNavUI::Accent);
-  lv_obj_t *backOne = MotoNavUI::label(stockBackCards[1], "NEXT POSITION",
-                                  &lv_font_montserrat_16, MotoNavUI::Muted);
-  lv_obj_set_pos(backOne, 58, 28);
-  for (int i = 0; i < 2; ++i)
-    lv_obj_add_flag(stockBackCards[i], LV_OBJ_FLAG_HIDDEN);
-
   stockList = lv_obj_create(screen);
   lv_obj_remove_style_all(stockList);
-  lv_obj_set_size(stockList, 320, STOCK_ROW_H);
-  lv_obj_set_pos(stockList, 73, 139);
-  lv_obj_clear_flag(stockList, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_bg_color(stockList, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(stockList, LV_OPA_COVER, 0);
+  lv_obj_set_size(stockList, 466, 312);
+  lv_obj_set_style_radius(stockList, 233, 0);
+  lv_obj_set_style_pad_bottom(stockList, 78, 0);
+  lv_obj_set_scroll_dir(stockList, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(stockList, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_add_flag(stockList, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_pos(stockList, 0, 126);
+  lv_obj_add_flag(stockList, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(stockList, LV_OBJ_FLAG_HIDDEN);
 
   for (int i = 0; i < STOCK_MAX; i++) {
-    lv_obj_t *row = MotoNavUI::panel(stockList, 0, 0, 320,
-                                     STOCK_ROW_H, 26, MotoNavUI::SurfaceRaised);
+    lv_obj_t *row = MotoNavUI::panel(stockList, 73, i * (STOCK_ROW_H + 16), 320,
+                                     STOCK_ROW_H, 26, STOCK_PANEL_COLOR);
     lv_obj_add_flag(row, LV_OBJ_FLAG_HIDDEN);
     stockRows[i] = row;
 
@@ -753,20 +690,20 @@ static void createLvglOverlay() {
     }
 
     // Price sits on its own line, not on top of a potentially long
-    // CJK instrument name. One price/percent pair is always right-aligned.
+    // CJK instrument name. Price and change share the leading text edge.
     stockPriceLabels[i] = MotoNavUI::label(row, "--",
                                  &lv_font_montserrat_28, MotoNavUI::Text);
     lv_obj_set_pos(stockPriceLabels[i], 20, 49);
     lv_obj_set_size(stockPriceLabels[i], 279, 37);
     lv_label_set_long_mode(stockPriceLabels[i], LV_LABEL_LONG_DOT);
-    lv_obj_set_style_text_align(stockPriceLabels[i], LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_align(stockPriceLabels[i], LV_TEXT_ALIGN_LEFT, 0);
 
     stockChangeLabels[i] = MotoNavUI::label(row, "--",
                                  &lv_font_montserrat_16, MotoNavUI::Muted);
     lv_obj_set_pos(stockChangeLabels[i], 21, 88);
     lv_obj_set_size(stockChangeLabels[i], 278, 27);
     lv_label_set_long_mode(stockChangeLabels[i], LV_LABEL_LONG_DOT);
-    lv_obj_set_style_text_align(stockChangeLabels[i], LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_align(stockChangeLabels[i], LV_TEXT_ALIGN_LEFT, 0);
 
     stockChartBuffers[i] = (lv_color_t *)ps_malloc(
       STOCK_CHART_W * STOCK_CHART_H * sizeof(lv_color_t));
@@ -780,25 +717,6 @@ static void createLvglOverlay() {
       updateStockChartCanvas(i);
     }
   }
-
-  stockPrevButton = MotoNavUI::button(screen, 91, 314, 44, 38, "");
-  lv_obj_del(lv_obj_get_child(stockPrevButton, 0));
-  MotoNavUI::icon(stockPrevButton, MotoNavUI::Icon::ChevronLeft, 10, 6,
-                  MotoNavUI::Text);
-  lv_obj_add_event_cb(stockPrevButton, stockStepEvent, LV_EVENT_ALL,
-                       (void *)(intptr_t)-1);
-  stockNextButton = MotoNavUI::button(screen, 331, 314, 44, 38, "");
-  lv_obj_del(lv_obj_get_child(stockNextButton, 0));
-  MotoNavUI::icon(stockNextButton, MotoNavUI::Icon::ChevronRight, 10, 6,
-                  MotoNavUI::Text);
-  lv_obj_add_event_cb(stockNextButton, stockStepEvent, LV_EVENT_ALL,
-                       (void *)(intptr_t)1);
-  stockCountLabel = MotoNavUI::label(screen, "0 / 0",
-                              &lv_font_montserrat_16, MotoNavUI::Muted);
-  lv_obj_align(stockCountLabel, LV_ALIGN_TOP_MID, 0, 324);
-  lv_obj_add_flag(stockPrevButton, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_add_flag(stockNextButton, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_add_flag(stockCountLabel, LV_OBJ_FLAG_HIDDEN);
 
   stockEmptyCard = MotoNavUI::panel(screen, 73, 139, 320, STOCK_ROW_H, 26);
   MotoNavUI::icon(stockEmptyCard, MotoNavUI::Icon::Stocks, 148, 38,
@@ -930,12 +848,14 @@ static void homeStackTick(bool visible) {
   }
   for (int i=0; i<2; ++i) {
     const MotoNavUI::HomeStackRect r=MotoNavUI::stackRect(i,homeStackProgress);
-    setLvglPos(homeBackIcon[i],expandedLook?21:13,expandedLook?23:21);
-    setLvglPos(homeBackTitle[i],expandedLook?63:47,expandedLook?18:27);
-    setLvglPos(homeBackSubtitle[i],63,46);
+    setLvglPos(homeBackIcon[i],18,20);
+    setLvglPos(homeBackTitle[i],54,12);
+    setLvglPos(homeBackSubtitle[i],22,46);
+    lv_obj_set_width(homeBackSubtitle[i],r.w-44);
+    lv_label_set_long_mode(homeBackSubtitle[i],LV_LABEL_LONG_DOT);
     setLvglPos(homeBackChevron[i],r.w-44,28);
-    setLvglHidden(homeBackSubtitle[i],!expandedLook);
-    setLvglHidden(homeBackChevron[i],!expandedLook);
+    setLvglHidden(homeBackSubtitle[i],false);
+    setLvglHidden(homeBackChevron[i],true);
     if (homeStackExpandedStyle != expandedLook) {
       lv_obj_set_style_text_font(homeBackTitle[i],
         expandedLook ? &lv_font_montserrat_20 : &lv_font_montserrat_16,0);
@@ -944,12 +864,12 @@ static void homeStackTick(bool visible) {
     }
   }
   homeStackExpandedStyle=expandedLook;
-  lv_obj_set_y(homeTitleLabel, lroundf(66-34*homeStackProgress));
-  lv_obj_set_x(homeStatusChip,lroundf(207-4*homeStackProgress));
+  lv_obj_set_y(homeTitleLabel, lroundf(42-10*homeStackProgress));
+  lv_obj_set_pos(homeStatusChip,190,8);
   const MotoNavUI::HomeStackRect clock=MotoNavUI::stackRect(
       MotoNavUI::StackClock,homeStackProgress);
   setLvglPos(homeDragHandle,(clock.w-36)/2,clock.h-9);
-  setLvglHidden(homeDivider,homeStackProgress>0.08f);
+  setLvglHidden(homeDivider,true);
   // The LVGL screen is transparent and uses the SAME RGB565 framebuffer as
   // GFX. Merely moving a card would leave its old pixels behind. Repaint the
   // real Home base BEFORE LVGL's visible scene is invalidated/refreshed below.
@@ -969,7 +889,7 @@ static void lvglHybridTick() {
   if (batPct >= 0) snprintf(batteryText, sizeof(batteryText), "%d%%", batPct);
   else snprintf(batteryText, sizeof(batteryText), "--");
   setLvglLabelText(batteryLabel, batteryText);
-  const bool showWeather = page == PAGE_WEATHER && wxDetail == 0 &&
+  const bool showWeather = page == PAGE_WEATHER &&
                       !sliding && !pairOn && !callOn && !fxOn;
   MotoNavUI::weatherUpdate(showWeather);
   bool showMusic = page == 2 && !sliding && !pairOn && !callOn && !fxOn;
@@ -1035,8 +955,8 @@ static void lvglHybridTick() {
 
   setLvglHidden(musicHeaderLabel, !showMusic || (coverValid && coverImg));
   setLvglHidden(musicPlaceholder, !showMusic || (coverValid && coverImg) ||
-                ((bleConnected && bleAuthed) && musicHave));
-  setLvglHidden(musicStatusLabel, !showMusic);
+                ((bleConnected && bleAuthed) && (musicHave || imgs[5].showW > 0)));
+  setLvglHidden(musicStatusLabel, !showMusic || (musicLyrics && imgs[12].showW > 0));
   setLvglHidden(musicFooterLabel, !showMusic);
   bool showPhotoEmpty = page == PAGE_PHOTO && !photoValid && !sliding &&
                         !pairOn && !callOn && !fxOn;
@@ -1050,13 +970,12 @@ static void lvglHybridTick() {
     setLvglLabelText(musicStatusLabel, musicState);
     setLvglTextColor(musicStatusLabel, lv_color_hex(
       musicPlaying ? MotoNavUI::Cool : MotoNavUI::Muted));
-    lv_obj_align(musicStatusLabel, LV_ALIGN_TOP_MID, 0, 275);
   }
 
   bool homeTextChanged = false;
   setLvglHidden(homeTitleLabel, !showHome);
   setLvglHidden(homeStatusChip, !showHome);
-  setLvglHidden(homeWeatherCard, !showHome || homeStackProgress > 0.08f);
+  setLvglHidden(homeWeatherCard, true);
   for (int i = 0; i < 3; ++i) setLvglHidden(homeOrbit[i], !showHome);
   setLvglHidden(homeHintLabel, true);
   if (showHome) {
@@ -1092,6 +1011,19 @@ static void lvglHybridTick() {
         if (setLvglLabelText(watchDateLabel, dateText)) homeTextChanged = true;
       }
     }
+    char summary[72];
+    if (stockCount) {
+      const StockQuote &q = stockQuotes[0];
+      snprintf(summary, sizeof(summary), "%.2f  %+.2f%%", q.price, q.changePct);
+      setLvglLabelText(homeBackTitle[0], q.code.c_str());
+    } else snprintf(summary, sizeof(summary), "Waiting for quotes");
+    setLvglLabelText(homeBackSubtitle[0], summary);
+    homeStockName.visible(stockCount && imgs[13].showW);
+    setLvglHidden(homeBackTitle[0], stockCount && imgs[13].showW);
+    if (stockCount) homeStockName.update(13, MotoNavUI::SurfaceRaised);
+    if (wxHave) snprintf(summary, sizeof(summary), "%d°  %s", wxTemp, MotoNavUI::conditionName(wxIcon));
+    else snprintf(summary, sizeof(summary), "Waiting for weather");
+    setLvglLabelText(homeBackSubtitle[1], summary);
     char temperature[16];
     snprintf(temperature, sizeof(temperature), wxHave ? "%d°" : "--°", wxTemp);
     if (setLvglLabelText(watchTempLabel, temperature)) homeTextChanged = true;
@@ -1116,11 +1048,6 @@ static void lvglHybridTick() {
   setLvglHidden(stockTitleLabel, !showStock);
   setLvglHidden(stockStatusLabel, !showStock);
   setLvglHidden(stockEmptyCard, !showStock || stockCount != 0);
-  for (int i = 0; i < 2; ++i)
-    setLvglHidden(stockBackCards[i], !showStock || stockCount == 0);
-  setLvglHidden(stockPrevButton, !showStock || stockCount < 2);
-  setLvglHidden(stockNextButton, !showStock || stockCount < 2);
-  setLvglHidden(stockCountLabel, !showStock || stockCount == 0);
   if (showStock) {
     setLvglLabelText(stockTitleLabel,
       stockChartPeriod == 'M' ? "MARKETS  /  1M" : "MARKETS  /  TODAY");
@@ -1152,7 +1079,7 @@ static void lvglHybridTick() {
       }
       stockLastStatusAt = 0;
     }
-    stockShowFocused();
+    stockShowRows();
     unsigned long now = millis();
     if (!stockLastStatusAt || now - stockLastStatusAt >= 5000) {
       stockLastStatusAt = now;
@@ -1210,6 +1137,17 @@ static void lvglHybridTick() {
     for (uint32_t i = 0; i < childCount; i++) {
       lv_obj_t *child = lv_obj_get_child(screen, i);
       if (child && !lv_obj_has_flag(child, LV_OBJ_FLAG_HIDDEN)) lv_obj_invalidate(child);
+    }
+  }
+
+  const int musicSlots[3]={5,6,12};
+  const bool cover=coverValid && coverImg;
+  const int musicY[3]={cover?194:158,cover?238:206,cover?278:244};
+  for(int i=0;i<3;++i) {
+    musicText[i].visible(showMusic && bleConnected && bleAuthed && (i<2 || musicLyrics));
+    if(showMusic) {
+      if(musicText[i].canvas) setLvglPos(musicText[i].canvas,63,musicY[i]);
+      musicText[i].update(musicSlots[i]);
     }
   }
 

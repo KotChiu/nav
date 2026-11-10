@@ -130,7 +130,7 @@ bool fastFlushOn = false;         // RGB path is handled by the ESP32_Display_Pa
 // Shared dial surfaces, typography and state colors. Map themes are separate.
 // Carbon Racing. RGB565 matches ui/VisualLanguage.h RGB888 tokens.
 // Route/warning semantics (red, green, traffic lights) remain separate.
-#define C_UI_BG      0x0862  // #0B0C10
+#define C_UI_BG      0x0000  // #000000
 #define C_UI_PANEL   0x18C4  // #191B21
 #define C_UI_PANEL_2 0x2126  // #242730
 #define C_UI_TEXT    0xF79D  // #F5F3EE
@@ -225,6 +225,7 @@ uint8_t laneBg[8], laneFr[8]; // 每条车道的背景方向码、推荐方向�
 #define IMG_SLOTS 21           // 0 = 路名，1 = 底部信息，2 = 来电人名字，3/4 = 天气，5/6 = 音乐，13-20 = 股票中文名
 #define IMG_MAX   8192        // 每张图最多字节数
 struct TextImg {
+  uint32_t revision = 0;
   uint8_t *show;              // 正在显示的图
   uint16_t showW; uint8_t showH;
   uint8_t *recv;              // 正在接收的图

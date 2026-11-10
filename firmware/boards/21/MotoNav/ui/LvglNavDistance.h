@@ -1,6 +1,6 @@
 #pragma once
 // The genuine turn distance uses Montserrat instead of the old pixel font.
-// GFX still draws the exact same distance underneath for fail-visible fallback.
+// GFX draws a fallback only when LVGL initialization fails.
 // This card covers only the right-hand numeric zone of the existing turn HUD.
 #include "VisualLanguage.h"
 #include "NavChromePolicy.h"
@@ -26,8 +26,8 @@ static void navDistanceCreate(lv_obj_t *screen) {
   lv_obj_align(navDistance.caption,LV_ALIGN_TOP_MID,0,3);
   navDistance.value=label(navDistance.root,"--",
                             &lv_font_montserrat_40,Text);
-  lv_obj_set_pos(navDistance.value,2,25);
-  lv_obj_set_size(navDistance.value,r.w-4,45);
+  lv_obj_set_pos(navDistance.value,2,18);
+  lv_obj_set_size(navDistance.value,r.w-4,40);
   lv_label_set_long_mode(navDistance.value,LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_align(navDistance.value,LV_TEXT_ALIGN_CENTER,0);
   lv_obj_add_flag(navDistance.root,LV_OBJ_FLAG_HIDDEN);

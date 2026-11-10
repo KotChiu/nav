@@ -173,7 +173,7 @@ assert "homeStackTick(showHome);" in OVERLAY
 assert "if (!lvglSnapshotting) drawWaiting(waitSt);" in OVERLAY
 assert "now-homeStackRenderAt < 30" in OVERLAY
 assert "lv_obj_set_size(homeOrbit[i],r.w,r.h)" in OVERLAY
-assert "homeStackProgress > 0.08f" in OVERLAY
+assert "setLvglHidden(homeWeatherCard, true)" in OVERLAY
 assert "homeStackExpandedStyle" in OVERLAY
 assert "homeBackSubtitle[0]" in OVERLAY and "homeBackSubtitle[1]" in OVERLAY
 assert "homeBackChevron[0]" in OVERLAY and "homeBackChevron[1]" in OVERLAY
@@ -188,15 +188,25 @@ assert "pageForSwipe(page, dragHoriz, dragSign)" in PAGE_NAV
 assert "MotoNavUI::panel(screen, 67, 115, 332, 245" in OVERLAY
 assert "MotoNavUI::panel(screen, 82, 345, 145, 64" in OVERLAY
 assert "MotoNavUI::panel(screen, 243, 345, 140, 64" in OVERLAY
-assert "stockBackCards[0]" in OVERLAY and "stockBackCards[1]" in OVERLAY
+assert "NEXT POSITION" not in OVERLAY
 assert "#define STOCK_NAME_W 164" in OVERLAY
 assert "#define STOCK_CHART_W 280" in OVERLAY
-assert "#define STOCK_ROW_H 218" in OVERLAY
-assert "stockShowFocused()" in OVERLAY and "stockStepEvent" in OVERLAY
+assert "#define STOCK_ROW_H 252" in OVERLAY
+assert "q.candles[i][1]" in OVERLAY
+assert "candleHigh" not in OVERLAY
+assert "stockShowRows()" in OVERLAY
 assert "lv_label_set_long_mode(stockPriceLabels[i], LV_LABEL_LONG_DOT)" in OVERLAY
-assert "lv_obj_set_scroll_dir(stockList, LV_DIR_VER)" not in OVERLAY
-assert "settings.depth[0]" in SETTINGS
+assert "lv_obj_set_scroll_dir(stockList, LV_DIR_VER)" in OVERLAY
+assert "lv_obj_set_scroll_dir(list, LV_DIR_VER)" in SETTINGS
+assert "lv_slider_set_range(settings.rotation, 0, 359)" in SETTINGS
+assert colors["Background"] == 0
+assert "SWIPE DOWN  /  HOME" not in SETTINGS + OVERLAY
 assert "MotoNavUI::Icon::Weather" in OVERLAY
 assert "MotoNavUI::Icon::Photo" in OVERLAY
+assert 'if (!lvglUiReady) printOutlined(dt,' in MARKERS
+assert 'lvglCanvasRepainted = true;' in MAP_FRAME
+assert 'LV_STATE_CHECKED' in SETTINGS
+assert 'weatherGlyph(weather.forecastIcon[i],wxFi[i])' in WEATHER
+assert 'musicText[i].update(musicSlots[i])' in OVERLAY
 print("MotoNav UI contracts passed: map-first navigation, vector icons,"
       " round-safe Wallet stacks, fixed stock bounds and real device data.")

@@ -22,6 +22,8 @@ int main() {
   assert(NavDistanceCard.x >= NavTurnCard.x && NavDistanceCard.y >= NavTurnCard.y);
   assert(NavDistanceCard.x + NavDistanceCard.w <= NavTurnCard.x + NavTurnCard.w);
   assert(NavDistanceCard.y + NavDistanceCard.h <= NavTurnCard.y + NavTurnCard.h);
+  // ETA starts at y=404; the distance widget must leave it visible.
+  assert(NavDistanceCard.y + NavDistanceCard.h < 404);
   assert(!navChromeOverlap(NavTurnCard,NavMapChip));
   assert(!navChromeOverlap(NavTurnCard,NavLinkChip));
 

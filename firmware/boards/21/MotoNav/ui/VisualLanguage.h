@@ -5,7 +5,7 @@
 #include <lvgl.h>
 
 namespace MotoNavUI {
-static constexpr uint32_t Background = 0x0B0C10;
+static constexpr uint32_t Background = 0x000000;
 static constexpr uint32_t Surface = 0x191B21;
 static constexpr uint32_t SurfaceRaised = 0x242730;
 static constexpr uint32_t Line = 0x343740;
@@ -67,8 +67,9 @@ inline lv_obj_t *button(lv_obj_t *parent, int x, int y, int w, int h,
   lv_obj_set_style_border_width(b, 1, 0);
   lv_obj_set_style_border_color(b, color(Line), 0);
   lv_obj_set_style_bg_color(b, color(background), 0);
-  lv_obj_set_style_bg_color(b, color(Line), LV_STATE_PRESSED);
+  lv_obj_set_style_bg_color(b, color(Accent), LV_STATE_PRESSED);
   lv_obj_set_style_shadow_width(b, 0, 0);
+  lv_obj_set_style_pad_all(b, 0, 0);
   lv_obj_clear_flag(b, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_t *l = label(b, value, &lv_font_montserrat_16, Text);
   lv_obj_center(l);

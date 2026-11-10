@@ -9,14 +9,14 @@ struct HomeStackRect { int x,y,w,h; };
 enum HomeStackSlot : int { StackMarkets=0, StackRide=1, StackClock=2 };
 
 static constexpr HomeStackRect StackClosed[3]={
-  {243,345,140,64},  // Markets: 49px visible beneath the main card
-  {82,345,145,64},   // Ride: 49px visible beneath the main card
-  {67,115,332,245}
+  {111,334,244,82},
+  {73,234,320,88},
+  {73,78,320,144}
 };
 static constexpr HomeStackRect StackOpen[3]={
-  {111,331,244,84},  // Markets, lower full card
-  {85,239,296,86},   // Ride, upper full card
-  {73,78,320,150}    // Compact clock summary
+  {111,329,244,86},
+  {73,229,320,88},
+  {73,78,320,139}
 };
 static constexpr int StackCenter=233;
 static constexpr int StackRadius=232;

@@ -161,3 +161,10 @@ GitHub Actions 的 `MotoNav 2.1 visual redesign` 工作流会运行上述检查�
 **回归门槛**：`ui/HomeStackMotion.h` 将曲线、几何和安全状态提为不依赖 Arduino/LVGL 的纯逻辑；`firmware/tests/HomeStackMotionTest.cpp` 检查 0–100% 全部布局、中断优先级、手势幅度和阈值；`tools/ui-audit.py` 检查 PageNavigation 的分流和 LVGL 真实子卡点击事件。UI fast CI 和 ESP32 完整 CI 都纳入新增 host test。
 
 **待实机验收**：旋转 0°/90°/任意角度时的手势方向、指尖跟手流畅度与 FPS、手套触摸热区、点按/拖动区分、导航强制中断后的重绘，以及多轮快速上/下滑动后的帧缓冲稳定性。测试通过仅证明代码结构和基础几何；不代表已在骑行环境中验证。
+
+
+## 2026-11-11 流畅度热修：停止空闲重复失效
+
+音乐页空闲时串口曾持续显示约 `41` 次刷新/2 秒，每次都是近 `217156` 像素的脏区，渲染约 `29ms`。代码审计发现 `LvglPhoneBitmap::visible()` 每个主循环都无条件调用 `lv_obj_clear_flag(HIDDEN)`；LVGL 8.3 即使对象本来可见也会执行失效，随后三个位图加按钮的脏区被合并成全屏。音乐状态标签还在每个循环重复 `lv_obj_align()`。
+
+修复后只有可见性真正改变时才 add/clear `HIDDEN`，静态对齐只做一次。该路径不使用新增动画、GPU/模糊或额外缓冲，只去掉重复失效，因此不会改变页面布局和交互含义。仍需真机记录音乐页空闲、切歌、滑动和触摸按钮时的同场景 `flush/2s`、脏区像素数和端到端延迟。

@@ -30,7 +30,22 @@ void slideBuffersInit() {
 }
 
 // v7.8 音乐页：歌名/歌手图片栏 5/6；#Z,有会话,播放中,按钮位掩码。
-// v7.12.10-cover 收到封面（bulk type 5）时改为封面圆盘布局：圆盘 r=64 居上，歌名/歌手/按钮下移，不放歌词。
+// v7.12.10-cover 收到封面（bulk type 5）时改为封面圆盘布局：圆盘 r=64 居上，歌名/歌手/按钮下移，歌词使用独立限高区域。
+static void drawMusicTextBand(int slot, int y, int maxHeight, uint8_t tint) {
+  const TextImg &im = imgs[slot];
+  gfx->fillRect(63, y, 340, maxHeight, C_UI_BG);
+  if (!im.show || !im.showW || !im.showH) return;
+  const float scale = min(1.0f, min(340.0f / im.showW, (float)maxHeight / im.showH));
+  const int w = max(1, (int)(im.showW * scale));
+  const int h = max(1, (int)(im.showH * scale));
+  const int bpr = (im.showW + 1) / 2;
+  for (int dy = 0; dy < h; ++dy)
+    for (int dx = 0; dx < w; ++dx) {
+      const uint8_t a = imgNib(im, bpr, min(im.showW-1, (int)(dx/scale)), min(im.showH-1, (int)(dy/scale)));
+      if (a) gfx->drawPixel(CX-w/2+dx, y+dy, greyColor(a, tint));
+    }
+}
+
 void drawMusic() {
   forceFullFlush = true;
   gfx->fillScreen(C_UI_BG);
@@ -72,13 +87,13 @@ void drawMusic() {
       printCentered("PHONE MEDIA KEYS", CX, coverShow ? 194 : 158, 2, C_WHITE);
       printCentered("OPEN MUSIC APP ON PHONE", CX, coverShow ? 220 : 210, 2, C_UI_SUB);
     }
-  } else if (linked) {
-    drawTextImg(5, coverShow ? 194 : 158, 0xFF);
-    drawTextImg(6, coverShow ? 240 : 210, 0xBB);
+  } else if (linked && !lvglUiReady) {
+    drawMusicTextBand(5, coverShow ? 194 : 158, 38, 0xFF);
+    drawMusicTextBand(6, coverShow ? 238 : 206, 30, 0xBB);
   } else if (!lvglUiReady)
     printCentered("PHONE OFFLINE", CX, coverShow ? 205 : 170, 3, C_UI_SUB);
-  bool showLyrics = linked && hidMusicMode && musicLyrics && appleMedia.available && imgs[12].showW > 0 && !coverShow;
-  if (showLyrics) drawTextImg(12, 242, 0xDD);
+  bool showLyrics = linked && hidMusicMode && musicLyrics && appleMedia.available && imgs[12].showW > 0;
+  if (showLyrics && !lvglUiReady) drawMusicTextBand(12, coverShow ? 278 : 244, 32, 0xDD);
   const char *feedback[] = {"", "SENT", "PHONE RECEIVED", "DONE", "NO RESPONSE", "NO PLAYER", "HID SENT", "HID NOT READY", "HID SEND FAILED", "AMS SENT", "AMS SEND FAILED", "AMS QUEUED"};
   String state = linked && musicHave ? (musicPlaying ? "PLAYING" : "PAUSED") : "NO PLAYER";
   if (hidMusicMode) {
@@ -361,7 +376,7 @@ void dragMove(int dx, int dy, unsigned long now) {
   // the proven circular page-transition compositor; never steal maps or
   // Settings slider gestures.
   if (!dragging && homeStackTouchMove(dx, dy, now)) return;
-  if (!dragging && page == PAGE_STOCKS && touchGestureAxis == 2) return;
+  if (!dragging && (page == PAGE_STOCKS || page == PAGE_SETTINGS) && touchGestureAxis == 2) return;
   if (!dragging) {
     int threshold = page == 2 ? 20 : DRAG_START;
     if (abs(dx) < threshold && abs(dy) < threshold) return;
@@ -469,6 +484,18 @@ void musicTick() {
   if (inNav && !cruiseOn && navDir != "S" && navDir.length() && navDist > 0 && navDist < 200 && millis() - pageAt > 3000) {
     returnToNavigation();
     return;
+  }
+  static uint32_t requestedAt=0, requestedPageAt=0;
+  static uint32_t requestedConnection=UINT32_MAX;
+  if (bleConnected && bleAuthed && (requestedPageAt!=pageAt ||
+      requestedConnection!=mediaConnectionEpoch ||
+      (!imgs[5].showW && millis()-requestedAt>=10000))) {
+    if (!pendingEvt.length()) {
+      pendingEvt="T,M,Q"; appleMedia.resend();
+      requestedAt=millis(); requestedPageAt=pageAt; requestedConnection=mediaConnectionEpoch;
+      Serial.printf("MEDIA VIEW ams=%d title=%u artist=%u lyrics=%u\n",
+        appleMedia.available,imgs[5].showW,imgs[6].showW,imgs[12].showW);
+    }
   }
   if (musicDirty) { musicDirty = false; drawMusic(); }
 }

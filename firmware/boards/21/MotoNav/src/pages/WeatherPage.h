@@ -150,7 +150,7 @@ bool drawWeatherExtra() {
 }
 
 void drawWeather() {
-  if (wxHave && drawWeatherExtra()) return;
+  if (!lvglUiReady && wxHave && drawWeatherExtra()) return;
   onWaitScreen = false;
   frameIsMap = false;
   gfx->fillScreen(C_UI_BG);
