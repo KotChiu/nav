@@ -53,8 +53,10 @@ assert "robotEyes" not in OVERLAY
 assert "MotoNavUI::rideCreate" in OVERLAY
 assert "MotoNavUI::weatherCreate" in OVERLAY
 assert "MotoNavUI::settingsCreate" in OVERLAY
-assert "lv_font_montserrat_64" in OVERLAY and "lv_font_montserrat_48" in RIDE
-assert '#define LV_FONT_MONTSERRAT_64 1' in (BOARD / "lv_conf.h").read_text()
+assert "lv_font_montserrat_48" in OVERLAY and "lv_font_montserrat_48" in RIDE
+assert '#define LV_FONT_MONTSERRAT_48 1' in (BOARD / "lv_conf.h").read_text()
+assert 'watchTempLabel = MotoNavUI::label(homeWeatherCard, "--°",\n                    &lv_font_montserrat_28' in OVERLAY
+assert 'LV_FONT_MONTSERRAT_64 1' not in (BOARD / "lv_conf.h").read_text()
 # A connected device should feel like a product, not an engineering console.
 # Time/forecast are blank until actual phone data arrives; their source is
 # an implementation detail, not a homepage headline.
