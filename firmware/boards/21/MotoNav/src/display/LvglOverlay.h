@@ -434,7 +434,8 @@ bool homeStackTouchMove(int dx, int dy, unsigned long now) {
   homeStackLastDy = dy;
   homeStackProgress = MotoNavUI::stackDragProgress(
       homeStackStartProgress, dy);
-  homeStackRenderAt = 0; // display the finger's latest position next tick
+  // The render loop samples this latest finger position at most once
+  // every 20ms. Do not reset its throttle on each 8ms touch sample.
   (void)now;
   return true;
 }
