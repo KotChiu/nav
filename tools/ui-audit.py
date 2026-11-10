@@ -17,6 +17,11 @@ WEATHER = (BOARD / "ui/LvglWeatherDashboard.h").read_text()
 ICONS = (BOARD / "ui/LvglIcons.h").read_text()
 MAP = (BOARD / "ui/LvglMapOverlay.h").read_text()
 MAP_FRAME = (BOARD / "src/map/MapFrame.h").read_text()
+MAP_HUD = (BOARD / "src/map/MapHud.h").read_text()
+MARKERS = (BOARD / "src/map/NavigationMarkers.h").read_text()
+NAV_SPEED = (BOARD / "ui/LvglNavSpeed.h").read_text()
+NAV_POLICY = (BOARD / "ui/NavChromePolicy.h").read_text()
+NAV_DECL = (BOARD / "src/core/FunctionDeclarations.h").read_text()
 MARKET_COMMANDS = (BOARD / "src/protocol/CommandReceiver.h").read_text()
 
 def srgb(c):
@@ -71,6 +76,29 @@ assert "drawRouteRange(" in MAP_FRAME
 assert "drawMapLanes()" in MAP_FRAME
 assert "drawMapBadge()" in MAP_FRAME
 assert "lv_obj_move_foreground" in MAP
+# Map-first Carbon HUD: paint LVGL speed over a fully retained GFX fallback,
+# and preserve all phone-provided map route/lanes/POI/navigation semantics.
+assert '#include "../../ui/LvglNavSpeed.h"' in OVERLAY
+assert "MotoNavUI::navSpeedCreate(screen)" in OVERLAY
+assert "MotoNavUI::navSpeedUpdate" in OVERLAY
+assert "mapModeActive()" in OVERLAY and "navMapCameraHudVisible()" in OVERLAY
+assert "lv_font_montserrat_40" in NAV_SPEED
+assert "NavSpeedCardWithCamera" in NAV_SPEED
+assert "if (speedKmh < 0) return;" in MAP_HUD
+assert 'printCentered(String(speedKmh)' in MAP_HUD
+assert "drawBigIconAt" in MARKERS and "printOutlined(dt" in MARKERS
+assert "NavTurnCard" in MARKERS and "C_UI_PANEL" in MARKERS
+assert "navChromeShowStatus" in OVERLAY and "navChromeShowStatus" in MAP_FRAME
+assert "laneN > 0 && ringActive" in OVERLAY
+assert "navMapChromeAllowed()" in OVERLAY
+assert "obsAdd(MotoNavUI::NavMapChip" in MAP_FRAME
+assert "obsAdd(MotoNavUI::NavLinkChip" in MAP_FRAME
+assert "drawMapLights(cx, cy" in MAP_FRAME
+assert "drawMapCams(cx, cy" in MAP_FRAME
+assert "drawPlaceLabels(cx, cy" in MAP_FRAME
+assert "drawMapLanes()" in MAP_FRAME
+assert "navChromeFits" in NAV_POLICY
+assert "bool navMapCameraHudVisible();" in NAV_DECL
 # A fresh navigation screen must not claim map readiness or phone auth while
 # both flags are false; state-colored line icons must match the text.
 assert "justShown || !mapOverlay.statusInitialized" in MAP
