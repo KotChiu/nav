@@ -8,7 +8,7 @@ namespace MotoNavUI {
 enum class Icon : uint8_t {
   Map, Route, Weather, Music, Stocks, Settings, Screen,
   Ride, Link, Photo, ChevronLeft, ChevronRight, ChevronDown,
-  Battery, TrendUp, TrendDown
+  Battery, TrendUp, TrendDown, Previous, Play, Pause, Next
 };
 
 inline lv_obj_t *iconStroke(lv_obj_t *root, const lv_point_t *pts,
@@ -78,6 +78,13 @@ inline lv_obj_t *icon(lv_obj_t *parent, Icon kind, int x, int y,
   static const lv_point_t battery[] = {{3,6},{18,6},{18,18},{3,18},{3,6}};
   static const lv_point_t batteryTip[] = {{20,9},{21,9},{21,15},{20,15}};
   static const lv_point_t batteryFill[] = {{6,9},{14,9},{14,15},{6,15},{6,9}};
+  static const lv_point_t previousArrow[] = {{19,4},{9,12},{19,20}};
+  static const lv_point_t previousBar[] = {{5,4},{5,20}};
+  static const lv_point_t play[] = {{7,4},{19,12},{7,20},{7,4}};
+  static const lv_point_t pause1[] = {{8,4},{8,20}};
+  static const lv_point_t pause2[] = {{16,4},{16,20}};
+  static const lv_point_t nextArrow[] = {{5,4},{15,12},{5,20}};
+  static const lv_point_t nextBar[] = {{19,4},{19,20}};
   auto stroke = [&](const lv_point_t *p, uint16_t n) {
     iconStroke(root, p, n, ink, weight);
   };
@@ -114,6 +121,14 @@ inline lv_obj_t *icon(lv_obj_t *parent, Icon kind, int x, int y,
     case Icon::ChevronDown: stroke(down,3); break;
     case Icon::Battery:
       stroke(battery,5); stroke(batteryTip,4); stroke(batteryFill,5); break;
+    case Icon::Previous:
+      stroke(previousArrow,3); stroke(previousBar,2); break;
+    case Icon::Play:
+      stroke(play,4); break;
+    case Icon::Pause:
+      stroke(pause1,2); stroke(pause2,2); break;
+    case Icon::Next:
+      stroke(nextArrow,3); stroke(nextBar,2); break;
   }
   return root;
 }
