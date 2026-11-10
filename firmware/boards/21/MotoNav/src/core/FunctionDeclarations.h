@@ -149,7 +149,6 @@ void handleBulk(const uint8_t *d, int n);
 void batPoll();
 void sendPendingAck();
 bool mapModeActive();
-bool mapModeActive();
 bool navMapHasFrame();
 bool navMapChromeAllowed();
 bool navMapCameraHudVisible();
