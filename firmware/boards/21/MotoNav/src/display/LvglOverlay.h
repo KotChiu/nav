@@ -435,7 +435,7 @@ bool homeStackTouchMove(int dx, int dy, unsigned long now) {
   homeStackProgress = MotoNavUI::stackDragProgress(
       homeStackStartProgress, dy);
   // The render loop samples this latest finger position at most once
-  // every 20ms. Do not reset its throttle on each 8ms touch sample.
+  // every 30ms. Do not reset its throttle on each 8ms touch sample.
   (void)now;
   return true;
 }
@@ -895,7 +895,7 @@ static void setLvglTextColor(lv_obj_t *obj, lv_color_t color) {
 
 // Follow-finger transforms apply only to three LVGL cards. No page snapshot,
 // full map compositing or extra PSRAM frame is allocated. Release animation
-// uses a short ease-out at <=50 geometry updates/second.
+// uses a short ease-out at <=34 geometry updates/second.
 static void homeStackTick(bool visible) {
   if (!visible) {
     homeStackCancel();
@@ -915,7 +915,7 @@ static void homeStackTick(bool visible) {
   }
   if (homeStackApplied >= 0 &&
       fabsf(homeStackProgress-homeStackApplied) < 0.003f) return;
-  if (homeStackRenderAt && now-homeStackRenderAt < 20 &&
+  if (homeStackRenderAt && now-homeStackRenderAt < 30 &&
       (homeStackGestureActive || homeStackSettling)) return;
   homeStackRenderAt = now;
   homeStackApplied = homeStackProgress;
@@ -950,6 +950,11 @@ static void homeStackTick(bool visible) {
       MotoNavUI::StackClock,homeStackProgress);
   setLvglPos(homeDragHandle,(clock.w-36)/2,clock.h-9);
   setLvglHidden(homeDivider,homeStackProgress>0.08f);
+  // The LVGL screen is transparent and uses the SAME RGB565 framebuffer as
+  // GFX. Merely moving a card would leave its old pixels behind. Repaint the
+  // real Home base BEFORE LVGL's visible scene is invalidated/refreshed below.
+  // This also retains the existing LINK LOST ring and prevents ghost trails.
+  if (!lvglSnapshotting) drawWaiting(waitSt);
 }
 
 static void lvglHybridTick() {
