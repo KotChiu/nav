@@ -524,14 +524,16 @@ static void createLvglOverlay() {
   // Electronic badge: full-bleed photos remain untouched; only the empty
   // state receives a tasteful type-led invitation.
   photoEmptyCard = MotoNavUI::panel(screen, 78, 129, 310, 230, 30);
+  MotoNavUI::icon(photoEmptyCard, MotoNavUI::Icon::Photo, 142, 43,
+                   MotoNavUI::Accent, 2);
   lv_obj_add_flag(photoEmptyCard, LV_OBJ_FLAG_HIDDEN);
   photoEmptyTitle = MotoNavUI::label(photoEmptyCard, "YOUR BADGE",
                              &lv_font_montserrat_28, MotoNavUI::Text);
-  lv_obj_align(photoEmptyTitle, LV_ALIGN_TOP_MID, 0, 63);
+  lv_obj_align(photoEmptyTitle, LV_ALIGN_TOP_MID, 0, 92);
   photoEmptyHint = MotoNavUI::label(photoEmptyCard,
                           "SEND AN IMAGE FROM YOUR PHONE",
                           &lv_font_montserrat_16, MotoNavUI::Muted);
-  lv_obj_align(photoEmptyHint, LV_ALIGN_TOP_MID, 0, 131);
+  lv_obj_align(photoEmptyHint, LV_ALIGN_TOP_MID, 0, 144);
   photoTitleLabel = MotoNavUI::label(screen, "MOTONAV  /  BADGE",
                          &lv_font_montserrat_16, MotoNavUI::Accent);
   lv_obj_align(photoTitleLabel, LV_ALIGN_TOP_MID, 0, 62);
