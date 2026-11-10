@@ -13,6 +13,8 @@
 class AppleMediaClient {
 public:
   static constexpr size_t LIMIT = 512;
+  static constexpr uint32_t OperationTimeoutMs = 5000;
+  static constexpr uint32_t RetryMs = 5000;
   struct Value { String text; uint16_t revision = 1; bool partial = false; };
   Value values[7]; // title, artist, album, duration, playback, player, service status
   bool available = false, changed = false;
@@ -27,6 +29,7 @@ public:
     }
     if (!connected || conn != handle || session != linkSession) {
       connected = true; conn = handle; linkSession = session; reset(now); retryAt = now + 1000;
+      Serial.printf("MEDIA AMS connect handle=%u session=%lu\n", handle, (unsigned long)session);
     }
     Event e;
     while (events && xQueueReceive(events, &e, 0) == pdTRUE) {
@@ -39,6 +42,9 @@ public:
           if (f >= 0) { set(f, e.data + 3, e.size - 3, (e.data[2] & 1) || e.overflow, now); if (values[f].partial && attribute) reads |= 1 << f; }
         }
         continue;
+      }
+      if (e.status && e.kind == Done) {
+        Serial.printf("MEDIA AMS step=%d error=%u\n", (int)step, (unsigned)e.status);
       }
       if (e.kind == Service) { if (e.tag == 1) { first = e.handle; last = e.other; } else if (e.tag == 2) { gattFirst = e.handle; gattLast = e.other; } }
       else if (e.kind == Characteristic) {
@@ -65,19 +71,19 @@ public:
           if (step == Command) { controlAck = -1; step = Ready; }
           else if (step == ChangedSub) { step = remoteCCCD ? RemoteSub : UpdateSub; }
           else if (step == RemoteSub || step == RemoteDescs) { step = step == RemoteSub ? UpdateSub : (gattFirst ? GattChars : UpdateSub); } else if ((step == Select || step == Read) && (e.status == BLE_HS_ATT_ERR(0xa0) || e.status == BLE_HS_ATT_ERR(0x01) || e.status == BLE_HS_ENOTCONN)) {
-            reset(now); retryAt = now + 20000;
+            reset(now); retryAt = now + RetryMs;
           } else if (step == Select || step == Read) {
             if (e.status == BLE_HS_ATT_ERR(0xa2) && e.revision == values[reading].revision) set(reading, nullptr, 0, false, now);
             step = Ready;
-          } else { reset(now); retryAt = now + 20000; }
+          } else { reset(now); retryAt = now + RetryMs; }
           continue;
         }
         advance(now, e.revision);
       }
     }
-    if (dropped) { dropped = false; reset(now); retryAt = now + 20000; }
+    if (dropped) { dropped = false; reset(now); retryAt = now + RetryMs; }
     // Retire delayed callbacks by generation; the BLE stack owns outstanding contexts.
-    if (busy && now - startedAt > 20000) { if (step == Command) controlAck = -1; reset(now); retryAt = now + 20000; }
+    if (busy && now - startedAt > OperationTimeoutMs) { if (step == Command) controlAck = -1; reset(now); retryAt = now + RetryMs; }
     if (busy || (int32_t)(now - retryAt) < 0) return;
     start(now);
   }
@@ -167,6 +173,7 @@ private:
     String text; if (complete) text.concat(reinterpret_cast<const char *>(data), complete);
     if (values[f].text == text && values[f].partial == partial) return;
     values[f].text = text; values[f].partial = partial; ++values[f].revision; if (!values[f].revision) ++values[f].revision;
+    if (f == 6) Serial.printf("MEDIA AMS status=%s\n", text.c_str());
     pending |= 1 << f; changed = true;
     if (f == 4) { playback = AppleMediaData::playback(text.c_str()); playbackAt = now; }
   }
@@ -181,8 +188,12 @@ private:
   void status(const char *s, uint32_t now) { set(6, reinterpret_cast<const uint8_t *>(s), strlen(s), false, now); }
   void advance(uint32_t now, uint16_t revision) {
     switch (step) {
-    case Services: step = first ? Chars : (gattFirst ? GattChars : Ready); break;
-    case Chars: step = update ? Descs : (gattFirst ? GattChars : Ready); break;
+    case Services:
+      if (!first) Serial.println("MEDIA AMS service not found");
+      step = first ? Chars : (gattFirst ? GattChars : Ready); break;
+    case Chars:
+      if (!update) Serial.println("MEDIA AMS update characteristic not found");
+      step = update ? Descs : (gattFirst ? GattChars : Ready); break;
     case Descs: step = remote ? RemoteDescs : (gattFirst ? GattChars : UpdateSub); break;
     case RemoteDescs: step = gattFirst ? GattChars : (remoteCCCD ? RemoteSub : UpdateSub); break;
     case GattChars: step = serviceChanged ? GattDescs : (remoteCCCD ? RemoteSub : UpdateSub); break;
@@ -199,16 +210,17 @@ private:
       step = Ready; break;
     default: break;
     }
-    if (step == Ready && !available) { status("UNAVAILABLE", now); retryAt = now + 20000; }
+    if (step == Ready && !available) { status("UNAVAILABLE", now); retryAt = now + RetryMs; }
   }
   void start(uint32_t now) {
+    Serial.printf("MEDIA AMS op step=%d\n", (int)step);
     if (step == Ready) {
       if (!available) { reset(now); }
       else if (commands.take(command)) { step = Command; }
       else if (reads) { for (reading = 0; reading < 6; ++reading) if (reads & (1 << reading)) break; reads &= ~(1 << reading); readSize = 0; readOverflow = false; step = Select; }
       else return;
     }
-    if (step == UpdateSub && (!update || !updateCCCD)) { step = Ready; status("UNAVAILABLE", now); retryAt = now + 20000; return; }
+    if (step == UpdateSub && (!update || !updateCCCD)) { step = Ready; status("UNAVAILABLE", now); retryAt = now + RetryMs; return; }
     auto c = new Context{this, generation, conn, values[reading].revision, reading}; int rc = 0;
     busy = true; startedAt = now;
     const uint8_t notify[] = {1, 0}, indicate[] = {2, 0}, player[] = {0, 0, 1}, track[] = {2, 0, 1, 2, 3};
@@ -234,7 +246,7 @@ private:
       delete c; busy = false;
       if (step == Command) { controlAck = -1; step = Ready; } // no ambiguous write retry
       else if (step == RemoteSub) { step = UpdateSub; }
-      else { reset(now); retryAt = now + 20000; }
+      else { reset(now); retryAt = now + RetryMs; }
     }
   }
 };

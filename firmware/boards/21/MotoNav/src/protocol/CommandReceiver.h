@@ -1,5 +1,7 @@
 #pragma once
 // 导航状态重置、文字命令和总消息入口。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
+#include "CapabilityNotifications.h"
+
 void resetNavState() {
   trafficLightFrame.clear();trafficLightLab.clear();
   if (idlePowerOffNavigationActive(true, inNav, cruiseOn, navDir == "A"))
@@ -101,6 +103,7 @@ void handleText(const String &m) {
     return;
   }
   if (m == "#AMS?") { appleMedia.resend(); return; }
+  if (m == "#CAP?") { CapabilityNotifications::queue() = CapabilityNotifications::All; return; }
   if (m == "#GB?") { pendingBuildingCapability=true; return; }
   if (m.startsWith("#ZACK,")) {
     if (hidMusicMode) return;

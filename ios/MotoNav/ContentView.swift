@@ -447,15 +447,18 @@ struct ContentView: View {
                      ? (ble.mediaHIDReady && ble.mediaHIDMode ? "媒体按键已就绪" : ble.mediaAMSControls > 0 && ble.mediaHIDMode ? "AMS 媒体控制已就绪，HID 当前不可用" : "请在 iPhone 设置 → 蓝牙中配对 MotoNav；按圆屏配对码提示完成")
                      : "需要圆屏 HID 固件 v7.9.0 或更新版，连接后自动同步")
                     .font(.caption).foregroundColor(ContentView.sub)
-                if !ble.mediaSongInfo.isEmpty {
-                    Text(ble.mediaSongInfo).font(.caption).foregroundColor(ContentView.cyan)
-                }
+                Text(ble.mediaSongInfo.isEmpty
+                     ? (ble.mediaHIDReady ? "媒体按键已就绪，等待歌曲信息…" : "等待媒体按键配对…")
+                     : ble.mediaSongInfo)
+                    .font(.caption).foregroundColor(ContentView.cyan)
                 Toggle("显示逐句歌词", isOn: $settings.musicLyrics).foregroundColor(.white).tint(ContentView.pink)
                 Text("默认关闭，上方歌名、下方歌手。开启后按歌曲信息从 LRCLIB 匹配歌词，歌词显示在歌手下方；未匹配到时保留歌名和歌手。")
                     .font(.caption).foregroundColor(ContentView.sub)
                 if !settings.musicLyrics && ble.mediaLyricsActive { Text("正在关闭圆屏歌词…").font(.caption).foregroundColor(ContentView.sub) }
                 if settings.musicLyrics {
-                    Text(ble.mediaLyricsSupported ? ble.mediaLyricsStatus : "需要圆屏固件 v7.11.0 或更新版")
+                    Text(ble.mediaLyricsSupported
+                         ? (ble.mediaLyricsStatus.isEmpty ? "等待歌曲信息后匹配歌词…" : ble.mediaLyricsStatus)
+                         : "需要圆屏固件 v7.11.0 或更新版")
                         .font(.caption).foregroundColor(ContentView.cyan)
                 }
                 Text("先在网易云或 QQ 音乐开始播放，再用圆屏控制。新固件通过 iPhone AMS 显示歌名、歌手和状态，信息取决于当前播放器提供的内容。HID SENT 表示按键已发送。")

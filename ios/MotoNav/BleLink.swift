@@ -528,7 +528,7 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
         guard let raw = String(data: d, encoding: .utf8) else { return }
         let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if s == "U,1", !verified {
-            verified = true; buildingProbe.reset(); requestBuildingCapability(); Settings.shared.pushAll(); MapFeeder.shared.resendAll(); StockBridge.shared.sendLatest(); return
+            verified = true; sendOnce("#CAP?"); buildingProbe.reset(); requestBuildingCapability(); Settings.shared.pushAll(); MapFeeder.shared.resendAll(); StockBridge.shared.sendLatest(); return
         }
         if s == "CAP,MAPZ,1" { compressedMapsSupported = true; return }
         if s == "CAP,POI,1" || s == "CAP,POI,2" {
