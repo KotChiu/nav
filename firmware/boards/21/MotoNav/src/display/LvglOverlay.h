@@ -327,7 +327,7 @@ static void createLvglOverlay() {
   MotoNavUI::settingsCreate(screen);
 
   musicHeaderLabel = MotoNavUI::label(screen, "NOW PLAYING",
-                        &lv_font_montserrat_20, MotoNavUI::Mint);
+                        &lv_font_montserrat_20, MotoNavUI::Accent);
   lv_obj_align(musicHeaderLabel, LV_ALIGN_TOP_MID, 0, 58);
   lv_obj_set_style_text_letter_space(musicHeaderLabel, 3, 0);
   lv_obj_add_flag(musicHeaderLabel, LV_OBJ_FLAG_HIDDEN);
@@ -353,7 +353,7 @@ static void createLvglOverlay() {
     lv_obj_set_size(bar, 7, heights[i]);
     lv_obj_set_pos(bar, 27 + i * 17, (128 - heights[i]) / 2);
     lv_obj_set_style_radius(bar, 5, 0);
-    lv_obj_set_style_bg_color(bar, MotoNavUI::color(MotoNavUI::Mint), 0);
+    lv_obj_set_style_bg_color(bar, MotoNavUI::color(MotoNavUI::Accent), 0);
     lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
     MotoNavUI::noInteraction(bar);
   }
@@ -361,7 +361,7 @@ static void createLvglOverlay() {
 
   // A precise instrument face replaces the old pixel clock and cartoon.
   homeOrbit[0] = MotoNavUI::arc(screen, 24, 24, 418,
-                              222, 318, MotoNavUI::Mint, 3);
+                              222, 318, MotoNavUI::Accent, 3);
   homeOrbit[1] = MotoNavUI::arc(screen, 24, 24, 418,
                               42, 138, MotoNavUI::Line, 2);
   homeOrbit[2] = MotoNavUI::arc(screen, 44, 44, 378,
@@ -370,7 +370,7 @@ static void createLvglOverlay() {
     lv_obj_add_flag(homeOrbit[i], LV_OBJ_FLAG_HIDDEN);
 
   homeTitleLabel = MotoNavUI::label(screen, "MOTONAV",
-                    &lv_font_montserrat_20, MotoNavUI::Mint);
+                    &lv_font_montserrat_20, MotoNavUI::Accent);
   lv_obj_align(homeTitleLabel, LV_ALIGN_TOP_MID, 0, 66);
   lv_obj_set_style_text_letter_space(homeTitleLabel, 4, 0);
   lv_obj_add_flag(homeTitleLabel, LV_OBJ_FLAG_HIDDEN);
@@ -424,7 +424,7 @@ static void createLvglOverlay() {
                           &lv_font_montserrat_16, MotoNavUI::Muted);
   lv_obj_align(photoEmptyHint, LV_ALIGN_TOP_MID, 0, 131);
   photoTitleLabel = MotoNavUI::label(screen, "MOTONAV  /  BADGE",
-                         &lv_font_montserrat_16, MotoNavUI::Mint);
+                         &lv_font_montserrat_16, MotoNavUI::Accent);
   lv_obj_align(photoTitleLabel, LV_ALIGN_TOP_MID, 0, 62);
   lv_obj_add_flag(photoTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
@@ -651,7 +651,7 @@ static void lvglHybridTick() {
         : musicPlaying ? "PLAYING" : "PAUSED";
     setLvglLabelText(musicStatusLabel, musicState);
     setLvglTextColor(musicStatusLabel, lv_color_hex(
-      musicPlaying ? MotoNavUI::Mint : MotoNavUI::Muted));
+      musicPlaying ? MotoNavUI::Cool : MotoNavUI::Muted));
     lv_obj_align(musicStatusLabel, LV_ALIGN_TOP_MID, 0, 275);
   }
 
