@@ -38,7 +38,7 @@ static void weatherCreate(lv_obj_t *screen) {
   lv_obj_add_flag(weather.root, LV_OBJ_FLAG_HIDDEN);
 
   lv_obj_t *head = label(weather.root, "WEATHER  /  NOW",
-                          &lv_font_montserrat_20, Mint);
+                          &lv_font_montserrat_20, Cool);
   lv_obj_align(head, LV_ALIGN_TOP_MID, 0, 57);
   lv_obj_set_style_text_letter_space(head, 2, 0);
   weather.availability = label(weather.root, "FROM YOUR PHONE",
@@ -51,7 +51,7 @@ static void weatherCreate(lv_obj_t *screen) {
   lv_obj_set_size(weather.orb, 66, 66);
   lv_obj_set_style_radius(weather.orb, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_border_width(weather.orb, 8, 0);
-  lv_obj_set_style_border_color(weather.orb, color(Mint), 0);
+  lv_obj_set_style_border_color(weather.orb, color(Cool), 0);
   lv_obj_set_style_bg_color(weather.orb, color(SurfaceRaised), 0);
   lv_obj_set_style_bg_opa(weather.orb, LV_OPA_COVER, 0);
   noInteraction(weather.orb);
@@ -113,7 +113,7 @@ static void weatherUpdate(bool visible) {
   lv_label_set_text(weather.availability, wxHave ? "LIVE CONDITIONS" :
                     "WAITING FOR PHONE");
   lv_obj_set_style_border_color(weather.orb,
-     color(wxIcon >= 3 && wxIcon <= 9 ? 0x7DAAFF : Mint), 0);
+     color(wxIcon >= 3 && wxIcon <= 9 ? 0x6FA4D8 : Cool), 0);
   for (int i = 0; i < 4; ++i) {
     if (i >= wxN || !wxHave) {
       lv_label_set_text(weather.forecastDay[i], "--");
