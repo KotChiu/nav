@@ -6,6 +6,7 @@
 #include "../../ui/LvglMapOverlay.h"
 #include "../../ui/LvglNavSpeed.h"
 #include "../../ui/LvglNavDistance.h"
+#include "../../ui/HomeStackMotion.h"
 #include "../../ui/LvglSettingsPanel.h"
 #include "../../ui/LvglRideDashboard.h"
 #include "../../ui/LvglWeatherDashboard.h"
@@ -39,6 +40,25 @@ static lv_obj_t *homeTitleLabel = nullptr;
 static lv_obj_t *homeStatusLabel = nullptr;
 static lv_obj_t *homeHintLabel = nullptr;
 static lv_obj_t *homeOrbit[3] = {};
+static lv_obj_t *homeBackTitle[2] = {};
+static lv_obj_t *homeBackSubtitle[2] = {};
+static lv_obj_t *homeBackIcon[2] = {};
+static lv_obj_t *homeBackChevron[2] = {};
+static lv_obj_t *homeDivider = nullptr;
+static lv_obj_t *homeDragHandle = nullptr;
+// Gesture state lives alongside the LVGL scene; the existing page-swipe
+// compositor only delegates Home vertical motion to this interaction.
+static float homeStackProgress = 0.0f;
+static float homeStackStartProgress = 0.0f;
+static float homeStackAnimFrom = 0.0f;
+static float homeStackAnimTo = 0.0f;
+static float homeStackApplied = -1.0f;
+static unsigned long homeStackAnimAt = 0;
+static unsigned long homeStackRenderAt = 0;
+static int homeStackLastDy = 0;
+static bool homeStackGestureActive = false;
+static bool homeStackSettling = false;
+static bool homeStackExpandedStyle = false;
 static lv_obj_t *homeWeatherCard = nullptr;
 static lv_obj_t *homeStatusChip = nullptr;
 static lv_obj_t *homeStatusDot = nullptr;
@@ -156,7 +176,8 @@ static void lvglClearDirtyArea() {
 
 static void lvglTouchReadCb(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   (void)drv;
-  data->state = touchDown && !dragging ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
+  data->state = touchDown && !dragging && !homeStackGestureActive
+      ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
   if (touchDown) {
     float x = touchX1 - CX, y = touchY1 - CX;
     touchVectorToCanvas(x, y);
@@ -385,7 +406,64 @@ static void stockStepEvent(lv_event_t *event) {
   needFlush = true;
 }
 
-// A revealed card peeks out because it is actionable, not decorative.
+// The page router sends vertical Home drags here BEFORE it starts a
+// full-screen page transition. Only a touch beginning on the stack can
+// activate it; active navigation and modal overlays always take priority.
+bool homeStackTouchMove(int dx, int dy, unsigned long now) {
+  const bool canDrag = MotoNavUI::stackGestureEnabled(
+      lvglUiReady && page == PAGE_HOME, inNav,
+      pairOn || callOn || fxOn || staleShown,
+      sliding || dragging || slideSettling, lvglCaptureTouch);
+  if (!canDrag) return false;
+  if (!homeStackGestureActive) {
+    if (touchGestureAxis != 2 || abs(dy) < DRAG_START) return false;
+    if ((dy < 0 && homeStackProgress >= 0.999f) ||
+        (dy > 0 && homeStackProgress <= 0.001f)) return false;
+    float x = touchX0-CX, y = touchY0-CX;
+    touchVectorToCanvas(x, y);
+    if (!MotoNavUI::stackTouchInArea(lroundf(CX+x),lroundf(CX+y)))
+      return false;
+    homeStackGestureActive = true;
+    homeStackSettling = false;
+    homeStackStartProgress = homeStackProgress;
+    homeStackLastDy = 0;
+    // The very same press might have started on a clickable peek card.
+    // Cancel the pending tap as soon as it becomes a deliberate drag.
+    lvglCancelPendingPress();
+  }
+  homeStackLastDy = dy;
+  homeStackProgress = MotoNavUI::stackDragProgress(
+      homeStackStartProgress, dy);
+  homeStackRenderAt = 0; // display the finger's latest position next tick
+  (void)now;
+  return true;
+}
+
+bool homeStackTouchEnd() {
+  if (!homeStackGestureActive) return false;
+  homeStackGestureActive = false;
+  homeStackAnimFrom = homeStackProgress;
+  homeStackAnimTo = MotoNavUI::stackReleaseTarget(
+      homeStackProgress, homeStackStartProgress, homeStackLastDy);
+  homeStackAnimAt = millis();
+  homeStackSettling = fabsf(homeStackAnimFrom-homeStackAnimTo)>0.001f;
+  if (!homeStackSettling) homeStackProgress = homeStackAnimTo;
+  homeStackRenderAt = 0;
+  return true;
+}
+
+void homeStackCancel() {
+  if (!homeStackGestureActive && !homeStackSettling &&
+      homeStackProgress <= 0.001f) return;
+  homeStackGestureActive = false;
+  homeStackSettling = false;
+  homeStackProgress = 0.0f;
+  homeStackAnimTo = 0.0f;
+  homeStackApplied = -1.0f; // apply closed geometry when Home is visible again
+  homeStackRenderAt = 0;
+}
+
+// The two cards still support direct tap entry, in either stack position.
 static void homeStackCardEvent(lv_event_t *event) {
   if (lv_event_get_code(event) != LV_EVENT_CLICKED || page != PAGE_HOME ||
       inNav || dragging || sliding || pairOn || callOn || fxOn) return;
@@ -463,21 +541,33 @@ static void createLvglOverlay() {
   // below the front card; all outer corners remain in the 466px safe circle.
   homeOrbit[0] = MotoNavUI::panel(screen, 243, 345, 140, 64, 23,
                                  MotoNavUI::SurfaceRaised);
-  MotoNavUI::icon(homeOrbit[0], MotoNavUI::Icon::Stocks, 13, 21,
-                  MotoNavUI::Cool);
-  lv_obj_t *peekMarkets = MotoNavUI::label(homeOrbit[0], "MARKETS",
+  homeBackIcon[0] = MotoNavUI::icon(homeOrbit[0], MotoNavUI::Icon::Stocks,
+                                     13, 21, MotoNavUI::Cool);
+  homeBackTitle[0] = MotoNavUI::label(homeOrbit[0], "MARKETS",
                     &lv_font_montserrat_16, MotoNavUI::Muted);
-  lv_obj_set_pos(peekMarkets, 47, 27);
+  lv_obj_set_pos(homeBackTitle[0], 47, 27);
+  homeBackSubtitle[0] = MotoNavUI::label(homeOrbit[0],
+                    "QUOTES & CHARTS", &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_add_flag(homeBackSubtitle[0], LV_OBJ_FLAG_HIDDEN);
+  homeBackChevron[0] = MotoNavUI::icon(homeOrbit[0],
+                    MotoNavUI::Icon::ChevronRight, 200, 28, MotoNavUI::Muted);
+  lv_obj_add_flag(homeBackChevron[0], LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_flag(homeOrbit[0], LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(homeOrbit[0], homeStackCardEvent,
                       LV_EVENT_CLICKED, (void *)(intptr_t)PAGE_STOCKS);
   homeOrbit[1] = MotoNavUI::panel(screen, 82, 345, 145, 64, 23,
                                  MotoNavUI::Surface);
-  MotoNavUI::icon(homeOrbit[1], MotoNavUI::Icon::Ride, 13, 21,
-                  MotoNavUI::Accent);
-  lv_obj_t *peekRide = MotoNavUI::label(homeOrbit[1], "RIDE",
+  homeBackIcon[1] = MotoNavUI::icon(homeOrbit[1], MotoNavUI::Icon::Ride,
+                                     13, 21, MotoNavUI::Accent);
+  homeBackTitle[1] = MotoNavUI::label(homeOrbit[1], "RIDE",
                     &lv_font_montserrat_16, MotoNavUI::Muted);
-  lv_obj_set_pos(peekRide, 47, 27);
+  lv_obj_set_pos(homeBackTitle[1], 47, 27);
+  homeBackSubtitle[1] = MotoNavUI::label(homeOrbit[1],
+                    "SPEED & TRIP", &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_add_flag(homeBackSubtitle[1], LV_OBJ_FLAG_HIDDEN);
+  homeBackChevron[1] = MotoNavUI::icon(homeOrbit[1],
+                    MotoNavUI::Icon::ChevronRight, 255, 28, MotoNavUI::Muted);
+  lv_obj_add_flag(homeBackChevron[1], LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_flag(homeOrbit[1], LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(homeOrbit[1], homeStackCardEvent,
                       LV_EVENT_CLICKED, (void *)(intptr_t)PAGE_COMPANION);
@@ -533,13 +623,13 @@ static void createLvglOverlay() {
   lv_label_set_long_mode(homeStatusLabel, LV_LABEL_LONG_CLIP);
 
   // One hairline divider, then a compact weather information row.
-  lv_obj_t *separator = lv_obj_create(homeOrbit[2]);
-  lv_obj_remove_style_all(separator);
-  lv_obj_set_size(separator, 282, 1);
-  lv_obj_set_pos(separator, 25, 161);
-  lv_obj_set_style_bg_color(separator, MotoNavUI::color(MotoNavUI::Line), 0);
-  lv_obj_set_style_bg_opa(separator, LV_OPA_COVER, 0);
-  MotoNavUI::noInteraction(separator);
+  homeDivider = lv_obj_create(homeOrbit[2]);
+  lv_obj_remove_style_all(homeDivider);
+  lv_obj_set_size(homeDivider, 282, 1);
+  lv_obj_set_pos(homeDivider, 25, 161);
+  lv_obj_set_style_bg_color(homeDivider, MotoNavUI::color(MotoNavUI::Line), 0);
+  lv_obj_set_style_bg_opa(homeDivider, LV_OPA_COVER, 0);
+  MotoNavUI::noInteraction(homeDivider);
 
   homeWeatherCard = MotoNavUI::panel(homeOrbit[2], 18, 174, 296, 62, 18,
                                      MotoNavUI::Surface);
@@ -556,6 +646,18 @@ static void createLvglOverlay() {
   lv_obj_set_pos(watchForecastLabel, 146, 22);
   lv_obj_set_size(watchForecastLabel, 141, 26);
   lv_label_set_long_mode(watchForecastLabel, LV_LABEL_LONG_DOT);
+
+  // Subtle drag affordance, not an instruction banner. It belongs to the
+  // clock card and moves with it through the expanding/collapsing gesture.
+  homeDragHandle = lv_obj_create(homeOrbit[2]);
+  lv_obj_remove_style_all(homeDragHandle);
+  lv_obj_set_pos(homeDragHandle, 148, 238);
+  lv_obj_set_size(homeDragHandle, 36, 3);
+  lv_obj_set_style_radius(homeDragHandle, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(homeDragHandle,
+                           MotoNavUI::color(MotoNavUI::Faint), 0);
+  lv_obj_set_style_bg_opa(homeDragHandle, LV_OPA_COVER, 0);
+  MotoNavUI::noInteraction(homeDragHandle);
 
   homeHintLabel = MotoNavUI::label(screen, "SWIPE TO EXPLORE",
                     &lv_font_montserrat_16, MotoNavUI::Faint);
@@ -787,6 +889,65 @@ static void setLvglTextColor(lv_obj_t *obj, lv_color_t color) {
   lv_obj_set_style_text_color(obj, color, 0);
 }
 
+// Follow-finger transforms apply only to three LVGL cards. No page snapshot,
+// full map compositing or extra PSRAM frame is allocated. Release animation
+// uses a short ease-out at <=50 geometry updates/second.
+static void homeStackTick(bool visible) {
+  if (!visible) {
+    homeStackCancel();
+    return;
+  }
+  unsigned long now = millis();
+  if (homeStackSettling && !homeStackGestureActive) {
+    float t = MotoNavUI::stackClamp((now-homeStackAnimAt)/190.0f);
+    float rem = 1.0f-t;
+    float eased = 1.0f-rem*rem*rem;
+    homeStackProgress = homeStackAnimFrom +
+                        (homeStackAnimTo-homeStackAnimFrom)*eased;
+    if (t >= 1.0f) {
+      homeStackProgress = homeStackAnimTo;
+      homeStackSettling = false;
+    }
+  }
+  if (homeStackApplied >= 0 &&
+      fabsf(homeStackProgress-homeStackApplied) < 0.003f) return;
+  if (homeStackRenderAt && now-homeStackRenderAt < 20 &&
+      (homeStackGestureActive || homeStackSettling)) return;
+  homeStackRenderAt = now;
+  homeStackApplied = homeStackProgress;
+  const bool expandedLook = homeStackProgress > 0.40f;
+  for (int i=0; i<3; ++i) {
+    const MotoNavUI::HomeStackRect r=MotoNavUI::stackRect(i,homeStackProgress);
+    if (lv_obj_get_x(homeOrbit[i])!=r.x || lv_obj_get_y(homeOrbit[i])!=r.y)
+      lv_obj_set_pos(homeOrbit[i],r.x,r.y);
+    if (lv_obj_get_width(homeOrbit[i])!=r.w ||
+        lv_obj_get_height(homeOrbit[i])!=r.h)
+      lv_obj_set_size(homeOrbit[i],r.w,r.h);
+  }
+  for (int i=0; i<2; ++i) {
+    const MotoNavUI::HomeStackRect r=MotoNavUI::stackRect(i,homeStackProgress);
+    setLvglPos(homeBackIcon[i],expandedLook?21:13,expandedLook?23:21);
+    setLvglPos(homeBackTitle[i],expandedLook?63:47,expandedLook?18:27);
+    setLvglPos(homeBackSubtitle[i],63,46);
+    setLvglPos(homeBackChevron[i],r.w-44,28);
+    setLvglHidden(homeBackSubtitle[i],!expandedLook);
+    setLvglHidden(homeBackChevron[i],!expandedLook);
+    if (homeStackExpandedStyle != expandedLook) {
+      lv_obj_set_style_text_font(homeBackTitle[i],
+        expandedLook ? &lv_font_montserrat_20 : &lv_font_montserrat_16,0);
+      setLvglTextColor(homeBackTitle[i],
+        MotoNavUI::color(expandedLook?MotoNavUI::Text:MotoNavUI::Muted));
+    }
+  }
+  homeStackExpandedStyle=expandedLook;
+  lv_obj_set_y(homeTitleLabel, lroundf(66-34*homeStackProgress));
+  lv_obj_set_x(homeStatusChip,lroundf(207-4*homeStackProgress));
+  const MotoNavUI::HomeStackRect clock=MotoNavUI::stackRect(
+      MotoNavUI::StackClock,homeStackProgress);
+  setLvglPos(homeDragHandle,(clock.w-36)/2,clock.h-9);
+  setLvglHidden(homeDivider,homeStackProgress>0.08f);
+}
+
 static void lvglHybridTick() {
   if (!lvglUiReady) return;
 
@@ -807,6 +968,7 @@ static void lvglHybridTick() {
   bool showRobot = page == 4 && !sliding && !pairOn && !callOn && !fxOn;
   bool showStock = page == 5 && !sliding && !pairOn && !callOn && !fxOn;
   bool showHome = page == 0 && !inNav && !sliding && !pairOn && !callOn && !fxOn && !staleShown;
+  homeStackTick(showHome);
   // Keep the GFX map, turn instructions, lanes and camera data untouched.
   // LVGL contributes a type-consistent speed panel only in live map mode.
   // Side status chips defer to lanes/camera so no informational overlay
@@ -885,7 +1047,7 @@ static void lvglHybridTick() {
   bool homeTextChanged = false;
   setLvglHidden(homeTitleLabel, !showHome);
   setLvglHidden(homeStatusChip, !showHome);
-  setLvglHidden(homeWeatherCard, !showHome);
+  setLvglHidden(homeWeatherCard, !showHome || homeStackProgress > 0.08f);
   for (int i = 0; i < 3; ++i) setLvglHidden(homeOrbit[i], !showHome);
   setLvglHidden(homeHintLabel, true);
   if (showHome) {
