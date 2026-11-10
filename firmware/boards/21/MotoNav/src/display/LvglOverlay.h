@@ -510,7 +510,7 @@ static void createLvglOverlay() {
   lv_label_set_long_mode(watchTimeLabel, LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_letter_space(watchTimeLabel, -2, 0);
 
-  // Small connection indicator; no large "PHONE OFFLINE" banner.
+  // Small connection indicator; no oversized status banner.
   // This signal is diagnostic enough without dominating the watch face.
   homeStatusChip = lv_obj_create(homeOrbit[2]);
   lv_obj_remove_style_all(homeStatusChip);
