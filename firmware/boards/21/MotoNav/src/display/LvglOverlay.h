@@ -472,6 +472,9 @@ static void homeStackCardEvent(lv_event_t *event) {
   pageAt = millis();
   forceFullFlush = true;
   if (target == PAGE_STOCKS) {
+    // Match slideCommit's stock-page handshake: tapping a revealed card must
+    // refresh real quotes, not open a permanently stale snapshot.
+    pendingEvt = "T,S";
     stockDirty = true;
     drawStockPage();
   } else if (target == PAGE_COMPANION) {
