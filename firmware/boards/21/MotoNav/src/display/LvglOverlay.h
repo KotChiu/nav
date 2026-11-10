@@ -803,14 +803,17 @@ static void lvglHybridTick() {
   // can cover a higher-priority navigation cue.
   const bool liveNavHud = page == PAGE_HOME && inNav && !sliding &&
         !pairOn && !callOn && !fxOn && !staleShown && mapModeActive();
-  const bool showLiveMap = liveNavHud && !cleanOn;
+  const bool showLiveMap = liveNavHud && !cleanOn && navMapChromeAllowed();
   const bool mapHasData = navMapHasFrame();
+  const bool cameraHudVisible = navMapCameraHudVisible();
   const bool showStatusChips = MotoNavUI::navChromeShowStatus(
-      showLiveMap, cleanOn, laneN > 0 && ringActive, hasCam);
+      showLiveMap, cleanOn, laneN > 0 && ringActive, cameraHudVisible);
   MotoNavUI::mapOverlayUpdate(showStatusChips, mapHasData,
                                bleConnected && bleAuthed);
-  MotoNavUI::navSpeedUpdate(liveNavHud && speedKmh >= 0, speedKmh, hasCam,
-                             hasCam && camLimit > 0 && speedKmh > camLimit);
+  MotoNavUI::navSpeedUpdate(liveNavHud && speedKmh >= 0, speedKmh,
+                             cameraHudVisible,
+                             cameraHudVisible && camLimit > 0 &&
+                             speedKmh > camLimit);
   static bool lastShowHome = false;
   const bool homeJustShown = showHome && !lastShowHome;
   lastShowHome = showHome;
