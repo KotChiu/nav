@@ -262,17 +262,23 @@ static void updateStockNameCanvas(int index) {
     lv_obj_invalidate(stockNameCanvases[index]);
     return;
   }
-  const int bpr = (im.showW + 1) / 2;
-  const int y0 = im.showH < STOCK_NAME_H ? (STOCK_NAME_H - im.showH) / 2 : 0;
+  // Always fit the ENTIRE phone-supplied CJK name into the 164x28 window,
+  // rather than simply cropping its rightmost characters like the old list.
+  // The original 4bpp bitmap still comes from the real phone protocol.
+  const int bpr = ((int)im.showW + 1) / 2;
   const int w = min((int)im.showW, STOCK_NAME_W);
   const int h = min((int)im.showH, STOCK_NAME_H);
+  const int y0 = (STOCK_NAME_H - h) / 2;
   for (int y = 0; y < h; y++) {
+    const int srcY = (int)((uint32_t)y * im.showH / h);
     for (int x = 0; x < w; x++) {
-      uint8_t packed = im.show[y * bpr + (x >> 1)];
-      uint8_t nib = (x & 1) ? (packed & 0x0F) : (packed >> 4);
+      const int srcX = (int)((uint32_t)x * im.showW / w);
+      const uint8_t packed = im.show[srcY * bpr + (srcX >> 1)];
+      const uint8_t nib = (srcX & 1) ? (packed & 0x0F) : (packed >> 4);
       if (!nib) continue;
-      uint8_t value = nib * 17;
-      uint16_t gray = ((value >> 3) << 11) | ((value >> 2) << 5) | (value >> 3);
+      const uint8_t value = nib * 17;
+      const uint16_t gray = ((value >> 3) << 11) |
+                            ((value >> 2) << 5) | (value >> 3);
       stockNameBuffers[index][(y0 + y) * STOCK_NAME_W + x] = lvglColor565(gray);
     }
   }
