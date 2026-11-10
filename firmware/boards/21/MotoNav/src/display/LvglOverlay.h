@@ -41,6 +41,7 @@ static lv_obj_t *homeHintLabel = nullptr;
 static lv_obj_t *homeOrbit[3] = {};
 static lv_obj_t *homeWeatherCard = nullptr;
 static lv_obj_t *homeStatusChip = nullptr;
+static lv_obj_t *homeStatusDot = nullptr;
 static lv_obj_t *musicHeaderLabel = nullptr;
 static lv_obj_t *musicPlaceholder = nullptr;
 static lv_obj_t *musicStatusLabel = nullptr;
@@ -480,73 +481,80 @@ static void createLvglOverlay() {
   lv_obj_add_flag(homeOrbit[1], LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(homeOrbit[1], homeStackCardEvent,
                       LV_EVENT_CLICKED, (void *)(intptr_t)PAGE_COMPANION);
+  // One calm, focused surface instead of a stack of technical status labels.
+  // The two peeking pages remain reachable with 49px exposed touch bands.
   homeOrbit[2] = MotoNavUI::panel(screen, 67, 115, 332, 245, 29,
                                  MotoNavUI::SurfaceRaised);
-  MotoNavUI::icon(homeOrbit[2], MotoNavUI::Icon::Map, 279, 15,
-                  MotoNavUI::Accent);
   for (int i = 0; i < 3; i++)
     lv_obj_add_flag(homeOrbit[i], LV_OBJ_FLAG_HIDDEN);
 
+  // The brand lives ABOVE the focused card, never repeated inside it.
   homeTitleLabel = MotoNavUI::label(screen, "MOTONAV",
                     &lv_font_montserrat_20, MotoNavUI::Accent);
   lv_obj_align(homeTitleLabel, LV_ALIGN_TOP_MID, 0, 66);
   lv_obj_set_style_text_letter_space(homeTitleLabel, 4, 0);
   lv_obj_add_flag(homeTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
-  watchDateLabel = MotoNavUI::label(screen, "SYNC PHONE TO SET TIME",
+  // An unsynchronized clock is simply "--:--", not a developer instruction.
+  // Date stays empty until the actual local date is known.
+  watchDateLabel = MotoNavUI::label(homeOrbit[2], "",
                     &lv_font_montserrat_16, MotoNavUI::Muted);
-  lv_obj_align(watchDateLabel, LV_ALIGN_TOP_MID, 0, 130);
-  lv_obj_add_flag(watchDateLabel, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_pos(watchDateLabel, 25, 28);
+  lv_obj_set_size(watchDateLabel, 177, 25);
+  lv_label_set_long_mode(watchDateLabel, LV_LABEL_LONG_CLIP);
 
-  watchTimeLabel = MotoNavUI::label(screen, "--:--",
-                    &lv_font_montserrat_48, MotoNavUI::Text);
-  lv_obj_align(watchTimeLabel, LV_ALIGN_TOP_MID, 0, 164);
-  lv_obj_set_style_text_letter_space(watchTimeLabel, -1, 0);
-  lv_obj_add_flag(watchTimeLabel, LV_OBJ_FLAG_HIDDEN);
+  watchTimeLabel = MotoNavUI::label(homeOrbit[2], "--:--",
+                    &lv_font_montserrat_64, MotoNavUI::Text);
+  lv_obj_set_pos(watchTimeLabel, 19, 60);
+  lv_obj_set_size(watchTimeLabel, 295, 90);
+  lv_label_set_long_mode(watchTimeLabel, LV_LABEL_LONG_CLIP);
+  lv_obj_set_style_text_letter_space(watchTimeLabel, -2, 0);
 
-  homeStatusChip = MotoNavUI::panel(screen, 132, 237, 202, 40, 20,
-                     MotoNavUI::SurfaceRaised);
-  lv_obj_add_flag(homeStatusChip, LV_OBJ_FLAG_HIDDEN);
-  homeStatusLabel = MotoNavUI::label(homeStatusChip, "PHONE OFFLINE",
-                    &lv_font_montserrat_16, MotoNavUI::Warm);
-  lv_obj_center(homeStatusLabel);
+  // Small connection indicator; no large "PHONE OFFLINE" banner.
+  // This signal is diagnostic enough without dominating the watch face.
+  homeStatusChip = lv_obj_create(homeOrbit[2]);
+  lv_obj_remove_style_all(homeStatusChip);
+  lv_obj_set_pos(homeStatusChip, 207, 19);
+  lv_obj_set_size(homeStatusChip, 116, 34);
+  MotoNavUI::noInteraction(homeStatusChip);
+  homeStatusDot = lv_obj_create(homeStatusChip);
+  lv_obj_remove_style_all(homeStatusDot);
+  lv_obj_set_pos(homeStatusDot, 4, 12);
+  lv_obj_set_size(homeStatusDot, 8, 8);
+  lv_obj_set_style_radius(homeStatusDot, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_opa(homeStatusDot, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(homeStatusDot,
+                           MotoNavUI::color(MotoNavUI::Faint), 0);
+  MotoNavUI::noInteraction(homeStatusDot);
+  homeStatusLabel = MotoNavUI::label(homeStatusChip, "OFFLINE",
+                    &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_set_pos(homeStatusLabel, 19, 7);
+  lv_obj_set_size(homeStatusLabel, 96, 25);
+  lv_label_set_long_mode(homeStatusLabel, LV_LABEL_LONG_CLIP);
 
-  homeWeatherCard = MotoNavUI::panel(screen, 81, 291, 304, 85, 23);
-  lv_obj_add_flag(homeWeatherCard, LV_OBJ_FLAG_HIDDEN);
+  // One hairline divider, then a compact weather information row.
+  lv_obj_t *separator = lv_obj_create(homeOrbit[2]);
+  lv_obj_remove_style_all(separator);
+  lv_obj_set_size(separator, 282, 1);
+  lv_obj_set_pos(separator, 25, 161);
+  lv_obj_set_style_bg_color(separator, MotoNavUI::color(MotoNavUI::Line), 0);
+  lv_obj_set_style_bg_opa(separator, LV_OPA_COVER, 0);
+  MotoNavUI::noInteraction(separator);
+
+  homeWeatherCard = MotoNavUI::panel(homeOrbit[2], 18, 174, 296, 62, 18,
+                                     MotoNavUI::Surface);
+  lv_obj_set_style_border_width(homeWeatherCard, 0, 0);
+  MotoNavUI::icon(homeWeatherCard, MotoNavUI::Icon::Weather, 12, 19,
+                  MotoNavUI::Cool);
   watchTempLabel = MotoNavUI::label(homeWeatherCard, "--°",
                     &lv_font_montserrat_40, MotoNavUI::Text);
-  lv_obj_set_pos(watchTempLabel, 24, 14);
-  watchForecastLabel = MotoNavUI::label(homeWeatherCard, "WEATHER FROM PHONE",
+  lv_obj_set_pos(watchTempLabel, 47, 7);
+  lv_obj_set_size(watchTempLabel, 90, 51);
+  lv_label_set_long_mode(watchTempLabel, LV_LABEL_LONG_CLIP);
+  watchForecastLabel = MotoNavUI::label(homeWeatherCard, "",
                     &lv_font_montserrat_16, MotoNavUI::Muted);
-  lv_obj_set_size(watchForecastLabel, 175, 49);
-  lv_label_set_long_mode(watchForecastLabel, LV_LABEL_LONG_DOT);
-  lv_obj_set_pos(watchForecastLabel, 119, 30);
-
-  // The visible homepage is one focused card. Move existing live widgets
-  // into it instead of duplicating their BLE/weather/clock data sources.
-  lv_obj_set_parent(homeTitleLabel, homeOrbit[2]);
-  lv_obj_set_pos(homeTitleLabel, 24, 15);
-  lv_obj_set_parent(watchDateLabel, homeOrbit[2]);
-  lv_obj_set_pos(watchDateLabel, 24, 57);
-  lv_obj_set_parent(watchTimeLabel, homeOrbit[2]);
-  lv_obj_set_pos(watchTimeLabel, 23, 81);
-
-  lv_obj_set_parent(homeStatusChip, homeOrbit[2]);
-  lv_obj_set_pos(homeStatusChip, 18, 143);
-  lv_obj_set_size(homeStatusChip, 204, 37);
-  MotoNavUI::icon(homeStatusChip, MotoNavUI::Icon::Link, 9, 7, MotoNavUI::Cool);
-  lv_obj_set_pos(homeStatusLabel, 37, 10);
-
-  lv_obj_set_parent(homeWeatherCard, homeOrbit[2]);
-  lv_obj_set_pos(homeWeatherCard, 18, 189);
-  lv_obj_set_size(homeWeatherCard, 296, 47);
-  lv_obj_set_style_radius(homeWeatherCard, 17, 0);
-  MotoNavUI::icon(homeWeatherCard, MotoNavUI::Icon::Weather, 13, 11,
-                  MotoNavUI::Cool);
-  lv_obj_set_style_text_font(watchTempLabel, &lv_font_montserrat_28, 0);
-  lv_obj_set_pos(watchTempLabel, 46, 5);
-  lv_obj_set_pos(watchForecastLabel, 118, 13);
-  lv_obj_set_size(watchForecastLabel, 167, 28);
+  lv_obj_set_pos(watchForecastLabel, 146, 22);
+  lv_obj_set_size(watchForecastLabel, 141, 26);
   lv_label_set_long_mode(watchForecastLabel, LV_LABEL_LONG_DOT);
 
   homeHintLabel = MotoNavUI::label(screen, "SWIPE TO EXPLORE",
@@ -881,12 +889,14 @@ static void lvglHybridTick() {
   for (int i = 0; i < 3; ++i) setLvglHidden(homeOrbit[i], !showHome);
   setLvglHidden(homeHintLabel, true);
   if (showHome) {
-    const char *status = waitSt == WAIT_LOST ? "LINK LOST" :
-                         ((bleConnected && bleAuthed) ? "CONNECTED" : "PHONE OFFLINE");
-    uint32_t statusColor = waitSt == WAIT_LOST ? C_UI_ACCENT2
-      : ((bleConnected && bleAuthed) ? C_UI_INFO : C_UI_SUB);
+    const bool linked = bleConnected && bleAuthed;
+    const char *status = waitSt == WAIT_LOST ? "LOST" :
+                         (linked ? "LINKED" : "OFFLINE");
+    const uint32_t statusColor = linked ? C_UI_INFO :
+                                 waitSt == WAIT_LOST ? C_UI_ACCENT2 : C_UI_DIM;
     if (setLvglLabelText(homeStatusLabel, status)) homeTextChanged = true;
     setLvglTextColor(homeStatusLabel, lvglColor565(statusColor));
+    setLvglBgColor(homeStatusDot, lvglColor565(statusColor));
   }
 
   setLvglHidden(watchTimeLabel, !showHome);
@@ -916,11 +926,10 @@ static void lvglHybridTick() {
     if (setLvglLabelText(watchTempLabel, temperature)) homeTextChanged = true;
     char forecast[36];
     if (wxHave && !wxHourly && wxN > 0)
-      snprintf(forecast, sizeof(forecast), "%s %d°   |   %s %d°",
-               LV_SYMBOL_DOWN, wxFl[0], LV_SYMBOL_UP, wxFh[0]);
+      snprintf(forecast, sizeof(forecast), "L %d°   H %d°", wxFl[0], wxFh[0]);
     else if (wxHave && wxHourly && wxN > 0)
-      snprintf(forecast, sizeof(forecast), "NEXT HOUR  %d°", wxFh[0]);
-    else snprintf(forecast, sizeof(forecast), "WEATHER FROM PHONE");
+      snprintf(forecast, sizeof(forecast), "NEXT %d°", wxFh[0]);
+    else snprintf(forecast, sizeof(forecast), "");
     if (setLvglLabelText(watchForecastLabel, forecast)) homeTextChanged = true;
   }
 
