@@ -1,4 +1,5 @@
 #include <cassert>
+#include <initializer_list>
 #include "../boards/21/MotoNav/ui/NavChromePolicy.h"
 
 using namespace MotoNavUI;
