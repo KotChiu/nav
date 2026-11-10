@@ -5,6 +5,7 @@
 #include "../../ui/LvglIcons.h"
 #include "../../ui/LvglMapOverlay.h"
 #include "../../ui/LvglNavSpeed.h"
+#include "../../ui/LvglNavDistance.h"
 #include "../../ui/LvglSettingsPanel.h"
 #include "../../ui/LvglRideDashboard.h"
 #include "../../ui/LvglWeatherDashboard.h"
@@ -699,6 +700,7 @@ static void createLvglOverlay() {
 
   MotoNavUI::mapOverlayCreate(screen);
   MotoNavUI::navSpeedCreate(screen);
+  MotoNavUI::navDistanceCreate(screen);
 }
 
 static void lvglHybridInit() {
@@ -814,6 +816,17 @@ static void lvglHybridTick() {
                              cameraHudVisible,
                              cameraHudVisible && camLimit > 0 &&
                              speedKmh > camLimit);
+  // Use the existing firmware formatter: no predicted distance, no duplicated
+  // phone parsing. Keep the converted string stable across unchanged frames.
+  const bool showNativeDistance = liveNavHud && !cruiseOn && navDist >= 0;
+  static int lastNativeNavMetres = INT32_MIN;
+  static String nativeDistanceText;
+  if (showNativeDistance && navDist != lastNativeNavMetres) {
+    lastNativeNavMetres = navDist;
+    nativeDistanceText = distText(navDist);
+  }
+  MotoNavUI::navDistanceUpdate(showNativeDistance, nativeDistanceText.c_str(),
+       navDist <= STAGE_NEAR_M);
   static bool lastShowHome = false;
   const bool homeJustShown = showHome && !lastShowHome;
   lastShowHome = showHome;
