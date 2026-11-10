@@ -1,73 +1,16 @@
 #pragma once
-// 首页骑手动画和等待画面。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
+// 首页状态与早期启动占位。实际主页采用新的 LVGL 仪表盘。
 // ================= 整屏画面 =================
 
 #define WAIT_READY  0
 #define WAIT_NOLINK 1
 #define WAIT_LOST   2
 
-// ================= v4.6 首页像素骑手（代替 v3.6 的猫猫） =================
-// 原创的像素女骑手 + 小摩托：连上手机时围巾和马尾随风飘、偶尔眨眼、每隔几秒挥挥手；
-// 没连上时摩托车灯熄灭、她闭眼打瞌睡，头上飘 z
-// v4.6 首页像素骑手（原创角色）：40×26，每格放大 RIDER_S 倍；由 rider2.py 生成
-#include "../../resources/RiderSprites.h"
-uint16_t riderColor(char ch) {
-  switch (ch) {
-    case 'K': return 0x18C6;
-    case 'H': return 0x2E57;
-    case 'h': return 0xAFBD;
-    case 'V': return 0x29ED;
-    case 'v': return 0x7D1C;
-    case 'S': return 0xFEB5;
-    case 'E': return 0x18C6;
-    case 'B': return 0xFCB2;
-    case 'R': return 0x9225;
-    case 'J': return 0xFC65;
-    case 'j': return 0xD2E2;
-    case 'F': return 0xFF07;
-    case 'G': return 0x39E8;
-    case 'P': return 0x3A91;
-    case 'p': return 0x29AC;
-    case 'b': return 0x6A25;
-    case 'W': return 0xFFFF;
-    case 'M': return 0xE187;
-    case 'm': return 0xA0E5;
-    case 'C': return 0xCE7A;
-    case 'c': return 0x8432;
-    case 'T': return 0x2966;
-    case 't': return 0x94B4;
-    case 'L': return 0xFF8F;
-    case 'l': return 0x6B6C;
-    case 's': return 0x4185;
-    default: return 0;
-  }
-}
-
-#define RIDER_S  5
-#define RIDER_X0 (CX - RIDER_W * RIDER_S / 2)
-#define RIDER_Y0 60
+// Original pixel rider retired; the home instrument is fully LVGL-rendered.
 bool onWaitScreen = false;
 bool sliding = false;                       // v5.5 正在拖动/滑动换页：别的画面先别画
 int waitSt = 0;
-int riderPrevF = -1, riderPrevZ = -2;
-bool catForce = false;                      // 首页刚重画：马上画一次
-
-// f = 第几帧；zph = 睡觉时 z 的动画帧（-1 = 不睡）
-void drawRider(int f, int zph) {
-  gfx->fillRect(RIDER_X0 - 4, RIDER_Y0 - 40, RIDER_W * RIDER_S + 8, RIDER_H * RIDER_S + 42, C_BLACK);
-  drawStatus();                             // v7.2 上面擦黑的那块盖住了蓝牙点和电量：马上补画（z 字母画在它上面）
-  for (int y = 0; y < RIDER_H; y++) {
-    const char *row = RIDER[f][y];
-    for (int x = 0; row[x] && x < RIDER_W; x++) {
-      uint16_t c = riderColor(row[x]);
-      if (c || row[x] == 'K') gfx->fillRect(RIDER_X0 + x * RIDER_S, RIDER_Y0 + y * RIDER_S, RIDER_S, RIDER_S, c ? c : 0x18C6);
-    }
-  }
-  if (zph >= 0) {                           // 三个 z 从她头顶往右上方飘
-    for (int k = 0; k <= zph; k++)
-      printCentered("z", CX + 4 + k * 13, RIDER_Y0 + 2 - k * 13, 2 + (k > 0 ? 1 : 0), k == zph ? C_UI_ACCENT : C_UI_SUB);
-  }
-}
+// Bitmap rider animation removed; idle page is now purposefully static.
 
 // 每 0.1 秒检查一次，样子变了才重画（函数名沿用 v3.6）
 void animateCat() {
@@ -110,8 +53,9 @@ void drawWaiting(int st) {
   if (page == 1) { onWaitScreen = false; wxDirty = true; return; }   // v5.3 正在看天气：先不画首页，滑回来时再画
   if (page >= 3 && page <= 6) { onWaitScreen = false; needFlush = true; return; }
   gfx->fillScreen(C_UI_BG);
-  drawThemeRing();
-  if (lvglUiReady) gfx->fillRoundRect(CX - 126, 252, 252, 91, 21, C_UI_PANEL);
+  // Native LVGL orbit, clock and weather card own the idle screen. During
+  // early boot the old dial ring is a harmless low-contrast fallback.
+  if (!lvglUiReady) drawThemeRing();
   onWaitScreen = true;
   if (st == WAIT_LOST) drawRedRing();
   if (!lvglUiReady) {

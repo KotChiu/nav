@@ -1,4 +1,5 @@
 #pragma once
+#include <lvgl.h>
 // 抗锯齿矢量图元、文字工具和转向图标。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
 // ================= 基础画图工具 =================
 
@@ -224,6 +225,36 @@ float max4(float a, float b, float c, float d) { return fmaxf(fmaxf(a, b), fmaxf
 
 // 居中打印一行字（自带字体每个字符宽 6*size 像素）
 void printCentered(const String &s, int x, int y, int size, uint16_t color) {
+  if (lvglUiReady && inNav) {
+    const lv_font_t *font = size<=1 ? &lv_font_montserrat_16 :
+      size==2 ? &lv_font_montserrat_20 : size==3 ? &lv_font_montserrat_24 :
+      size==4 ? &lv_font_montserrat_28 : size==5 ? &lv_font_montserrat_40 : &lv_font_montserrat_48;
+    int width=0;
+    lv_font_glyph_dsc_t d;
+    for(unsigned i=0;i<s.length();++i)
+      if(lv_font_get_glyph_dsc(font,&d,(uint8_t)s[i],(uint8_t)s[i+1])) width+=d.adv_w;
+    int pen=x-width/2;
+    uint16_t *fb=gfx->getFramebuffer();
+    if(!fb) return;
+    for(unsigned i=0;i<s.length();++i) {
+      if(!lv_font_get_glyph_dsc(font,&d,(uint8_t)s[i],(uint8_t)s[i+1])) continue;
+      const uint8_t *bits=lv_font_get_glyph_bitmap(font,(uint8_t)s[i]);
+      if(bits && d.bpp) {
+        int top=y+font->line_height-font->base_line-d.box_h-d.ofs_y;
+        for(int yy=0;yy<d.box_h;++yy) for(int xx=0;xx<d.box_w;++xx) {
+          int bit=(yy*d.box_w+xx)*d.bpp;
+          int a=(bits[bit/8]>>(8-d.bpp-bit%8))&((1<<d.bpp)-1);
+          int px=pen+d.ofs_x+xx, py=top+yy;
+          if(a && px>=0 && px<LCD_WIDTH && py>=0 && py<LCD_HEIGHT) {
+            uint16_t &dst=fb[py*LCD_WIDTH+px];
+            dst=blend565(dst,color,a*255/((1<<d.bpp)-1));
+          }
+        }
+      }
+      pen+=d.adv_w;
+    }
+    return;
+  }
   gfx->setTextSize(size);
   gfx->setTextColor(color);
   gfx->setCursor(x - (int)s.length() * 6 * size / 2, y);

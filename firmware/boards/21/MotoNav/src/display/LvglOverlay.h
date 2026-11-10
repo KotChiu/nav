@@ -1,8 +1,16 @@
 #pragma once
 
 #include <lvgl.h>
-#include "../../resources/WatchDigits.c"
-#include "../../CompanionFace.h"
+#include "../../ui/VisualLanguage.h"
+#include "../../ui/LvglPhoneBitmap.h"
+#include "../../ui/LvglIcons.h"
+#include "../../ui/LvglMapOverlay.h"
+#include "../../ui/LvglNavSpeed.h"
+#include "../../ui/LvglNavDistance.h"
+#include "../../ui/HomeStackMotion.h"
+#include "../../ui/LvglSettingsPanel.h"
+#include "../../ui/LvglRideDashboard.h"
+#include "../../ui/LvglWeatherDashboard.h"
 
 static inline lv_color_t lvglColor565(uint16_t color) {
   lv_color_t out;
@@ -25,41 +33,57 @@ volatile uint32_t lvglTextColorChanges = 0;
 static FlushRect lvglDirtyRects[FLUSH_RECT_MAX];
 static int lvglDirtyRectCount = 0;
 static lv_obj_t *musicButtons[3] = {nullptr, nullptr, nullptr};
-static lv_obj_t *musicButtonLabels[3] = {nullptr, nullptr, nullptr};
+static lv_obj_t *musicGlyphs[3] = {nullptr, nullptr, nullptr};
+static lv_obj_t *musicPauseGlyph = nullptr;
 static lv_obj_t *pageDotObjs[4] = {nullptr, nullptr, nullptr, nullptr};
-static lv_obj_t *settingsSlider = nullptr;
-static lv_obj_t *settingsBrightnessLabel = nullptr;
-static lv_obj_t *settingsTitleLabel = nullptr;
-static lv_obj_t *settingsSubLabel = nullptr;
-static lv_obj_t *settingsHintLabel = nullptr;
-static lv_obj_t *settingsCard = nullptr;
+// Settings is now a separate stateful controller in LvglSettingsPanel.h.
 static lv_obj_t *homeTitleLabel = nullptr;
 static lv_obj_t *homeStatusLabel = nullptr;
 static lv_obj_t *homeHintLabel = nullptr;
+static lv_obj_t *homeOrbit[3] = {};
+static lv_obj_t *homeBackTitle[2] = {};
+static lv_obj_t *homeBackSubtitle[2] = {};
+static lv_obj_t *homeBackIcon[2] = {};
+static lv_obj_t *homeBackChevron[2] = {};
+static lv_obj_t *homeDivider = nullptr;
+static lv_obj_t *homeDragHandle = nullptr;
+// Gesture state lives alongside the LVGL scene; the existing page-swipe
+// compositor only delegates Home vertical motion to this interaction.
+static float homeStackProgress = 0.0f;
+static float homeStackStartProgress = 0.0f;
+static float homeStackAnimFrom = 0.0f;
+static float homeStackAnimTo = 0.0f;
+static float homeStackApplied = -1.0f;
+static unsigned long homeStackAnimAt = 0;
+static unsigned long homeStackRenderAt = 0;
+static int homeStackLastDy = 0;
+static bool homeStackGestureActive = false;
+static bool homeStackSettling = false;
+static bool homeStackExpandedStyle = false;
+static lv_obj_t *homeWeatherCard = nullptr;
+static lv_obj_t *homeStatusChip = nullptr;
+static lv_obj_t *homeStatusDot = nullptr;
+static MotoNavUI::PhoneBitmap musicText[3];
+static MotoNavUI::PhoneBitmap homeStockName;
+static lv_obj_t *musicHeaderLabel = nullptr;
+static lv_obj_t *musicPlaceholder = nullptr;
+static lv_obj_t *musicStatusLabel = nullptr;
+static lv_obj_t *musicFooterLabel = nullptr;
+static lv_obj_t *photoTitleLabel = nullptr;
+static lv_obj_t *photoEmptyCard = nullptr;
+static lv_obj_t *photoEmptyTitle = nullptr;
+static lv_obj_t *photoEmptyHint = nullptr;
 static lv_obj_t *watchTimeLabel = nullptr;
 static lv_obj_t *watchDateLabel = nullptr;
 static lv_obj_t *watchTempLabel = nullptr;
 static lv_obj_t *watchForecastLabel = nullptr;
 static uint32_t lastWatchEpoch = 0;
-static lv_obj_t *robotHalo = nullptr;
-static lv_obj_t *robotBody = nullptr;
-static lv_obj_t *robotFace = nullptr;
-static lv_obj_t *robotEyes[2] = {nullptr, nullptr};
-static lv_obj_t *robotTitleLabel = nullptr;
-static lv_obj_t *robotMoodLabel = nullptr;
-static uint32_t robotLastAnimAt = 0;
-static uint32_t robotVisibleTime = 0;
-static uint32_t robotSampleAt = 0;
-static uint32_t robotManualAt = 0;
-static CompanionFace::Expression robotExpression = CompanionFace::Calm;
-static bool robotWasVisible = false;
-static bool robotLongPressed = false;
-static int robotPoseKey = -1;
-static String robotLastMood;
+// Ride page is now an instrument dashboard; no animated expression state.
 static lv_obj_t *batteryLabel = nullptr;
 static lv_obj_t *stockTitleLabel = nullptr;
 static lv_obj_t *stockStatusLabel = nullptr;
 static lv_obj_t *stockList = nullptr;
+static lv_obj_t *stockEmptyCard = nullptr;
 static lv_obj_t *stockRows[STOCK_MAX] = {};
 static lv_obj_t *stockCodeLabels[STOCK_MAX] = {};
 static lv_obj_t *stockPriceLabels[STOCK_MAX] = {};
@@ -150,7 +174,8 @@ static void lvglClearDirtyArea() {
 
 static void lvglTouchReadCb(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   (void)drv;
-  data->state = touchDown && !dragging ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
+  data->state = touchDown && !dragging && !homeStackGestureActive
+      ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
   if (touchDown) {
     float x = touchX1 - CX, y = touchY1 - CX;
     touchVectorToCanvas(x, y);
@@ -171,48 +196,10 @@ static void musicButtonEventCb(lv_event_t *event) {
            lroundf(CX + bx * dx + by * dy));
 }
 
-static void robotTapEventCb(lv_event_t *event) {
-  const lv_event_code_t code = lv_event_get_code(event);
-  if (code == LV_EVENT_PRESSED) robotLongPressed = false;
-  else if (code == LV_EVENT_LONG_PRESSED) {
-    robotLongPressed = true;
-    robotExpression = robotExpression == CompanionFace::Sleepy
-      ? CompanionFace::Calm : CompanionFace::Sleepy;
-    robotManualAt = robotVisibleTime;
-    robotPoseKey = -1;
-  } else if (code == LV_EVENT_CLICKED && !robotLongPressed) {
-    robotExpression = CompanionFace::next(robotExpression);
-    robotManualAt = robotVisibleTime;
-    robotPoseKey = -1;
-  }
-}
-
-static void saveBrightness() {
-  Preferences pr;
-  pr.begin("motonav", false);
-  pr.putInt("bright", screenBrightness);
-  pr.end();
-}
-
-static void brightnessEventCb(lv_event_t *event) {
-  lv_event_code_t code = lv_event_get_code(event);
-  if (code == LV_EVENT_PRESSED) {
-    lvglCaptureTouch = true;
-  } else if (code == LV_EVENT_VALUE_CHANGED) {
-    screenBrightness = constrain((int)lv_slider_get_value(settingsSlider), 5, 180);
-    panel->setBrightness(screenBrightness);
-    lv_label_set_text_fmt(settingsBrightnessLabel, "%d%%",
-                          (screenBrightness * 100 + 92) / 180);
-    lv_obj_invalidate(settingsSlider);
-  } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-    lvglCaptureTouch = false;
-    saveBrightness();
-  }
-}
-
 static lv_obj_t *makeMusicButton(int index) {
   lv_obj_t *button = lv_obj_create(lv_scr_act());
   lv_obj_set_size(button, 86, 86);
+  lv_obj_set_style_pad_all(button, 0, 0);
   lv_obj_set_style_radius(button, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_border_width(button, 1, 0);
   lv_obj_set_style_border_color(button, lvglColor565(C_UI_LINE), 0);
@@ -222,12 +209,29 @@ static lv_obj_t *makeMusicButton(int index) {
   lv_obj_clear_flag(button, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_event_cb(button, musicButtonEventCb, LV_EVENT_CLICKED, (void *)(intptr_t)index);
 
-  lv_obj_t *label = lv_label_create(button);
-  lv_obj_set_style_text_color(label, lv_color_white(), 0);
-  lv_obj_set_style_text_font(label, &lv_font_montserrat_28, 0);
-  lv_obj_center(label);
-  musicButtonLabels[index] = label;
+  musicGlyphs[index] = MotoNavUI::icon(button,
+     index == 0 ? MotoNavUI::Icon::Previous :
+     index == 2 ? MotoNavUI::Icon::Next : MotoNavUI::Icon::Play,
+     31, 31, MotoNavUI::Text, 3);
+  if (index == 1) {
+    musicPauseGlyph = MotoNavUI::icon(button, MotoNavUI::Icon::Pause,
+                                       31, 31, MotoNavUI::Background, 3);
+    lv_obj_add_flag(musicPauseGlyph, LV_OBJ_FLAG_HIDDEN);
+  }
   return button;
+}
+
+// Icon glyphs are paths, not missing LV_SYMBOL font characters. Update only
+// when the enabled/disabled color changes to avoid per-frame line invalidation.
+static void colorMusicGlyph(lv_obj_t *glyph, uint32_t rgb) {
+  if (!glyph) return;
+  lv_color_t wanted = MotoNavUI::color(rgb);
+  const uint32_t count = lv_obj_get_child_cnt(glyph);
+  for (uint32_t i = 0; i < count; ++i) {
+    lv_obj_t *child = lv_obj_get_child(glyph, i);
+    if (lv_color_to16(lv_obj_get_style_line_color(child, 0)) != lv_color_to16(wanted))
+      lv_obj_set_style_line_color(child, wanted, 0);
+  }
 }
 
 static void configureOpaqueLabel(lv_obj_t *label, int width, int height) {
@@ -248,12 +252,14 @@ static void configureTransparentLabel(lv_obj_t *label, int width, int height) {
   lv_obj_set_style_bg_opa(label, LV_OPA_TRANSP, 0);
 }
 
-#define STOCK_NAME_W 180
+// One vertically scrolling card per quote. Text and chart share the card
+// background; the viewport extends into the lower circular screen.
+#define STOCK_NAME_W 164
 #define STOCK_NAME_H 28
-#define STOCK_CHART_W 306
-#define STOCK_CHART_H 52
-#define STOCK_ROW_H 124
-#define STOCK_PANEL_COLOR 0x000000
+#define STOCK_CHART_W 280
+#define STOCK_CHART_H 98
+#define STOCK_ROW_H 252
+#define STOCK_PANEL_COLOR 0x191B21
 
 static void stockCanvasRect(lv_color_t *buffer, int width, int x, int y,
                             int w, int h, lv_color_t color) {
@@ -278,18 +284,22 @@ static void updateStockNameCanvas(int index) {
     lv_obj_invalidate(stockNameCanvases[index]);
     return;
   }
-  const int bpr = (im.showW + 1) / 2;
-  const int y0 = im.showH < STOCK_NAME_H ? (STOCK_NAME_H - im.showH) / 2 : 0;
+  // Always fit the ENTIRE phone-supplied CJK name into the 164x28 window,
+  // rather than simply cropping its rightmost characters like the old list.
+  // The original 4bpp bitmap still comes from the real phone protocol.
+  const int bpr = ((int)im.showW + 1) / 2;
   const int w = min((int)im.showW, STOCK_NAME_W);
   const int h = min((int)im.showH, STOCK_NAME_H);
+  const int y0 = (STOCK_NAME_H - h) / 2;
   for (int y = 0; y < h; y++) {
+    const int srcY = (int)((uint32_t)y * im.showH / h);
     for (int x = 0; x < w; x++) {
-      uint8_t packed = im.show[y * bpr + (x >> 1)];
-      uint8_t nib = (x & 1) ? (packed & 0x0F) : (packed >> 4);
+      const int srcX = (int)((uint32_t)x * im.showW / w);
+      const uint8_t packed = im.show[srcY * bpr + (srcX >> 1)];
+      const uint8_t nib = (srcX & 1) ? (packed & 0x0F) : (packed >> 4);
       if (!nib) continue;
-      uint8_t value = nib * 17;
-      uint16_t gray = ((value >> 3) << 11) | ((value >> 2) << 5) | (value >> 3);
-      stockNameBuffers[index][(y0 + y) * STOCK_NAME_W + x] = lvglColor565(gray);
+      stockNameBuffers[index][(y0 + y) * STOCK_NAME_W + x] =
+          lv_color_mix(lv_color_hex(MotoNavUI::Text), bg, nib * 17);
     }
   }
   lv_obj_invalidate(stockNameCanvases[index]);
@@ -313,40 +323,110 @@ static void updateStockChartCanvas(int index) {
     high = max(high, (int)q.candles[i][2]);
   }
   const int span = max(1, high - low);
-  const int slot = max(10, (STOCK_CHART_W - 8) / n);
-  const int bodyWidth = max(5, min(10, slot - 6));
+
   auto py = [&](int value) {
     return 4 + (100 - value) * (STOCK_CHART_H - 8) / 100;
   };
   const lv_color_t grid = lvglColor565(C_UI_LINE);
-  stockCanvasHLine(stockChartBuffers[index], 13, grid);
-  stockCanvasHLine(stockChartBuffers[index], 25, grid);
-  stockCanvasHLine(stockChartBuffers[index], 37, grid);
-  if (n) {
-    int close = q.candles[n - 1][1];
-    int closeY = py((close - low) * 100 / span);
-    stockCanvasHLine(stockChartBuffers[index], closeY, lvglColor565(C_UI_ACCENT2));
+  for (int y : {24, 49, 74}) stockCanvasHLine(stockChartBuffers[index], y, grid);
+  const lv_color_t ink = lv_color_hex(q.changePct >= 0 ? 0xFF657A : 0x66D9A0);
+  int previousX = 4, previousY = py((q.candles[0][1]-low)*100/span);
+  for (int i = 1; i < n; ++i) {
+    const int x = 4 + i * (STOCK_CHART_W-9) / (n-1);
+    const int y = py((q.candles[i][1]-low)*100/span);
+    for (int xx = previousX; xx <= x; ++xx) {
+      const int yy = previousY + (y-previousY)*(xx-previousX)/max(1,x-previousX);
+      stockCanvasRect(stockChartBuffers[index], STOCK_CHART_W, xx, yy, 1, 2, ink);
+    }
+    previousX=x; previousY=y;
   }
-  for (int i = 0; i < n; i++) {
-    int centerX = 4 + i * slot + slot / 2;
-    int open = constrain(q.candles[i][0], low, high);
-    int close = constrain(q.candles[i][1], low, high);
-    int candleHigh = constrain(q.candles[i][2], low, high);
-    int candleLow = constrain(q.candles[i][3], low, high);
-    int openY = py((open - low) * 100 / span);
-    int closeY = py((close - low) * 100 / span);
-    int highY = py((candleHigh - low) * 100 / span);
-    int lowY = py((candleLow - low) * 100 / span);
-    uint16_t color = close >= open ? 0xF800 : 0x07E0;
-    lv_color_t c = lvglColor565(color);
-    stockCanvasRect(stockChartBuffers[index], STOCK_CHART_W, centerX, highY,
-                    1, max(1, lowY - highY + 1), c);
-    int top = min(openY, closeY);
-    int height = max(2, abs(closeY - openY));
-    stockCanvasRect(stockChartBuffers[index], STOCK_CHART_W,
-                    centerX - bodyWidth / 2, top, bodyWidth, height, c);
-  }
+  if (n == 1) stockCanvasRect(stockChartBuffers[index], STOCK_CHART_W, 138, previousY, 4, 3, ink);
   lv_obj_invalidate(stockChartCanvases[index]);
+}
+
+static void stockShowRows() {
+  for (int i = 0; i < STOCK_MAX; ++i)
+    setLvglHidden(stockRows[i], i >= stockCount);
+}
+
+// The page router sends vertical Home drags here BEFORE it starts a
+// full-screen page transition. Only a touch beginning on the stack can
+// activate it; active navigation and modal overlays always take priority.
+bool homeStackTouchMove(int dx, int dy, unsigned long now) {
+  const bool canDrag = MotoNavUI::stackGestureEnabled(
+      lvglUiReady && page == PAGE_HOME, inNav,
+      pairOn || callOn || fxOn || staleShown,
+      sliding || dragging || slideSettling, lvglCaptureTouch);
+  if (!canDrag) return false;
+  if (!homeStackGestureActive) {
+    if (touchGestureAxis != 2 || abs(dy) < DRAG_START) return false;
+    if ((dy < 0 && homeStackProgress >= 0.999f) ||
+        (dy > 0 && homeStackProgress <= 0.001f)) return false;
+    float x = touchX0-CX, y = touchY0-CX;
+    touchVectorToCanvas(x, y);
+    if (!MotoNavUI::stackTouchInArea(lroundf(CX+x),lroundf(CX+y)))
+      return false;
+    homeStackGestureActive = true;
+    homeStackSettling = false;
+    homeStackStartProgress = homeStackProgress;
+    homeStackLastDy = 0;
+    // The very same press might have started on a clickable peek card.
+    // Cancel the pending tap as soon as it becomes a deliberate drag.
+    lvglCancelPendingPress();
+  }
+  homeStackLastDy = dy;
+  homeStackProgress = MotoNavUI::stackDragProgress(
+      homeStackStartProgress, dy);
+  // The render loop samples this latest finger position at most once
+  // every 30ms. Do not reset its throttle on each 8ms touch sample.
+  (void)now;
+  return true;
+}
+
+bool homeStackTouchEnd() {
+  if (!homeStackGestureActive) return false;
+  homeStackGestureActive = false;
+  homeStackAnimFrom = homeStackProgress;
+  homeStackAnimTo = MotoNavUI::stackReleaseTarget(
+      homeStackProgress, homeStackStartProgress, homeStackLastDy);
+  homeStackAnimAt = millis();
+  homeStackSettling = fabsf(homeStackAnimFrom-homeStackAnimTo)>0.001f;
+  if (!homeStackSettling) homeStackProgress = homeStackAnimTo;
+  homeStackRenderAt = 0;
+  return true;
+}
+
+void homeStackCancel() {
+  if (!homeStackGestureActive && !homeStackSettling &&
+      homeStackProgress <= 0.001f) return;
+  homeStackGestureActive = false;
+  homeStackSettling = false;
+  homeStackProgress = 0.0f;
+  homeStackAnimTo = 0.0f;
+  homeStackApplied = -1.0f; // apply closed geometry when Home is visible again
+  homeStackRenderAt = 0;
+}
+
+// The two cards still support direct tap entry, in either stack position.
+static void homeStackCardEvent(lv_event_t *event) {
+  if (lv_event_get_code(event) != LV_EVENT_CLICKED || page != PAGE_HOME ||
+      inNav || dragging || sliding || pairOn || callOn || fxOn) return;
+  int target = (int)(intptr_t)lv_event_get_user_data(event);
+  page = target;
+  pageAt = millis();
+  forceFullFlush = true;
+  if (target == PAGE_STOCKS) {
+    // Match slideCommit's stock-page handshake: tapping a revealed card must
+    // refresh real quotes, not open a permanently stale snapshot.
+    pendingEvt = "T,S";
+    stockDirty = true;
+    drawStockPage();
+  } else {
+    onWaitScreen = false;
+    renderPage(target);
+    if (target == PAGE_WEATHER) { pendingEvt = "T,W"; wxAskAt = millis(); }
+  }
+  needFlush = true;
 }
 
 static void createLvglOverlay() {
@@ -368,244 +448,262 @@ static void createLvglOverlay() {
     pageDotObjs[i] = dot;
   }
 
-  settingsCard = lv_obj_create(screen);
-  lv_obj_set_size(settingsCard, 340, 190);
-  lv_obj_set_pos(settingsCard, CX - 170, 120);
-  lv_obj_set_style_radius(settingsCard, 22, 0);
-  lv_obj_set_style_border_width(settingsCard, 1, 0);
-  lv_obj_set_style_border_color(settingsCard, lvglColor565(C_UI_LINE), 0);
-  lv_obj_set_style_bg_opa(settingsCard, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(settingsCard, lvglColor565(C_UI_PANEL), 0);
-  lv_obj_clear_flag(settingsCard, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(settingsCard, LV_OBJ_FLAG_HIDDEN);
+  for (int i=0;i<3;++i) musicText[i].create(screen,63,158+i*44,340,i==0?38:30);
 
-  settingsSlider = lv_slider_create(settingsCard);
-  lv_obj_set_size(settingsSlider, 300, 28);
-  lv_obj_set_pos(settingsSlider, 20, 84);
-  lv_slider_set_range(settingsSlider, 5, 180);
-  lv_slider_set_value(settingsSlider, screenBrightness, LV_ANIM_OFF);
-  lv_obj_set_style_radius(settingsSlider, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(settingsSlider, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(settingsSlider, lvglColor565(C_UI_LINE), LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(settingsSlider, LV_OPA_COVER, LV_PART_INDICATOR);
-  lv_obj_set_style_bg_color(settingsSlider, lvglColor565(C_UI_ACCENT), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_color(settingsSlider, lv_color_hex(0xFFFFFF), LV_PART_KNOB);
-  lv_obj_set_style_border_width(settingsSlider, 0, LV_PART_KNOB);
-  lv_obj_set_style_pad_all(settingsSlider, 6, LV_PART_KNOB);
-  lv_obj_add_event_cb(settingsSlider, brightnessEventCb, LV_EVENT_ALL, nullptr);
-  lv_obj_add_flag(settingsSlider, LV_OBJ_FLAG_HIDDEN);
+  // Dedicated four-section control center (display / ride / link / about).
+  MotoNavUI::settingsCreate(screen);
 
-  settingsBrightnessLabel = lv_label_create(settingsCard);
-  lv_obj_set_size(settingsBrightnessLabel, 92, 42);
-  lv_obj_set_style_bg_opa(settingsBrightnessLabel, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(settingsBrightnessLabel, lvglColor565(C_UI_PANEL_2), 0);
-  lv_obj_set_style_radius(settingsBrightnessLabel, 8, 0);
-  lv_obj_set_style_pad_top(settingsBrightnessLabel, 8, 0);
-  lv_obj_set_style_text_color(settingsBrightnessLabel, lv_color_white(), 0);
-  lv_obj_set_style_text_font(settingsBrightnessLabel, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_align(settingsBrightnessLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text_fmt(settingsBrightnessLabel, "%d%%", (screenBrightness * 100 + 92) / 180);
-  lv_obj_set_pos(settingsBrightnessLabel, 124, 132);
-  lv_obj_add_flag(settingsBrightnessLabel, LV_OBJ_FLAG_HIDDEN);
+  musicHeaderLabel = MotoNavUI::label(screen, "NOW PLAYING",
+                        &lv_font_montserrat_20, MotoNavUI::Accent);
+  lv_obj_align(musicHeaderLabel, LV_ALIGN_TOP_MID, 0, 58);
+  lv_obj_set_style_text_letter_space(musicHeaderLabel, 3, 0);
+  lv_obj_add_flag(musicHeaderLabel, LV_OBJ_FLAG_HIDDEN);
+  musicStatusLabel = MotoNavUI::label(screen, "CONNECT YOUR PHONE",
+                        &lv_font_montserrat_20, MotoNavUI::Muted);
+  lv_obj_align(musicStatusLabel, LV_ALIGN_TOP_MID, 0, 275);
+  lv_obj_add_flag(musicStatusLabel, LV_OBJ_FLAG_HIDDEN);
+  musicFooterLabel = MotoNavUI::label(screen, "",
+                        &lv_font_montserrat_16, MotoNavUI::Faint);
+  lv_obj_align(musicFooterLabel, LV_ALIGN_TOP_MID, 0, 402);
+  lv_obj_add_flag(musicFooterLabel, LV_OBJ_FLAG_HIDDEN);
 
-  settingsTitleLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(settingsTitleLabel, lv_color_white(), 0);
-  lv_obj_set_style_text_font(settingsTitleLabel, &lv_font_montserrat_28, 0);
-  lv_label_set_text(settingsTitleLabel, "Settings");
-  lv_obj_align(settingsTitleLabel, LV_ALIGN_TOP_MID, 0, 52);
-  lv_obj_add_flag(settingsTitleLabel, LV_OBJ_FLAG_HIDDEN);
+  musicPlaceholder = MotoNavUI::panel(screen, 169, 126, 128, 128, 64,
+                                      MotoNavUI::SurfaceRaised);
+  lv_obj_set_style_border_color(musicPlaceholder,
+                               MotoNavUI::color(MotoNavUI::Line), 0);
+  // Five quiet waveform bars are vector geometry, not a font-dependent
+  // emoji or private-use glyph that might render as an empty square.
+  const int heights[5] = {24, 45, 67, 45, 24};
+  for (int i = 0; i < 5; ++i) {
+    lv_obj_t *bar = lv_obj_create(musicPlaceholder);
+    lv_obj_remove_style_all(bar);
+    lv_obj_set_size(bar, 7, heights[i]);
+    lv_obj_set_pos(bar, 27 + i * 17, (128 - heights[i]) / 2);
+    lv_obj_set_style_radius(bar, 5, 0);
+    lv_obj_set_style_bg_color(bar, MotoNavUI::color(MotoNavUI::Accent), 0);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
+    MotoNavUI::noInteraction(bar);
+  }
+  lv_obj_add_flag(musicPlaceholder, LV_OBJ_FLAG_HIDDEN);
 
-  settingsSubLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(settingsSubLabel, lvglColor565(C_UI_SUB), 0);
-  lv_obj_set_style_text_font(settingsSubLabel, &lv_font_montserrat_20, 0);
-  lv_label_set_text(settingsSubLabel, "Display brightness");
-  lv_obj_align(settingsSubLabel, LV_ALIGN_TOP_MID, 0, 132);
-  lv_obj_add_flag(settingsSubLabel, LV_OBJ_FLAG_HIDDEN);
+  // Apple Wallet-inspired focused card with two functional peeking tabs.
+  // The old vertical overlap exposed only 18px of Markets: too little for
+  // a gloved rider. Side-by-side back cards now each expose 49px of height
+  // below the front card; all outer corners remain in the 466px safe circle.
+  homeOrbit[0] = MotoNavUI::panel(screen, 243, 345, 140, 64, 23,
+                                 MotoNavUI::SurfaceRaised);
+  homeBackIcon[0] = MotoNavUI::icon(homeOrbit[0], MotoNavUI::Icon::Stocks,
+                                     13, 21, MotoNavUI::Cool);
+  homeStockName.create(homeOrbit[0],54,8,170,32);
+  homeBackTitle[0] = MotoNavUI::label(homeOrbit[0], "MARKETS",
+                    &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_set_pos(homeBackTitle[0], 47, 27);
+  homeBackSubtitle[0] = MotoNavUI::label(homeOrbit[0],
+                    "QUOTES & CHARTS", &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_add_flag(homeBackSubtitle[0], LV_OBJ_FLAG_HIDDEN);
+  homeBackChevron[0] = MotoNavUI::icon(homeOrbit[0],
+                    MotoNavUI::Icon::ChevronRight, 200, 28, MotoNavUI::Muted);
+  lv_obj_add_flag(homeBackChevron[0], LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(homeOrbit[0], LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(homeOrbit[0], homeStackCardEvent,
+                      LV_EVENT_CLICKED, (void *)(intptr_t)PAGE_STOCKS);
+  homeOrbit[1] = MotoNavUI::panel(screen, 82, 345, 145, 64, 23,
+                                 MotoNavUI::Surface);
+  homeBackIcon[1] = MotoNavUI::icon(homeOrbit[1], MotoNavUI::Icon::Weather,
+                                     13, 21, MotoNavUI::Accent);
+  homeBackTitle[1] = MotoNavUI::label(homeOrbit[1], "WEATHER",
+                    &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_set_pos(homeBackTitle[1], 47, 27);
+  homeBackSubtitle[1] = MotoNavUI::label(homeOrbit[1],
+                    "LIVE CONDITIONS", &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_add_flag(homeBackSubtitle[1], LV_OBJ_FLAG_HIDDEN);
+  homeBackChevron[1] = MotoNavUI::icon(homeOrbit[1],
+                    MotoNavUI::Icon::ChevronRight, 255, 28, MotoNavUI::Muted);
+  lv_obj_add_flag(homeBackChevron[1], LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(homeOrbit[1], LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(homeOrbit[1], homeStackCardEvent,
+                      LV_EVENT_CLICKED, (void *)(intptr_t)PAGE_WEATHER);
+  // One calm, focused surface instead of a stack of technical status labels.
+  // The two peeking pages remain reachable with 49px exposed touch bands.
+  homeOrbit[2] = MotoNavUI::panel(screen, 67, 115, 332, 245, 29,
+                                 MotoNavUI::SurfaceRaised);
+  for (int i = 0; i < 3; i++)
+    lv_obj_add_flag(homeOrbit[i], LV_OBJ_FLAG_HIDDEN);
 
-  settingsHintLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(settingsHintLabel, lvglColor565(C_UI_DIM), 0);
-  lv_obj_set_style_text_font(settingsHintLabel, &lv_font_montserrat_16, 0);
-  lv_label_set_text(settingsHintLabel, "Swipe down for home");
-  lv_obj_align(settingsHintLabel, LV_ALIGN_TOP_MID, 0, 400);
-  lv_obj_add_flag(settingsHintLabel, LV_OBJ_FLAG_HIDDEN);
-
-  homeTitleLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(homeTitleLabel, lv_color_white(), 0);
-  lv_obj_set_style_text_font(homeTitleLabel, &lv_font_montserrat_20, 0);
-  lv_label_set_text(homeTitleLabel, "MOTONAV");
-  lv_obj_align(homeTitleLabel, LV_ALIGN_TOP_MID, 0, 57);
-  lv_obj_set_style_text_letter_space(homeTitleLabel, 3, 0);
+  // The brand lives ABOVE the focused card, never repeated inside it.
+  homeTitleLabel = MotoNavUI::label(screen, "MOTONAV",
+                    &lv_font_montserrat_20, MotoNavUI::Accent);
+  lv_obj_align(homeTitleLabel, LV_ALIGN_TOP_MID, 0, 66);
+  lv_obj_set_style_text_letter_space(homeTitleLabel, 4, 0);
   lv_obj_add_flag(homeTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
-  homeStatusLabel = lv_label_create(screen);
-  lv_obj_set_style_text_font(homeStatusLabel, &lv_font_montserrat_20, 0);
-  configureTransparentLabel(homeStatusLabel, 220, 30);
-  lv_obj_align(homeStatusLabel, LV_ALIGN_TOP_MID, 0, 203);
-  lv_obj_add_flag(homeStatusLabel, LV_OBJ_FLAG_HIDDEN);
+  // An unsynchronized clock is simply "--:--", not a developer instruction.
+  // Date stays empty until the actual local date is known.
+  watchDateLabel = MotoNavUI::label(homeOrbit[2], "",
+                    &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_set_pos(watchDateLabel, 22, 16);
+  lv_obj_set_size(watchDateLabel, 177, 25);
+  lv_label_set_long_mode(watchDateLabel, LV_LABEL_LONG_CLIP);
 
+  watchTimeLabel = MotoNavUI::label(homeOrbit[2], "--:--",
+                    &lv_font_montserrat_48, MotoNavUI::Text);
+  lv_obj_set_pos(watchTimeLabel, 20, 51);
+  lv_obj_set_size(watchTimeLabel, 280, 65);
+  lv_label_set_long_mode(watchTimeLabel, LV_LABEL_LONG_CLIP);
+  lv_obj_set_style_text_letter_space(watchTimeLabel, 3, 0);
 
-  homeHintLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(homeHintLabel, lvglColor565(C_UI_DIM), 0);
-  lv_obj_set_style_text_font(homeHintLabel, &lv_font_montserrat_16, 0);
-  lv_label_set_text(homeHintLabel, "SWIPE LEFT FOR WEATHER");
-  lv_obj_align(homeHintLabel, LV_ALIGN_TOP_MID, 0, 376);
+  // Small connection indicator; no oversized status banner.
+  // This signal is diagnostic enough without dominating the watch face.
+  homeStatusChip = lv_obj_create(homeOrbit[2]);
+  lv_obj_remove_style_all(homeStatusChip);
+  lv_obj_set_pos(homeStatusChip, 207, 19);
+  lv_obj_set_size(homeStatusChip, 116, 34);
+  MotoNavUI::noInteraction(homeStatusChip);
+  homeStatusDot = lv_obj_create(homeStatusChip);
+  lv_obj_remove_style_all(homeStatusDot);
+  lv_obj_set_pos(homeStatusDot, 4, 12);
+  lv_obj_set_size(homeStatusDot, 8, 8);
+  lv_obj_set_style_radius(homeStatusDot, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_opa(homeStatusDot, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(homeStatusDot,
+                           MotoNavUI::color(MotoNavUI::Faint), 0);
+  MotoNavUI::noInteraction(homeStatusDot);
+  homeStatusLabel = MotoNavUI::label(homeStatusChip, "OFFLINE",
+                    &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_set_pos(homeStatusLabel, 19, 7);
+  lv_obj_set_size(homeStatusLabel, 96, 25);
+  lv_label_set_long_mode(homeStatusLabel, LV_LABEL_LONG_CLIP);
+
+  // One hairline divider, then a compact weather information row.
+  homeDivider = lv_obj_create(homeOrbit[2]);
+  lv_obj_remove_style_all(homeDivider);
+  lv_obj_set_size(homeDivider, 282, 1);
+  lv_obj_set_pos(homeDivider, 25, 161);
+  lv_obj_set_style_bg_color(homeDivider, MotoNavUI::color(MotoNavUI::Line), 0);
+  lv_obj_set_style_bg_opa(homeDivider, LV_OPA_COVER, 0);
+  MotoNavUI::noInteraction(homeDivider);
+
+  homeWeatherCard = MotoNavUI::panel(homeOrbit[2], 18, 174, 296, 62, 18,
+                                     MotoNavUI::Surface);
+  lv_obj_set_style_border_width(homeWeatherCard, 0, 0);
+  MotoNavUI::icon(homeWeatherCard, MotoNavUI::Icon::Weather, 12, 19,
+                  MotoNavUI::Cool);
+  watchTempLabel = MotoNavUI::label(homeWeatherCard, "--°",
+                    &lv_font_montserrat_28, MotoNavUI::Text);
+  lv_obj_set_pos(watchTempLabel, 47, 14);
+  lv_obj_set_size(watchTempLabel, 90, 39);
+  lv_label_set_long_mode(watchTempLabel, LV_LABEL_LONG_CLIP);
+  watchForecastLabel = MotoNavUI::label(homeWeatherCard, "",
+                    &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_set_pos(watchForecastLabel, 146, 22);
+  lv_obj_set_size(watchForecastLabel, 141, 26);
+  lv_label_set_long_mode(watchForecastLabel, LV_LABEL_LONG_DOT);
+
+  // Subtle drag affordance, not an instruction banner. It belongs to the
+  // clock card and moves with it through the expanding/collapsing gesture.
+  homeDragHandle = lv_obj_create(homeOrbit[2]);
+  lv_obj_remove_style_all(homeDragHandle);
+  lv_obj_set_pos(homeDragHandle, 148, 238);
+  lv_obj_set_size(homeDragHandle, 36, 3);
+  lv_obj_set_style_radius(homeDragHandle, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(homeDragHandle,
+                           MotoNavUI::color(MotoNavUI::Faint), 0);
+  lv_obj_set_style_bg_opa(homeDragHandle, LV_OPA_COVER, 0);
+  MotoNavUI::noInteraction(homeDragHandle);
+
+  homeHintLabel = MotoNavUI::label(screen, "SWIPE TO EXPLORE",
+                    &lv_font_montserrat_16, MotoNavUI::Faint);
   lv_obj_add_flag(homeHintLabel, LV_OBJ_FLAG_HIDDEN);
 
-  watchTimeLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(watchTimeLabel, lv_color_white(), 0);
-  lv_obj_set_style_text_font(watchTimeLabel, &motonav_watch_digits, 0);
-  configureTransparentLabel(watchTimeLabel, 340, 82);
-  lv_label_set_text(watchTimeLabel, "00:00");
-  lv_obj_align(watchTimeLabel, LV_ALIGN_TOP_MID, 0, 116);
-  lv_obj_add_flag(watchTimeLabel, LV_OBJ_FLAG_HIDDEN);
+  MotoNavUI::rideCreate(screen);
+  MotoNavUI::weatherCreate(screen);
 
-  watchDateLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(watchDateLabel, lvglColor565(C_UI_SUB), 0);
-  lv_obj_set_style_text_font(watchDateLabel, &lv_font_montserrat_16, 0);
-  configureTransparentLabel(watchDateLabel, 240, 28);
-  lv_label_set_text(watchDateLabel, "WAITING FOR PHONE TIME");
-  lv_obj_align(watchDateLabel, LV_ALIGN_TOP_MID, 0, 89);
-  lv_obj_add_flag(watchDateLabel, LV_OBJ_FLAG_HIDDEN);
+  // Electronic badge: full-bleed photos remain untouched; only the empty
+  // state receives a tasteful type-led invitation.
+  photoEmptyCard = MotoNavUI::panel(screen, 78, 129, 310, 230, 30);
+  MotoNavUI::icon(photoEmptyCard, MotoNavUI::Icon::Photo, 142, 43,
+                   MotoNavUI::Accent, 2);
+  lv_obj_add_flag(photoEmptyCard, LV_OBJ_FLAG_HIDDEN);
+  photoEmptyTitle = MotoNavUI::label(photoEmptyCard, "YOUR BADGE",
+                             &lv_font_montserrat_28, MotoNavUI::Text);
+  lv_obj_align(photoEmptyTitle, LV_ALIGN_TOP_MID, 0, 92);
+  photoEmptyHint = MotoNavUI::label(photoEmptyCard,
+                          "SEND AN IMAGE FROM YOUR PHONE",
+                          &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_align(photoEmptyHint, LV_ALIGN_TOP_MID, 0, 144);
+  photoTitleLabel = MotoNavUI::label(screen, "MOTONAV  /  BADGE",
+                         &lv_font_montserrat_16, MotoNavUI::Accent);
+  lv_obj_align(photoTitleLabel, LV_ALIGN_TOP_MID, 0, 62);
+  lv_obj_add_flag(photoTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
-  watchTempLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(watchTempLabel, lv_color_white(), 0);
-  lv_obj_set_style_text_font(watchTempLabel, &lv_font_montserrat_40, 0);
-  configureTransparentLabel(watchTempLabel, 120, 52);
-  lv_label_set_text(watchTempLabel, "--°");
-  lv_obj_align(watchTempLabel, LV_ALIGN_TOP_MID, 0, 257);
-  lv_obj_add_flag(watchTempLabel, LV_OBJ_FLAG_HIDDEN);
-
-  watchForecastLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(watchForecastLabel, lvglColor565(C_UI_SUB), 0);
-  lv_obj_set_style_text_font(watchForecastLabel, &lv_font_montserrat_20, 0);
-  configureTransparentLabel(watchForecastLabel, 260, 34);
-  lv_label_set_text(watchForecastLabel, "WEATHER FROM PHONE");
-  lv_obj_align(watchForecastLabel, LV_ALIGN_TOP_MID, 0, 308);
-  lv_obj_add_flag(watchForecastLabel, LV_OBJ_FLAG_HIDDEN);
-
-  robotHalo = lv_obj_create(screen);
-  lv_obj_set_size(robotHalo, 290, 290);
-  lv_obj_set_pos(robotHalo, CX - 145, 86);
-  lv_obj_set_style_radius(robotHalo, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_opa(robotHalo, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(robotHalo, 2, 0);
-  lv_obj_set_style_border_color(robotHalo, lvglColor565(C_UI_LINE), 0);
-  lv_obj_clear_flag(robotHalo, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(robotHalo, LV_OBJ_FLAG_HIDDEN);
-
-  robotBody = lv_obj_create(screen);
-  lv_obj_set_size(robotBody, 224, 238);
-  lv_obj_set_pos(robotBody, CX - 112, 112);
-  lv_obj_set_style_radius(robotBody, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_opa(robotBody, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(robotBody, lv_color_hex(0xF9FAF7), 0);
-  lv_obj_set_style_bg_grad_color(robotBody, lv_color_hex(0xD8E2E1), 0);
-  lv_obj_set_style_bg_grad_dir(robotBody, LV_GRAD_DIR_VER, 0);
-  lv_obj_set_style_border_width(robotBody, 0, 0);
-  lv_obj_set_style_shadow_width(robotBody, 0, 0);
-  lv_obj_clear_flag(robotBody, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(robotBody, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(robotBody, robotTapEventCb, LV_EVENT_ALL, nullptr);
-  lv_obj_add_flag(robotBody, LV_OBJ_FLAG_HIDDEN);
-
-  robotFace = lv_obj_create(robotBody);
-  lv_obj_set_size(robotFace, 160, 100);
-  lv_obj_align(robotFace, LV_ALIGN_TOP_MID, 0, 64);
-  lv_obj_set_style_bg_opa(robotFace, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(robotFace, 0, 0);
-  lv_obj_set_style_pad_all(robotFace, 0, 0);
-  lv_obj_clear_flag(robotFace, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_clear_flag(robotFace, LV_OBJ_FLAG_CLICKABLE);
-
-  for (int i = 0; i < 2; i++) {
-    robotEyes[i] = lv_obj_create(robotFace);
-    lv_obj_set_size(robotEyes[i], 28, 50);
-    lv_obj_set_pos(robotEyes[i], i == 0 ? 37 : 95, 25);
-    lv_obj_set_style_radius(robotEyes[i], LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_opa(robotEyes[i], LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(robotEyes[i], lv_color_hex(0x11171B), 0);
-    lv_obj_set_style_border_width(robotEyes[i], 0, 0);
-    lv_obj_clear_flag(robotEyes[i], LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(robotEyes[i], LV_OBJ_FLAG_CLICKABLE);
-  }
-
-  robotTitleLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(robotTitleLabel, lvglColor565(C_UI_SUB), 0);
-  lv_obj_set_style_text_font(robotTitleLabel, &lv_font_montserrat_16, 0);
-  lv_label_set_text(robotTitleLabel, "TAP TO CHANGE / HOLD TO SLEEP");
-  lv_obj_align(robotTitleLabel, LV_ALIGN_TOP_MID, 0, 48);
-  lv_obj_add_flag(robotTitleLabel, LV_OBJ_FLAG_HIDDEN);
-
-  robotMoodLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(robotMoodLabel, lvglColor565(C_UI_ACCENT), 0);
-  lv_obj_set_style_text_font(robotMoodLabel, &lv_font_montserrat_20, 0);
-  configureOpaqueLabel(robotMoodLabel, 340, 34);
-  lv_label_set_text(robotMoodLabel, "READY TO RIDE");
-  lv_obj_align(robotMoodLabel, LV_ALIGN_TOP_MID, 0, 386);
-  lv_obj_add_flag(robotMoodLabel, LV_OBJ_FLAG_HIDDEN);
-
-  stockTitleLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(stockTitleLabel, lv_color_white(), 0);
-  lv_obj_set_style_text_font(stockTitleLabel, &lv_font_montserrat_28, 0);
-  lv_label_set_text(stockTitleLabel, "MARKET | DAY");
-  lv_obj_align(stockTitleLabel, LV_ALIGN_TOP_MID, 0, 52);
+  // One real card per quote; vertical scrolling owns the content gesture.
+  stockTitleLabel = MotoNavUI::label(screen, "MARKETS  /  TODAY",
+                                      &lv_font_montserrat_28, MotoNavUI::Text);
+  lv_obj_align(stockTitleLabel, LV_ALIGN_TOP_MID, 0, 49);
   lv_obj_add_flag(stockTitleLabel, LV_OBJ_FLAG_HIDDEN);
 
-  stockStatusLabel = lv_label_create(screen);
-  lv_obj_set_style_text_color(stockStatusLabel, lvglColor565(C_UI_SUB), 0);
-  lv_obj_set_style_text_font(stockStatusLabel, &lv_font_montserrat_16, 0);
-  configureOpaqueLabel(stockStatusLabel, 360, 24);
-  lv_label_set_text(stockStatusLabel, "Waiting for iPhone quotes");
-  lv_obj_align(stockStatusLabel, LV_ALIGN_TOP_MID, 0, 88);
+  stockStatusLabel = MotoNavUI::label(screen, "WAITING FOR PHONE QUOTES",
+                                       &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_set_size(stockStatusLabel, 348, 25);
+  lv_label_set_long_mode(stockStatusLabel, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_text_align(stockStatusLabel, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(stockStatusLabel, LV_ALIGN_TOP_MID, 0, 93);
   lv_obj_add_flag(stockStatusLabel, LV_OBJ_FLAG_HIDDEN);
 
   stockList = lv_obj_create(screen);
-  lv_obj_set_size(stockList, 344, 290);
-  lv_obj_set_pos(stockList, CX - 172, 115);
-  lv_obj_set_style_pad_all(stockList, 0, 0);
-  lv_obj_set_style_border_width(stockList, 0, 0);
+  lv_obj_remove_style_all(stockList);
   lv_obj_set_style_bg_color(stockList, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(stockList, LV_OPA_COVER, 0);
+  lv_obj_set_size(stockList, 466, 312);
+  lv_obj_set_style_radius(stockList, 233, 0);
+  lv_obj_set_style_pad_bottom(stockList, 78, 0);
   lv_obj_set_scroll_dir(stockList, LV_DIR_VER);
-  lv_obj_set_scrollbar_mode(stockList, LV_SCROLLBAR_MODE_AUTO);
-  lv_obj_add_flag(stockList, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+  lv_obj_set_scrollbar_mode(stockList, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_add_flag(stockList, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_pos(stockList, 0, 126);
+  lv_obj_add_flag(stockList, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(stockList, LV_OBJ_FLAG_HIDDEN);
+
   for (int i = 0; i < STOCK_MAX; i++) {
-    lv_obj_t *row = lv_obj_create(stockList);
-    lv_obj_set_size(row, 332, STOCK_ROW_H);
-    lv_obj_set_pos(row, 0, i * (STOCK_ROW_H + 8));
-    lv_obj_set_style_pad_all(row, 0, 0);
-    lv_obj_set_style_radius(row, 8, 0);
-    lv_obj_set_style_border_width(row, 1, 0);
-    lv_obj_set_style_border_color(row, lvglColor565(C_UI_LINE), 0);
-    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(row, lv_color_hex(STOCK_PANEL_COLOR), 0);
-    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *row = MotoNavUI::panel(stockList, 73, i * (STOCK_ROW_H + 16), 320,
+                                     STOCK_ROW_H, 26, STOCK_PANEL_COLOR);
     lv_obj_add_flag(row, LV_OBJ_FLAG_HIDDEN);
     stockRows[i] = row;
 
-    stockCodeLabels[i] = lv_label_create(row);
+    stockCodeLabels[i] = MotoNavUI::label(row, "--",
+                              &lv_font_montserrat_20, MotoNavUI::Text);
+    lv_obj_set_pos(stockCodeLabels[i], 19, 15);
+    lv_obj_set_size(stockCodeLabels[i], 167, 29);
+    lv_label_set_long_mode(stockCodeLabels[i], LV_LABEL_LONG_DOT);
     lv_obj_add_flag(stockCodeLabels[i], LV_OBJ_FLAG_HIDDEN);
 
     stockNameBuffers[i] = (lv_color_t *)ps_malloc(
-      STOCK_NAME_W * STOCK_NAME_H * sizeof(lv_color_t));
+        STOCK_NAME_W * STOCK_NAME_H * sizeof(lv_color_t));
     if (stockNameBuffers[i]) {
       stockNameCanvases[i] = lv_canvas_create(row);
       lv_canvas_set_buffer(stockNameCanvases[i], stockNameBuffers[i],
                            STOCK_NAME_W, STOCK_NAME_H, LV_IMG_CF_TRUE_COLOR);
-      lv_obj_set_pos(stockNameCanvases[i], 10, 8);
-      lv_obj_clear_flag(stockNameCanvases[i], LV_OBJ_FLAG_SCROLLABLE);
-      lv_obj_clear_flag(stockNameCanvases[i], LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_set_pos(stockNameCanvases[i], 19, 16);
+      lv_obj_clear_flag(stockNameCanvases[i],
+                        LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
       updateStockNameCanvas(i);
     }
 
-    stockPriceLabels[i] = lv_label_create(row);
-    lv_obj_set_size(stockPriceLabels[i], 120, 30);
-    lv_label_set_long_mode(stockPriceLabels[i], LV_LABEL_LONG_CLIP);
-    lv_obj_set_style_text_align(stockPriceLabels[i], LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_style_text_color(stockPriceLabels[i], lv_color_white(), 0);
-    lv_obj_set_style_text_font(stockPriceLabels[i], &lv_font_montserrat_24, 0);
-    lv_label_set_text(stockPriceLabels[i], "--");
-    lv_obj_align(stockPriceLabels[i], LV_ALIGN_TOP_RIGHT, -12, 4);
+    // Price sits on its own line, not on top of a potentially long
+    // CJK instrument name. Price and change share the leading text edge.
+    stockPriceLabels[i] = MotoNavUI::label(row, "--",
+                                 &lv_font_montserrat_28, MotoNavUI::Text);
+    lv_obj_set_pos(stockPriceLabels[i], 20, 49);
+    lv_obj_set_size(stockPriceLabels[i], 279, 37);
+    lv_label_set_long_mode(stockPriceLabels[i], LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(stockPriceLabels[i], LV_TEXT_ALIGN_LEFT, 0);
+
+    stockChangeLabels[i] = MotoNavUI::label(row, "--",
+                                 &lv_font_montserrat_16, MotoNavUI::Muted);
+    lv_obj_set_pos(stockChangeLabels[i], 21, 88);
+    lv_obj_set_size(stockChangeLabels[i], 278, 27);
+    lv_label_set_long_mode(stockChangeLabels[i], LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(stockChangeLabels[i], LV_TEXT_ALIGN_LEFT, 0);
 
     stockChartBuffers[i] = (lv_color_t *)ps_malloc(
       STOCK_CHART_W * STOCK_CHART_H * sizeof(lv_color_t));
@@ -613,22 +711,28 @@ static void createLvglOverlay() {
       stockChartCanvases[i] = lv_canvas_create(row);
       lv_canvas_set_buffer(stockChartCanvases[i], stockChartBuffers[i],
                            STOCK_CHART_W, STOCK_CHART_H, LV_IMG_CF_TRUE_COLOR);
-      lv_obj_set_pos(stockChartCanvases[i], 13, 42);
-      lv_obj_clear_flag(stockChartCanvases[i], LV_OBJ_FLAG_SCROLLABLE);
-      lv_obj_clear_flag(stockChartCanvases[i], LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_set_pos(stockChartCanvases[i], 20, 123);
+      lv_obj_clear_flag(stockChartCanvases[i],
+                        LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
       updateStockChartCanvas(i);
     }
-
-    stockChangeLabels[i] = lv_label_create(row);
-    lv_obj_set_size(stockChangeLabels[i], 150, 24);
-    lv_label_set_long_mode(stockChangeLabels[i], LV_LABEL_LONG_CLIP);
-    lv_obj_set_style_text_align(stockChangeLabels[i], LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_style_text_color(stockChangeLabels[i], lvglColor565(C_UI_SUB), 0);
-    lv_obj_set_style_text_font(stockChangeLabels[i], &lv_font_montserrat_16, 0);
-    lv_label_set_text(stockChangeLabels[i], "--");
-    lv_obj_align(stockChangeLabels[i], LV_ALIGN_BOTTOM_RIGHT, -12, -4);
   }
 
+  stockEmptyCard = MotoNavUI::panel(screen, 73, 139, 320, STOCK_ROW_H, 26);
+  MotoNavUI::icon(stockEmptyCard, MotoNavUI::Icon::Stocks, 148, 38,
+                  MotoNavUI::Accent);
+  lv_obj_t *emptyTitle = MotoNavUI::label(stockEmptyCard, "NO QUOTES YET",
+                                    &lv_font_montserrat_20, MotoNavUI::Text);
+  lv_obj_align(emptyTitle, LV_ALIGN_TOP_MID, 0, 91);
+  lv_obj_t *emptyDetail = MotoNavUI::label(stockEmptyCard,
+       "SYNC YOUR WATCHLIST ON PHONE",
+       &lv_font_montserrat_16, MotoNavUI::Muted);
+  lv_obj_align(emptyDetail, LV_ALIGN_TOP_MID, 0, 134);
+  lv_obj_add_flag(stockEmptyCard, LV_OBJ_FLAG_HIDDEN);
+
+  MotoNavUI::mapOverlayCreate(screen);
+  MotoNavUI::navSpeedCreate(screen);
+  MotoNavUI::navDistanceCreate(screen);
 }
 
 static void lvglHybridInit() {
@@ -707,22 +811,121 @@ static void setLvglTextColor(lv_obj_t *obj, lv_color_t color) {
   lv_obj_set_style_text_color(obj, color, 0);
 }
 
+// Follow-finger transforms apply only to three LVGL cards. No page snapshot,
+// full map compositing or extra PSRAM frame is allocated. Release animation
+// uses a short ease-out at <=34 geometry updates/second.
+static void homeStackTick(bool visible) {
+  if (!visible) {
+    homeStackCancel();
+    return;
+  }
+  unsigned long now = millis();
+  if (homeStackSettling && !homeStackGestureActive) {
+    float t = MotoNavUI::stackClamp((now-homeStackAnimAt)/190.0f);
+    float rem = 1.0f-t;
+    float eased = 1.0f-rem*rem*rem;
+    homeStackProgress = homeStackAnimFrom +
+                        (homeStackAnimTo-homeStackAnimFrom)*eased;
+    if (t >= 1.0f) {
+      homeStackProgress = homeStackAnimTo;
+      homeStackSettling = false;
+    }
+  }
+  if (homeStackApplied >= 0 &&
+      fabsf(homeStackProgress-homeStackApplied) < 0.003f) return;
+  if (homeStackRenderAt && now-homeStackRenderAt < 30 &&
+      (homeStackGestureActive || homeStackSettling)) return;
+  homeStackRenderAt = now;
+  homeStackApplied = homeStackProgress;
+  const bool expandedLook = homeStackProgress > 0.40f;
+  for (int i=0; i<3; ++i) {
+    const MotoNavUI::HomeStackRect r=MotoNavUI::stackRect(i,homeStackProgress);
+    if (lv_obj_get_x(homeOrbit[i])!=r.x || lv_obj_get_y(homeOrbit[i])!=r.y)
+      lv_obj_set_pos(homeOrbit[i],r.x,r.y);
+    if (lv_obj_get_width(homeOrbit[i])!=r.w ||
+        lv_obj_get_height(homeOrbit[i])!=r.h)
+      lv_obj_set_size(homeOrbit[i],r.w,r.h);
+  }
+  for (int i=0; i<2; ++i) {
+    const MotoNavUI::HomeStackRect r=MotoNavUI::stackRect(i,homeStackProgress);
+    setLvglPos(homeBackIcon[i],18,20);
+    setLvglPos(homeBackTitle[i],54,12);
+    setLvglPos(homeBackSubtitle[i],22,46);
+    lv_obj_set_width(homeBackSubtitle[i],r.w-44);
+    lv_label_set_long_mode(homeBackSubtitle[i],LV_LABEL_LONG_DOT);
+    setLvglPos(homeBackChevron[i],r.w-44,28);
+    setLvglHidden(homeBackSubtitle[i],false);
+    setLvglHidden(homeBackChevron[i],true);
+    if (homeStackExpandedStyle != expandedLook) {
+      lv_obj_set_style_text_font(homeBackTitle[i],
+        expandedLook ? &lv_font_montserrat_20 : &lv_font_montserrat_16,0);
+      setLvglTextColor(homeBackTitle[i],
+        MotoNavUI::color(expandedLook?MotoNavUI::Text:MotoNavUI::Muted));
+    }
+  }
+  homeStackExpandedStyle=expandedLook;
+  lv_obj_set_y(homeTitleLabel, lroundf(42-10*homeStackProgress));
+  lv_obj_set_pos(homeStatusChip,190,8);
+  const MotoNavUI::HomeStackRect clock=MotoNavUI::stackRect(
+      MotoNavUI::StackClock,homeStackProgress);
+  setLvglPos(homeDragHandle,(clock.w-36)/2,clock.h-9);
+  setLvglHidden(homeDivider,true);
+  // The LVGL screen is transparent and uses the SAME RGB565 framebuffer as
+  // GFX. Merely moving a card would leave its old pixels behind. Repaint the
+  // real Home base BEFORE LVGL's visible scene is invalidated/refreshed below.
+  // This also retains the existing LINK LOST ring and prevents ghost trails.
+  if (!lvglSnapshotting) drawWaiting(waitSt);
+}
+
 static void lvglHybridTick() {
   if (!lvglUiReady) return;
 
   // Navigation keeps the top edge clear for the ring / N marker / speed HUD,
   // so the battery readout only shows on idle pages. No readout when no
   // battery is attached (batPct < 0).
-  setLvglHidden(batteryLabel, batPct < 0 || pairOn || callOn || fxOn || inNav || page == PAGE_PHOTO);
+  setLvglHidden(batteryLabel, batPct < 0 || pairOn || callOn || fxOn ||
+                inNav || page == PAGE_PHOTO || page == PAGE_HOME);
   char batteryText[24];
   if (batPct >= 0) snprintf(batteryText, sizeof(batteryText), "%d%%", batPct);
   else snprintf(batteryText, sizeof(batteryText), "--");
   setLvglLabelText(batteryLabel, batteryText);
+  const bool showWeather = page == PAGE_WEATHER &&
+                      !sliding && !pairOn && !callOn && !fxOn;
+  MotoNavUI::weatherUpdate(showWeather);
   bool showMusic = page == 2 && !sliding && !pairOn && !callOn && !fxOn;
   bool showSettings = page == 3 && !sliding && !pairOn && !callOn && !fxOn;
   bool showRobot = page == 4 && !sliding && !pairOn && !callOn && !fxOn;
   bool showStock = page == 5 && !sliding && !pairOn && !callOn && !fxOn;
   bool showHome = page == 0 && !inNav && !sliding && !pairOn && !callOn && !fxOn && !staleShown;
+  homeStackTick(showHome);
+  // Keep the GFX map, turn instructions, lanes and camera data untouched.
+  // LVGL contributes a type-consistent speed panel only in live map mode.
+  // Side status chips defer to lanes/camera so no informational overlay
+  // can cover a higher-priority navigation cue.
+  const bool liveNavHud = page == PAGE_HOME && inNav && !sliding &&
+        !pairOn && !callOn && !fxOn && !staleShown && mapModeActive();
+  const bool showLiveMap = liveNavHud && !cleanOn && navMapChromeAllowed();
+  const bool mapHasData = navMapHasFrame();
+  const bool cameraHudVisible = navMapCameraHudVisible();
+  const bool showStatusChips = MotoNavUI::navChromeShowStatus(
+      showLiveMap, cleanOn, navLanesHudVisible(), cameraHudVisible);
+  MotoNavUI::mapOverlayUpdate(showStatusChips, mapHasData,
+                               bleConnected && bleAuthed);
+  MotoNavUI::navSpeedUpdate(liveNavHud && speedKmh >= 0, speedKmh,
+                             cameraHudVisible,
+                             cameraHudVisible && camLimit > 0 &&
+                             speedKmh > camLimit);
+  // Use the existing firmware formatter: no predicted distance, no duplicated
+  // phone parsing. Keep the converted string stable across unchanged frames.
+  const bool showNativeDistance = liveNavHud && !cruiseOn && navDist >= 0;
+  static int lastNativeNavMetres = INT32_MIN;
+  static String nativeDistanceText;
+  if (showNativeDistance && navDist != lastNativeNavMetres) {
+    lastNativeNavMetres = navDist;
+    nativeDistanceText = distText(navDist);
+  }
+  MotoNavUI::navDistanceUpdate(showNativeDistance, nativeDistanceText.c_str(),
+       navDist <= STAGE_NEAR_M);
   static bool lastShowHome = false;
   const bool homeJustShown = showHome && !lastShowHome;
   lastShowHome = showHome;
@@ -738,40 +941,55 @@ static void lvglHybridTick() {
     bool enabled = hidMusicMode ? (hidMediaReady() || appleMedia.controlReady(i)) : (bleConnected && bleAuthed && musicHave);
     const bool primary = enabled && i == 1;
     setLvglBgColor(musicButtons[i], lvglColor565(primary ? C_UI_ACCENT : enabled ? C_UI_PANEL_2 : C_UI_PANEL));
-    const char *symbol = i == 0 ? LV_SYMBOL_PREV : i == 2 ? LV_SYMBOL_NEXT
-      : (musicPlaying ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
-    setLvglLabelText(musicButtonLabels[i], symbol);
-    setLvglTextColor(musicButtonLabels[i], lvglColor565(primary ? C_UI_BG : enabled ? C_UI_TEXT : C_UI_SUB));
+    if (i == 1) {
+      setLvglHidden(musicGlyphs[1], musicPlaying);
+      setLvglHidden(musicPauseGlyph, !musicPlaying);
+    }
+    const uint32_t glyphColor = primary ? MotoNavUI::Background :
+                                enabled ? MotoNavUI::Text : MotoNavUI::Muted;
+    colorMusicGlyph(musicGlyphs[i], glyphColor);
+    if (i == 1) colorMusicGlyph(musicPauseGlyph, glyphColor);
   }
 
-  setLvglHidden(settingsSlider, !showSettings);
-  setLvglHidden(settingsBrightnessLabel, !showSettings);
-  setLvglHidden(settingsTitleLabel, !showSettings);
-  setLvglHidden(settingsSubLabel, !showSettings);
-  setLvglHidden(settingsHintLabel, !showSettings);
-  setLvglHidden(settingsCard, !showSettings);
-  if (showSettings && !lv_obj_has_state(settingsSlider, LV_STATE_PRESSED)) {
-    if (lv_slider_get_value(settingsSlider) != screenBrightness) {
-      lv_slider_set_value(settingsSlider, screenBrightness, LV_ANIM_OFF);
-    }
-    char brightness[16];
-    snprintf(brightness, sizeof(brightness), "%d%%", (screenBrightness * 100 + 92) / 180);
-    setLvglLabelText(settingsBrightnessLabel, brightness);
+  MotoNavUI::settingsUpdate(showSettings);
+
+  setLvglHidden(musicHeaderLabel, !showMusic || (coverValid && coverImg));
+  setLvglHidden(musicPlaceholder, !showMusic || (coverValid && coverImg) ||
+                ((bleConnected && bleAuthed) && (musicHave || imgs[5].showW > 0)));
+  setLvglHidden(musicStatusLabel, !showMusic || (musicLyrics && imgs[12].showW > 0));
+  setLvglHidden(musicFooterLabel, !showMusic);
+  bool showPhotoEmpty = page == PAGE_PHOTO && !photoValid && !sliding &&
+                        !pairOn && !callOn && !fxOn;
+  setLvglHidden(photoEmptyCard, !showPhotoEmpty);
+  setLvglHidden(photoTitleLabel, !showPhotoEmpty);
+  if (showMusic) {
+    const char *musicState = !(bleConnected && bleAuthed)
+        ? "PHONE OFFLINE" : hidMusicMode && !appleMedia.available
+        ? "OPEN A MUSIC APP" : !musicHave ? "NO PLAYER"
+        : musicPlaying ? "PLAYING" : "PAUSED";
+    setLvglLabelText(musicStatusLabel, musicState);
+    setLvglTextColor(musicStatusLabel, lv_color_hex(
+      musicPlaying ? MotoNavUI::Cool : MotoNavUI::Muted));
   }
 
   bool homeTextChanged = false;
   setLvglHidden(homeTitleLabel, !showHome);
-  setLvglHidden(homeStatusLabel, !showHome);
-  setLvglHidden(homeHintLabel, !showHome);
+  setLvglHidden(homeStatusChip, !showHome);
+  setLvglHidden(homeWeatherCard, true);
+  for (int i = 0; i < 3; ++i) setLvglHidden(homeOrbit[i], !showHome);
+  setLvglHidden(homeHintLabel, true);
   if (showHome) {
-    const char *status = waitSt == WAIT_LOST ? "Link lost" : ((bleConnected && bleAuthed) ? "Ready" : "No link");
-    uint32_t statusColor = waitSt == WAIT_LOST ? C_UI_ACCENT2
-      : ((bleConnected && bleAuthed) ? C_UI_ACCENT : C_UI_SUB);
+    const bool linked = bleConnected && bleAuthed;
+    const char *status = waitSt == WAIT_LOST ? "LOST" :
+                         (linked ? "LINKED" : "OFFLINE");
+    const uint32_t statusColor = linked ? C_UI_INFO :
+                                 waitSt == WAIT_LOST ? C_UI_ACCENT2 : C_UI_DIM;
     if (setLvglLabelText(homeStatusLabel, status)) homeTextChanged = true;
     setLvglTextColor(homeStatusLabel, lvglColor565(statusColor));
+    setLvglBgColor(homeStatusDot, lvglColor565(statusColor));
   }
 
-  setLvglHidden(watchTimeLabel, !showHome || !clockNowEpoch());
+  setLvglHidden(watchTimeLabel, !showHome);
   setLvglHidden(watchDateLabel, !showHome);
   // Temperature + forecast stay on the watch face, but are transparent and
   // pulled in from the dial edge so they never sit on the theme ring.
@@ -793,16 +1011,28 @@ static void lvglHybridTick() {
         if (setLvglLabelText(watchDateLabel, dateText)) homeTextChanged = true;
       }
     }
+    char summary[72];
+    if (stockCount) {
+      const StockQuote &q = stockQuotes[0];
+      snprintf(summary, sizeof(summary), "%.2f  %+.2f%%", q.price, q.changePct);
+      setLvglLabelText(homeBackTitle[0], q.code.c_str());
+    } else snprintf(summary, sizeof(summary), "Waiting for quotes");
+    setLvglLabelText(homeBackSubtitle[0], summary);
+    homeStockName.visible(stockCount && imgs[13].showW);
+    setLvglHidden(homeBackTitle[0], stockCount && imgs[13].showW);
+    if (stockCount) homeStockName.update(13, MotoNavUI::SurfaceRaised);
+    if (wxHave) snprintf(summary, sizeof(summary), "%d°  %s", wxTemp, MotoNavUI::conditionName(wxIcon));
+    else snprintf(summary, sizeof(summary), "Waiting for weather");
+    setLvglLabelText(homeBackSubtitle[1], summary);
     char temperature[16];
     snprintf(temperature, sizeof(temperature), wxHave ? "%d°" : "--°", wxTemp);
     if (setLvglLabelText(watchTempLabel, temperature)) homeTextChanged = true;
     char forecast[36];
     if (wxHave && !wxHourly && wxN > 0)
-      snprintf(forecast, sizeof(forecast), "%s %d°   |   %s %d°",
-               LV_SYMBOL_DOWN, wxFl[0], LV_SYMBOL_UP, wxFh[0]);
+      snprintf(forecast, sizeof(forecast), "L %d°   H %d°", wxFl[0], wxFh[0]);
     else if (wxHave && wxHourly && wxN > 0)
-      snprintf(forecast, sizeof(forecast), "NEXT HOUR  %d°", wxFh[0]);
-    else snprintf(forecast, sizeof(forecast), "WEATHER FROM PHONE");
+      snprintf(forecast, sizeof(forecast), "NEXT %d°", wxFh[0]);
+    else snprintf(forecast, sizeof(forecast), "");
     if (setLvglLabelText(watchForecastLabel, forecast)) homeTextChanged = true;
   }
 
@@ -812,65 +1042,29 @@ static void lvglHybridTick() {
   // fillScreen() also invalidates every visible widget for us.
   if ((homeTextChanged || homeJustShown) && showHome && !sliding) drawWaiting(waitSt);
 
-  setLvglHidden(robotHalo, !showRobot);
-  setLvglHidden(robotBody, !showRobot);
-  setLvglHidden(robotTitleLabel, !showRobot);
-  setLvglHidden(robotMoodLabel, !showRobot);
-  if (showRobot) {
-    const uint32_t now = millis();
-    if (!robotWasVisible) {
-      robotWasVisible = true;
-      robotSampleAt = now;
-      robotPoseKey = -1;
-    }
-    robotVisibleTime += now - robotSampleAt;
-    robotSampleAt = now;
-    if (now - robotLastAnimAt >= 80 || robotPoseKey < 0) {
-      robotLastAnimAt = now;
-      // Slow idle variation; a tapped expression remains for at least 12s.
-      if (robotVisibleTime - robotManualAt > 12000 && robotExpression != CompanionFace::Sleepy) {
-        static const CompanionFace::Expression idle[] = {
-          CompanionFace::Calm, CompanionFace::Curious, CompanionFace::Happy, CompanionFace::Calm};
-        robotExpression = idle[(robotVisibleTime / 8000) % 4];
-      }
-      const bool blink = robotVisibleTime % 4800 < 160;
-      const bool lookRight = robotVisibleTime % 7000 > 5600;
-      const int key = static_cast<int>(robotExpression) * 4 + (blink ? 1 : 0) + (lookRight ? 2 : 0);
-      if (key != robotPoseKey) {
-        robotPoseKey = key;
-        const CompanionFace::Pose pose = CompanionFace::pose(robotExpression, blink, lookRight);
-        for (int i = 0; i < 2; i++) {
-          lv_obj_set_pos(robotEyes[i], pose.eye[i].x, pose.eye[i].y);
-          lv_obj_set_size(robotEyes[i], pose.eye[i].w, pose.eye[i].h);
-        }
-        String mood = String(pose.name) + " / TAP TO CHANGE";
-        if (mood != robotLastMood) {
-          robotLastMood = mood;
-          lv_label_set_text(robotMoodLabel, robotLastMood.c_str());
-        }
-      }
-    }
-  } else {
-    robotWasVisible = false;
-    robotLastAnimAt = 0;
-    robotPoseKey = -1;
-  }
+  MotoNavUI::rideUpdate(showRobot);
 
-  setLvglHidden(stockList, !showStock);
+  setLvglHidden(stockList, !showStock || stockCount == 0);
   setLvglHidden(stockTitleLabel, !showStock);
   setLvglHidden(stockStatusLabel, !showStock);
+  setLvglHidden(stockEmptyCard, !showStock || stockCount != 0);
   if (showStock) {
     setLvglLabelText(stockTitleLabel,
-      stockChartPeriod == 'M' ? "MARKET | 1M" : "MARKET | DAY");
+      stockChartPeriod == 'M' ? "MARKETS  /  1M" : "MARKETS  /  TODAY");
     bool refresh = stockRevision != stockLastRevision || stockDirty;
     if (refresh) {
       stockLastRevision = stockRevision;
       stockDirty = false;
       for (int i = 0; i < STOCK_MAX; i++) {
         bool hasQuote = i < stockCount;
-        setLvglHidden(stockRows[i], !hasQuote);
         if (!hasQuote) continue;
         const StockQuote &q = stockQuotes[i];
+        const bool hasNameBitmap = imgs[13 + i].show &&
+                         imgs[13 + i].showW && imgs[13 + i].showH &&
+                         stockNameCanvases[i];
+        lv_label_set_text(stockCodeLabels[i], q.code.c_str());
+        setLvglHidden(stockCodeLabels[i], hasNameBitmap);
+        setLvglHidden(stockNameCanvases[i], !hasNameBitmap);
         char price[24], change[24];
         snprintf(price, sizeof(price), "%.2f", q.price);
         float delta = fabsf(100 + q.changePct) > 0.001f ? q.price * q.changePct / (100 + q.changePct) : 0;
@@ -885,23 +1079,28 @@ static void lvglHybridTick() {
       }
       stockLastStatusAt = 0;
     }
-    for (int i = 0; i < STOCK_MAX; i++) {
-      setLvglHidden(stockRows[i], i >= stockCount);
-    }
+    stockShowRows();
     unsigned long now = millis();
-    if (now - stockLastStatusAt >= 5000) {
+    if (!stockLastStatusAt || now - stockLastStatusAt >= 5000) {
       stockLastStatusAt = now;
       String status;
       if (!stockCount) status = "Waiting for iPhone quotes";
-      else if (!(bleConnected && bleAuthed)) status = "Phone offline • showing last quotes";
-      else if (stockUpdatedAt && now - stockUpdatedAt > 180000UL) status = "Quotes stale • open MotoNav on iPhone";
+      else if (!stockUpdatedAt) status = "Received quotes / age unknown";
       else {
-        struct tm local {};
-        if (clockLocalTime(local)) {
-          char text[40];
-          snprintf(text, sizeof(text), "From iPhone • updated %02d:%02d", local.tm_hour, local.tm_min);
-          status = text;
-        } else status = "Synced with iPhone";
+        // stockUpdatedAt is millis() at #STK receipt, NOT an exchange timestamp.
+        // The current wall clock must never be presented as the quote update time.
+        const unsigned long age = now - stockUpdatedAt;
+        const unsigned long minutes = age / 60000UL;
+        char text[64];
+        if (!(bleConnected && bleAuthed))
+          snprintf(text, sizeof(text), "Phone offline / last sync %lu min ago", minutes);
+        else if (age > 180000UL)
+          snprintf(text, sizeof(text), "Quotes stale / %lu min ago", minutes);
+        else if (age < 60000UL)
+          snprintf(text, sizeof(text), "From iPhone / just received");
+        else
+          snprintf(text, sizeof(text), "From iPhone / %lu min ago", minutes);
+        status = text;
       }
       if (status != stockLastStatus) {
         stockLastStatus = status;
@@ -938,6 +1137,17 @@ static void lvglHybridTick() {
     for (uint32_t i = 0; i < childCount; i++) {
       lv_obj_t *child = lv_obj_get_child(screen, i);
       if (child && !lv_obj_has_flag(child, LV_OBJ_FLAG_HIDDEN)) lv_obj_invalidate(child);
+    }
+  }
+
+  const int musicSlots[3]={5,6,12};
+  const bool cover=coverValid && coverImg;
+  const int musicY[3]={cover?194:158,cover?238:206,cover?278:244};
+  for(int i=0;i<3;++i) {
+    musicText[i].visible(showMusic && bleConnected && bleAuthed && (i<2 || musicLyrics));
+    if(showMusic) {
+      if(musicText[i].canvas) setLvglPos(musicText[i].canvas,63,musicY[i]);
+      musicText[i].update(musicSlots[i]);
     }
   }
 

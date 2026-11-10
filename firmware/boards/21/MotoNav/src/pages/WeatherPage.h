@@ -150,11 +150,18 @@ bool drawWeatherExtra() {
 }
 
 void drawWeather() {
-  if (wxHave && drawWeatherExtra()) return;
+  if (!lvglUiReady && wxHave && drawWeatherExtra()) return;
   onWaitScreen = false;
   frameIsMap = false;
   gfx->fillScreen(C_UI_BG);
-  drawThemeRing();                          // weather must not erase the dial ring
+  if (lvglUiReady) {
+    // The main forecast is entirely laid out by the same Montserrat-based
+    // LVGL view as Home, Settings and Ride. Detailed weather alerts remain
+    // on the phone-supplied bitmap route to preserve CJK descriptions.
+    needFlush = true;
+    return;
+  }
+  drawThemeRing();
   if (!wxHave) {
     drawWxIcon(1, CX, 190, 60);
     printCentered(bleConnected ? "LOADING..." : "NO PHONE", CX, 290, 3, C_UI_SUB);

@@ -17,6 +17,11 @@ void flushAsync();
 void flushSync();
 static void lvglHybridTick();
 static void lvglCancelPendingPress();
+// Home's vertical drag gesture is orthogonal to horizontal page swipes.
+// This bridge lets the touch router dispatch it before whole-page sliding.
+bool homeStackTouchMove(int dx, int dy, unsigned long now);
+bool homeStackTouchEnd();
+void homeStackCancel();
 static void lvglSetSnapshotting(bool value);
 static void lvglClearDirtyArea();
 void initDoubleBuffer();
@@ -149,6 +154,10 @@ void handleBulk(const uint8_t *d, int n);
 void batPoll();
 void sendPendingAck();
 bool mapModeActive();
+bool navMapHasFrame();
+bool navMapChromeAllowed();
+bool navMapCameraHudVisible();
+bool navLanesHudVisible();
 static void viceBlendPixel(uint16_t *row, int x, uint16_t color, float coverage);
 void mapFillPoly(const float *xs, const float *ys, int n, uint16_t c);
 void drawPlayer(float x, float y);

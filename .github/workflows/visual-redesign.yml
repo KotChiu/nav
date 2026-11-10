@@ -1,0 +1,48 @@
+name: MotoNav 2.1 visual redesign
+
+on:
+  pull_request:
+    paths:
+      - 'firmware/boards/21/**'
+      - 'firmware/tests/**'
+      - 'firmware/build.py'
+      - '.github/workflows/visual-redesign.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  design-21:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.arduino15
+            ~/Arduino/libraries
+          key: esp32s3-3.3.10-lvgl-8.3.10-redesign-v1
+      - name: Install ESP32-S3 core
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.3.10 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+      - name: Build physical 480x480 screen firmware (no flashing)
+        run: python3 firmware/build.py --board 21 --jobs 2
+      - name: Check page routes and design invariants
+        run: |
+          g++ -std=c++17 -O2 firmware/tests/PageRoutesTest.cpp -o /tmp/motonav-page-routes
+          /tmp/motonav-page-routes
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror firmware/tests/CircularCardGeometryTest.cpp -o /tmp/motonav-circular-layout
+          /tmp/motonav-circular-layout
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror firmware/tests/NavChromePolicyTest.cpp -o /tmp/motonav-nav-chrome
+          /tmp/motonav-nav-chrome
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror firmware/tests/HomeStackMotionTest.cpp -o /tmp/motonav-home-stack
+          /tmp/motonav-home-stack
+          python3 tools/ui-audit.py

@@ -1,0 +1,12 @@
+#pragma once
+#include <cstddef>
+#include <cstdint>
+
+namespace AmsAdvertisement {
+inline constexpr uint8_t Solicited[] = {
+  0x11, 0x15,
+  0xDC, 0xF8, 0x55, 0xAD, 0x02, 0xC5, 0xF4, 0x8E,
+  0x3A, 0x43, 0x36, 0x0F, 0x2B, 0x50, 0xD3, 0x89
+};
+static_assert(sizeof(Solicited) == 18, "AMS solicitation must be one complete 128-bit UUID");
+}

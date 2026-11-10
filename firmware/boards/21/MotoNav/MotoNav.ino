@@ -6,6 +6,7 @@
 #include <Arduino.h>
 #include "src/core/DeviceContext.h"
 #include "src/core/FunctionDeclarations.h"
+#include "src/connectivity/AmsAdvertisement.h"
 #include "src/connectivity/Bluetooth.h"
 #include "src/display/DisplayPipeline.h"
 #include "src/graphics/VectorDrawing.h"
@@ -70,6 +71,8 @@ void setup() {
     setScreenDeg(pr.getInt("rotd", screenRot * 90), false);         // v6.4 任意角度
     bootBrand = BootAnimation::valid(pr.getInt("bootbrand", 0));
     hidMusicMode = pr.getBool("mediahid", false);
+    cleanOn = pr.getBool("cleanmap", false);
+    progOn = pr.getBool("progring", true);
     screenBrightness = constrain(pr.getInt("bright", 70), 5, 180);
     fastFlushOn = pr.getBool("fastf", true);
     pr.end();
@@ -167,9 +170,22 @@ void setup() {
   initMediaHid(server);
   appleMedia.begin();
   BLEAdvertising *adv = BLEDevice::getAdvertising();
-  adv->addServiceUUID(SERVICE_UUID);
-  adv->addServiceUUID(BLEUUID((uint16_t)0x1812));
-  adv->setAppearance(GENERIC_HID);
+  // iOS exposes AMS only after the accessory solicits its service UUID.
+  // Keep the primary packet within 31 bytes: flags + 128-bit solicitation + short name.
+  String advName = bleName.length() >= 4 ? "MN-" + bleName.substring(bleName.length() - 4) : bleName;
+  BLEAdvertisementData advData;
+  advData.setFlags(ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT);
+  advData.addData((char *)AmsAdvertisement::Solicited, sizeof(AmsAdvertisement::Solicited));
+  advData.setName(advName);
+  BLEAdvertisementData scanData;
+  scanData.setCompleteServices(BLEUUID(SERVICE_UUID));
+  scanData.setCompleteServices(BLEUUID((uint16_t)0x1812));
+  scanData.setAppearance(GENERIC_HID);
+  Serial.printf("BLE AMS solicited name=%s primary=%u scan=%u\n",
+                advName.c_str(), (unsigned)advData.getPayload().length(),
+                (unsigned)scanData.getPayload().length());
+  adv->setAdvertisementData(advData);
+  adv->setScanResponseData(scanData);
   adv->setScanResponse(true);
   BLEDevice::startAdvertising();
   idlePowerOffReset(&idlePowerOffTimer, millis());
@@ -334,6 +350,14 @@ void loop() {
 
   if (inNav && page == PAGE_PHOTO) {
     dragAbort(); page = PAGE_HOME; pageAt = millis(); navDirty = true;
+  }
+  // Settings/market/ride screens must not hide an imminent maneuver.
+  // Non-navigation pages are for glances, not continuous riding.
+  if (inNav && page >= PAGE_SETTINGS && page <= PAGE_STOCKS &&
+      !cruiseOn && navDir.length() && navDir != "S" &&
+      navDist > 0 && navDist < 200 && millis() - pageAt > 800) {
+    dragAbort();
+    returnToNavigation();
   }
   if (page == PAGE_PHOTO && photoDirty && !sliding && !callOn && !pairOn && !fxOn) drawPhotoPage();
   musicTick();

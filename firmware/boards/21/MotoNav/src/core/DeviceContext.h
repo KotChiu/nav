@@ -128,15 +128,18 @@ bool fastFlushOn = false;         // RGB path is handled by the ESP32_Display_Pa
 #define C_SEP    0x31A6   // #333333 车道分隔线
 #define C_SIGNRED 0xE104  // #E02020 限速牌红圈
 // Shared dial surfaces, typography and state colors. Map themes are separate.
-#define C_UI_BG      0x0000
-#define C_UI_PANEL   0x1082
-#define C_UI_PANEL_2 0x18E4
-#define C_UI_TEXT    0xF7BE
-#define C_UI_SUB     0xB5B7
-#define C_UI_DIM     0x7BEF
-#define C_UI_LINE    0x3187
-#define C_UI_ACCENT  0x9777
-#define C_UI_ACCENT2 0xFD32
+// Carbon Racing. RGB565 matches ui/VisualLanguage.h RGB888 tokens.
+// Route/warning semantics (red, green, traffic lights) remain separate.
+#define C_UI_BG      0x0000  // #000000
+#define C_UI_PANEL   0x18C4  // #191B21
+#define C_UI_PANEL_2 0x2126  // #242730
+#define C_UI_TEXT    0xF79D  // #F5F3EE
+#define C_UI_SUB     0xBDD8  // #B8BBC5
+#define C_UI_DIM     0x8452  // #858996
+#define C_UI_LINE    0x31A8  // #343740
+#define C_UI_ACCENT  0xFC4B  // #FF895C
+#define C_UI_ACCENT2 0xF5CE  // #F4BA72
+#define C_UI_INFO    0x8E5F  // #8CCBFF  (connected / weather)
 
 // ===== 屏幕几何：466x466，圆心 (233, 233) =====
 #define CX 233
@@ -222,6 +225,7 @@ uint8_t laneBg[8], laneFr[8]; // 每条车道的背景方向码、推荐方向�
 #define IMG_SLOTS 21           // 0 = 路名，1 = 底部信息，2 = 来电人名字，3/4 = 天气，5/6 = 音乐，13-20 = 股票中文名
 #define IMG_MAX   8192        // 每张图最多字节数
 struct TextImg {
+  uint32_t revision = 0;
   uint8_t *show;              // 正在显示的图
   uint16_t showW; uint8_t showH;
   uint8_t *recv;              // 正在接收的图

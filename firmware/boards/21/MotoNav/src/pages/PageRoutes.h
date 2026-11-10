@@ -14,14 +14,14 @@ enum MotoNavPage : int {
 };
 
 inline int pageForSwipe(int current, bool horizontal, int sign) {
-  const int order[] = {PAGE_HOME, PAGE_WEATHER, PAGE_MUSIC, PAGE_COMPANION,
+  const int order[] = {PAGE_HOME, PAGE_WEATHER, PAGE_MUSIC,
                        PAGE_STOCKS, PAGE_SETTINGS, PAGE_PHOTO};
   if (!sign) return -1;
   if (!horizontal) return sign > 0 && current != PAGE_HOME ? PAGE_HOME : -1;
-  for (int i = 0; i < 7; ++i) {
+  for (int i = 0; i < 6; ++i) {
     if (order[i] != current) continue;
     int next = i + (sign < 0 ? 1 : -1);
-    return next >= 0 && next < 7 ? order[next] : -1;
+    return next >= 0 && next < 6 ? order[next] : -1;
   }
   return -1;
 }

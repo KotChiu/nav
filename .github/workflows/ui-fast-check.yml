@@ -1,0 +1,30 @@
+name: MotoNav UI design contracts
+
+on:
+  pull_request:
+    paths:
+      - 'firmware/boards/21/**'
+      - 'firmware/tests/**'
+      - 'tools/ui-audit.py'
+      - '.github/workflows/ui-fast-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ui-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check palette, text family, settings interactions and screen routes
+        run: |
+          python3 tools/ui-audit.py
+          g++ -std=c++17 -O2 -Wall -Wextra firmware/tests/PageRoutesTest.cpp -o /tmp/motonav-page-routes
+          /tmp/motonav-page-routes
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror firmware/tests/CircularCardGeometryTest.cpp -o /tmp/motonav-circular-layout
+          /tmp/motonav-circular-layout
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror firmware/tests/HomeStackMotionTest.cpp -o /tmp/motonav-home-stack
+          /tmp/motonav-home-stack
+          python3 -m unittest discover -s firmware/tests -p 'test_flash_macos.py' -v

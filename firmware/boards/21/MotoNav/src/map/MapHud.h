@@ -56,7 +56,12 @@ void dimRect(int x, int y, int w, int h, int r, int keep) {
 void drawMapSpeed(bool over) {
   if (speedKmh < 0) return;
   int sx = hasCam ? CX - 40 : CX;
+  // Always draw a complete, readable GFX speed fallback. The optional LVGL
+  // Montserrat card covers this in a healthy hybrid frame but cannot remove
+  // the underlying speed signal when unavailable.
   gfx->fillRoundRect(sx - 54, 35, 108, 59, 18, C_UI_PANEL);
+  gfx->drawRoundRect(sx - 54, 35, 108, 59, 18,
+                     over ? C_SIGNRED : C_UI_LINE);
   printCentered(String(speedKmh), sx, 44, 4, over ? 0xFC10 : C_UI_TEXT);
   printCentered("km/h", sx, 80, 1, C_UI_SUB);
   if (hasCam) {
@@ -119,6 +124,9 @@ void drawMapLanes() {
   const int H = 30, MAXW = 210;
   int lw = (int)(fminf(36.0f * H / 32, (float)MAXW / laneN) * laneN);
   int y = hasCam ? 114 : 100;
-  dimRect(CX - lw / 2 - 9, y - 5, lw + 18, H + 10, 11, 70);
+  // A raised, opaque lane plate makes arrows legible over both bright raster
+  // maps and dark vector maps; status chips yield this space entirely.
+  gfx->fillRoundRect(CX - lw / 2 - 9, y - 5, lw + 18, H + 10, 11, C_UI_PANEL);
+  gfx->drawRoundRect(CX - lw / 2 - 9, y - 5, lw + 18, H + 10, 11, C_UI_LINE);
   drawLanesAt(CX, y, MAXW, H);
 }

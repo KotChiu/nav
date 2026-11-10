@@ -1,5 +1,7 @@
 #pragma once
 // 导航状态重置、文字命令和总消息入口。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
+#include "CapabilityNotifications.h"
+
 void resetNavState() {
   trafficLightFrame.clear();trafficLightLab.clear();
   if (idlePowerOffNavigationActive(true, inNav, cruiseOn, navDir == "A"))
@@ -101,6 +103,7 @@ void handleText(const String &m) {
     return;
   }
   if (m == "#AMS?") { appleMedia.resend(); return; }
+  if (m == "#CAP?") { CapabilityNotifications::queue() = CapabilityNotifications::All; return; }
   if (m == "#GB?") { pendingBuildingCapability=true; return; }
   if (m.startsWith("#ZACK,")) {
     if (hidMusicMode) return;
@@ -380,6 +383,10 @@ void handleText(const String &m) {
     int comma = m.indexOf(',', 5);
     if (comma < 0) return;
     int incoming = constrain(m.substring(5, comma).toInt(), 0, STOCK_MAX);
+    // Parse the whole phone update before touching the displayed watchlist.
+    // An incomplete BLE command must not leave a half-old, half-new series.
+    struct PendingQuote { String code; float price; float changePct; };
+    PendingQuote pending[STOCK_MAX];
     int pos = comma + 1;
     int parsed = 0;
     for (; parsed < incoming; parsed++) {
@@ -393,17 +400,42 @@ void handleText(const String &m) {
       code.trim();
       code.toUpperCase();
       if (!code.length()) break;
-      StockQuote &q = stockQuotes[parsed];
-      q.code = code.substring(0, 18);
-      q.price = m.substring(codeEnd + 1, priceEnd).toFloat();
-      q.changePct = (changeEnd < 0 ? m.substring(priceEnd + 1) : m.substring(priceEnd + 1, changeEnd)).toFloat();
+      pending[parsed].code = code.substring(0, 18);
+      pending[parsed].price = m.substring(codeEnd + 1, priceEnd).toFloat();
+      pending[parsed].changePct = (changeEnd < 0 ?
+          m.substring(priceEnd + 1) : m.substring(priceEnd + 1, changeEnd)).toFloat();
       pos = changeEnd < 0 ? m.length() : changeEnd + 1;
     }
-    if (parsed == incoming) {
-      stockCount = parsed;
-      stockUpdatedAt = millis();
-      stockRevision++;
+    if (parsed != incoming) return;
+    for (int i = 0; i < incoming; i++) {
+      StockQuote &q = stockQuotes[i];
+      // A watchlist reorder/replacement must never inherit another symbol's
+      // candles while the new symbol's #SK message is still in flight.
+      if (!q.code.equalsIgnoreCase(pending[i].code)) {
+        q.candleCount = 0;
+        memset(q.candles, 0, sizeof(q.candles));
+        // CJK name bitmaps are indexed by watchlist position, not symbol.
+        // The old image would mislabel the incoming quote until new #B data.
+        TextImg &name = imgs[13 + i];
+        name.showW = 0; name.showH = 0;
+        name.recvId = -1; name.recvMask = 0;
+      }
+      q.code = pending[i].code;
+      q.price = pending[i].price;
+      q.changePct = pending[i].changePct;
     }
+    for (int i = incoming; i < STOCK_MAX; ++i) {
+      StockQuote &q = stockQuotes[i];
+      q.code = "";
+      q.candleCount = 0;
+      memset(q.candles, 0, sizeof(q.candles));
+      TextImg &name = imgs[13 + i];
+      name.showW = 0; name.showH = 0;
+      name.recvId = -1; name.recvMask = 0;
+    }
+    stockCount = incoming;
+    stockUpdatedAt = millis();
+    stockRevision++;
     return;
   }
   if (m.startsWith("#SK,")) {
@@ -418,9 +450,9 @@ void handleText(const String &m) {
     periodText.trim();
     periodText.toUpperCase();
     if (periodText != "D" && periodText != "M") return;
-    stockChartPeriod = periodText[0];
     int countEnd = m.indexOf(',', periodEnd + 1);
-    int incoming = constrain((countEnd < 0 ? m.substring(periodEnd + 1) : m.substring(periodEnd + 1, countEnd)).toInt(), 0, 12);
+    int incoming = constrain((countEnd < 0 ? m.substring(periodEnd + 1) :
+        m.substring(periodEnd + 1, countEnd)).toInt(), 0, 12);
     if (countEnd < 0 && incoming > 0) return;
 
     int index = -1;
@@ -434,20 +466,30 @@ void handleText(const String &m) {
     int pos = countEnd < 0 ? m.length() : countEnd + 1;
     for (; parsed < incoming; parsed++) {
       int values[4] = {};
+      bool complete = true;
       for (int field = 0; field < 4; field++) {
         int end = m.indexOf(',', pos);
         String part = end < 0 ? m.substring(pos) : m.substring(pos, end);
-        if (!part.length()) break;
+        if (!part.length()) { complete = false; break; }
         values[field] = constrain(part.toInt(), 0, 100);
         pos = end < 0 ? m.length() : end + 1;
       }
-      if (pos == m.length() && parsed + 1 < incoming) break;
+      if (!complete || (pos == m.length() && parsed + 1 < incoming)) break;
       candles[parsed][0] = values[0];
       candles[parsed][1] = values[1];
       candles[parsed][2] = values[2];
       candles[parsed][3] = values[3];
     }
     if (parsed == incoming) {
+      const char newPeriod = periodText[0];
+      if (stockChartPeriod != newPeriod) {
+        // A partial period refresh must not mix daily and monthly charts.
+        for (int i = 0; i < stockCount; ++i) {
+          stockQuotes[i].candleCount = 0;
+          memset(stockQuotes[i].candles, 0, sizeof(stockQuotes[i].candles));
+        }
+      }
+      stockChartPeriod = newPeriod;
       StockQuote &q = stockQuotes[index];
       q.candleCount = incoming;
       memcpy(q.candles, candles, sizeof(candles));

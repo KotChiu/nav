@@ -30,7 +30,22 @@ void slideBuffersInit() {
 }
 
 // v7.8 音乐页：歌名/歌手图片栏 5/6；#Z,有会话,播放中,按钮位掩码。
-// v7.12.10-cover 收到封面（bulk type 5）时改为封面圆盘布局：圆盘 r=64 居上，歌名/歌手/按钮下移，不放歌词。
+// v7.12.10-cover 收到封面（bulk type 5）时改为封面圆盘布局：圆盘 r=64 居上，歌名/歌手/按钮下移，歌词使用独立限高区域。
+static void drawMusicTextBand(int slot, int y, int maxHeight, uint8_t tint) {
+  const TextImg &im = imgs[slot];
+  gfx->fillRect(63, y, 340, maxHeight, C_UI_BG);
+  if (!im.show || !im.showW || !im.showH) return;
+  const float scale = min(1.0f, min(340.0f / im.showW, (float)maxHeight / im.showH));
+  const int w = max(1, (int)(im.showW * scale));
+  const int h = max(1, (int)(im.showH * scale));
+  const int bpr = (im.showW + 1) / 2;
+  for (int dy = 0; dy < h; ++dy)
+    for (int dx = 0; dx < w; ++dx) {
+      const uint8_t a = imgNib(im, bpr, min(im.showW-1, (int)(dx/scale)), min(im.showH-1, (int)(dy/scale)));
+      if (a) gfx->drawPixel(CX-w/2+dx, y+dy, greyColor(a, tint));
+    }
+}
+
 void drawMusic() {
   forceFullFlush = true;
   gfx->fillScreen(C_UI_BG);
@@ -61,21 +76,24 @@ void drawMusic() {
         dst[i] = src[u];
       }
     }
-  } else {
+  } else if (!lvglUiReady) {
     drawThemeRing();
     printCentered("MUSIC", CX, 76, 3, C_UI_SUB);
     gfx->drawFastHLine(CX - 24, 116, 48, C_UI_LINE);
   }
   bool linked = bleConnected && bleAuthed;
   if (hidMusicMode && linked && !appleMedia.available) {
-    printCentered("PHONE MEDIA KEYS", CX, coverShow ? 194 : 158, 2, C_WHITE);
-    printCentered("OPEN MUSIC APP ON PHONE", CX, coverShow ? 220 : 210, 2, C_UI_SUB);
-  } else if (linked) {
-    drawTextImg(5, coverShow ? 194 : 158, 0xFF);
-    drawTextImg(6, coverShow ? 240 : 210, 0xBB);
-  } else printCentered("PHONE OFFLINE", CX, coverShow ? 205 : 170, 3, C_UI_SUB);
-  bool showLyrics = linked && hidMusicMode && musicLyrics && appleMedia.available && imgs[12].showW > 0 && !coverShow;
-  if (showLyrics) drawTextImg(12, 242, 0xDD);
+    if (!lvglUiReady) {
+      printCentered("PHONE MEDIA KEYS", CX, coverShow ? 194 : 158, 2, C_WHITE);
+      printCentered("OPEN MUSIC APP ON PHONE", CX, coverShow ? 220 : 210, 2, C_UI_SUB);
+    }
+  } else if (linked && !lvglUiReady) {
+    drawMusicTextBand(5, coverShow ? 194 : 158, 38, 0xFF);
+    drawMusicTextBand(6, coverShow ? 238 : 206, 30, 0xBB);
+  } else if (!lvglUiReady)
+    printCentered("PHONE OFFLINE", CX, coverShow ? 205 : 170, 3, C_UI_SUB);
+  bool showLyrics = linked && hidMusicMode && musicLyrics && appleMedia.available && imgs[12].showW > 0;
+  if (showLyrics && !lvglUiReady) drawMusicTextBand(12, coverShow ? 278 : 244, 32, 0xDD);
   const char *feedback[] = {"", "SENT", "PHONE RECEIVED", "DONE", "NO RESPONSE", "NO PLAYER", "HID SENT", "HID NOT READY", "HID SEND FAILED", "AMS SENT", "AMS SEND FAILED", "AMS QUEUED"};
   String state = linked && musicHave ? (musicPlaying ? "PLAYING" : "PAUSED") : "NO PLAYER";
   if (hidMusicMode) {
@@ -83,7 +101,9 @@ void drawMusic() {
       : !appleMedia.playback.known ? "STATE UNKNOWN" : appleMedia.playback.state == 1 ? "PLAYING" : appleMedia.playback.state == 0 ? "PAUSED" : "SEEKING";
   }
   if (musicAck > 0 && musicAck <= 11) state = feedback[musicAck];
-  printCentered(state, CX, showLyrics ? 272 : coverShow ? 276 : 257, 2, musicAck == 4 ? C_UI_ACCENT2 : C_UI_SUB);
+  if (!lvglUiReady)
+    printCentered(state, CX, showLyrics ? 272 : coverShow ? 276 : 257, 2,
+                  musicAck == 4 ? C_UI_ACCENT2 : C_UI_SUB);
   for (int i = 0; !lvglUiReady && i < 3; i++) {
     int x = CX + (i - 1) * 100, y = coverShow ? 360 : 335;
     bool enabled = hidMusicMode ? (hidMediaReady() || appleMedia.controlReady(i)) : linked && musicHave;
@@ -110,9 +130,10 @@ void drawMusic() {
       double elapsed = appleMedia.playback.elapsed + appleMedia.playback.rate * (millis() - appleMedia.playbackAt) / 1000.0;
       int sec = (int)constrain(elapsed, 0.0, duration), total = (int)duration;
       char time[32]; snprintf(time, sizeof(time), "%d:%02d / %d:%02d", sec/60, sec%60, total/60, total%60);
-      printCentered(time, CX, coverShow ? 410 : 392, 2, C_UI_SUB);
+      if (!lvglUiReady) printCentered(time, CX, coverShow ? 410 : 392, 2, C_UI_SUB);
     }
-  } else printCentered("SWIPE DOWN FOR HOME", CX, coverShow ? 410 : 402, 1, C_UI_SUB);
+  } else if (!lvglUiReady)
+    printCentered("SWIPE DOWN FOR HOME", CX, coverShow ? 410 : 402, 1, C_UI_SUB);
   drawPageDots();
   needFlush = true;
 }
@@ -272,7 +293,7 @@ void slideCommit() {
       wxAskAt = millis();
     }
     if (inNav) navDirty = true;
-    else { riderPrevF = -1; riderPrevZ = -2; catForce = true; }
+    else { onWaitScreen = true; needFlush = true; }
   }
 }
 
@@ -287,7 +308,7 @@ void slideCancel() {
   else if (page == 1) wxDirty = false;
   else if (page >= 3 && page <= PAGE_PHOTO) needFlush = true;
   else if (inNav) navDirty = true;
-  else { onWaitScreen = true; catForce = true; }
+  else { onWaitScreen = true; needFlush = true; }
   needFlush = true;
 }
 
@@ -351,7 +372,11 @@ void dragMove(int dx, int dy, unsigned long now) {
     if (max(abs(dx), abs(dy)) < 12) return;
     touchGestureAxis = abs(dx) >= abs(dy) ? 1 : 2;
   }
-  if (!dragging && page == PAGE_STOCKS && touchGestureAxis == 2) return;
+  // Home owns only vertical card-stack gestures. Leave horizontal swipes to
+  // the proven circular page-transition compositor; never steal maps or
+  // Settings slider gestures.
+  if (!dragging && homeStackTouchMove(dx, dy, now)) return;
+  if (!dragging && (page == PAGE_STOCKS || page == PAGE_SETTINGS) && touchGestureAxis == 2) return;
   if (!dragging) {
     int threshold = page == 2 ? 20 : DRAG_START;
     if (abs(dx) < threshold && abs(dy) < threshold) return;
@@ -380,6 +405,7 @@ void dragMove(int dx, int dy, unsigned long now) {
 
 // Complete a deliberate drag or a fast flick; a reverse flick cancels it.
 void dragEnd() {
+  if (homeStackTouchEnd()) return;
   if (!dragging) return;
   int full = dragHoriz ? LCD_WIDTH : LCD_HEIGHT;
   const float velocity = millis() - dragT < 90 ? dragV : 0;
@@ -392,6 +418,7 @@ void dragEnd() {
 
 // 来电等情况：直接放弃拖动
 void dragAbort() {
+  homeStackCancel();
   if (!dragging && !slideSettling) return;
   panelSwipeTransition = false;
   forceFullFlush = true;
@@ -457,6 +484,18 @@ void musicTick() {
   if (inNav && !cruiseOn && navDir != "S" && navDir.length() && navDist > 0 && navDist < 200 && millis() - pageAt > 3000) {
     returnToNavigation();
     return;
+  }
+  static uint32_t requestedAt=0, requestedPageAt=0;
+  static uint32_t requestedConnection=UINT32_MAX;
+  if (bleConnected && bleAuthed && (requestedPageAt!=pageAt ||
+      requestedConnection!=mediaConnectionEpoch ||
+      (!imgs[5].showW && millis()-requestedAt>=10000))) {
+    if (!pendingEvt.length()) {
+      pendingEvt="T,M,Q"; appleMedia.resend();
+      requestedAt=millis(); requestedPageAt=pageAt; requestedConnection=mediaConnectionEpoch;
+      Serial.printf("MEDIA VIEW ams=%d title=%u artist=%u lyrics=%u\n",
+        appleMedia.available,imgs[5].showW,imgs[6].showW,imgs[12].showW);
+    }
   }
   if (musicDirty) { musicDirty = false; drawMusic(); }
 }
