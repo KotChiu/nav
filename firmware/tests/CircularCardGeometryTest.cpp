@@ -1,0 +1,33 @@
+#include <cassert>
+#include "../boards/21/MotoNav/ui/CircularCardGeometry.h"
+
+int main() {
+  const MotoNavCardRect focusedHome{67,115,332,245};
+  const MotoNavCardRect homeBack1{88,344,290,55};
+  const MotoNavCardRect homeBack2{104,360,258,57};
+  const MotoNavCardRect stockFront{73,139,320,218};
+  const MotoNavCardRect stockBack1{86,345,294,49};
+  const MotoNavCardRect stockBack2{106,362,254,50};
+  const MotoNavCardRect settingsFront{53,176,360,202};
+  const MotoNavCardRect settingsBack1{75,184,316,213};
+  const MotoNavCardRect settingsBack2{98,194,270,216};
+  const MotoNavCardRect mapLeftChip{58,99,109,35};
+  const MotoNavCardRect mapRightChip{304,99,104,35};
+  for (const auto &r : {focusedHome,homeBack1,homeBack2,stockFront,
+                        stockBack1,stockBack2,settingsFront,settingsBack1,
+                        settingsBack2,mapLeftChip,mapRightChip})
+    assert(motonavInsideCircle(r));
+  assert(!motonavInsideCircle({10,10,340,340}));
+  assert(!motonavInsideCircle({0,0,466,466}));
+
+  // All quote content stays within one 320x218 focused card.
+  const MotoNavCardRect stockLocal{0,0,320,218};
+  assert(motonavWithinCard({19,16,164,28},stockLocal));
+  assert(motonavWithinCard({20,49,279,37},stockLocal));
+  assert(motonavWithinCard({21,88,278,27},stockLocal));
+  assert(motonavWithinCard({20,123,280,47},stockLocal));
+  assert(!motonavWithinCard({100,100,306,52},stockLocal));
+  // Round-screen content at the bottom is intentionally narrower.
+  assert(!motonavInsideCircle({58,354,344,75}));
+  return 0;
+}
