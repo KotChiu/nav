@@ -4,8 +4,8 @@
 
 int main() {
   const MotoNavCardRect focusedHome{67,115,332,245};
-  const MotoNavCardRect homeBack1{88,344,290,55};
-  const MotoNavCardRect homeBack2{104,360,258,57};
+  const MotoNavCardRect homeBack1{82,345,145,64};  // Ride
+  const MotoNavCardRect homeBack2{243,345,140,64}; // Markets
   const MotoNavCardRect stockFront{73,139,320,218};
   const MotoNavCardRect stockBack1{86,345,294,49};
   const MotoNavCardRect stockBack2{106,362,254,50};
@@ -20,6 +20,12 @@ int main() {
     assert(motonavInsideCircle(r));
   assert(!motonavInsideCircle({10,10,340,340}));
   assert(!motonavInsideCircle({0,0,466,466}));
+  // Both exposed action areas remain >=44px tall, unlike the old 18px
+  // bottom-most sheet. This is not a hardware hit-test with riding gloves.
+  const int homeFrontBottom = focusedHome.y + focusedHome.height;
+  assert(homeBack1.y + homeBack1.height - homeFrontBottom >= 44);
+  assert(homeBack2.y + homeBack2.height - homeFrontBottom >= 44);
+  assert(homeBack1.x + homeBack1.width < homeBack2.x);
 
   // All quote content stays within one 320x218 focused card.
   const MotoNavCardRect stockLocal{0,0,320,218};
