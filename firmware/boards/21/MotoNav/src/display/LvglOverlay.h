@@ -343,16 +343,17 @@ static void stockShowFocused() {
     char text[22];
     snprintf(text, sizeof(text), count ? "%d / %d" : "0 / 0",
              count ? stockFocused + 1 : 0, count);
-    lv_label_set_text(stockCountLabel, text);
+    const char *old = lv_label_get_text(stockCountLabel);
+    if (!old || strcmp(old, text) != 0)
+      lv_label_set_text(stockCountLabel, text);
   }
   if (stockEmptyCard) setLvglHidden(stockEmptyCard, count > 0);
-  if (stockPrevButton) {
-    if (count < 2) lv_obj_add_state(stockPrevButton, LV_STATE_DISABLED);
-    else lv_obj_clear_state(stockPrevButton, LV_STATE_DISABLED);
-  }
-  if (stockNextButton) {
-    if (count < 2) lv_obj_add_state(stockNextButton, LV_STATE_DISABLED);
-    else lv_obj_clear_state(stockNextButton, LV_STATE_DISABLED);
+  lv_obj_t *buttons[] = {stockPrevButton, stockNextButton};
+  for (lv_obj_t *button : buttons) {
+    if (!button) continue;
+    const bool disabled = lv_obj_has_state(button, LV_STATE_DISABLED);
+    if (count < 2 && !disabled) lv_obj_add_state(button, LV_STATE_DISABLED);
+    else if (count >= 2 && disabled) lv_obj_clear_state(button, LV_STATE_DISABLED);
   }
 }
 
@@ -369,7 +370,8 @@ static void stockStepEvent(lv_event_t *event) {
   if (code != LV_EVENT_CLICKED || page != PAGE_STOCKS ||
       sliding || pairOn || callOn || fxOn || stockCount < 2) return;
   const int delta = (int)(intptr_t)lv_event_get_user_data(event);
-  stockFocused = (stockFocused + delta + stockCount) % stockCount;
+  const int count = constrain(stockCount, 1, STOCK_MAX);
+  stockFocused = (stockFocused + delta + count) % count;
   stockShowFocused();
   needFlush = true;
 }
