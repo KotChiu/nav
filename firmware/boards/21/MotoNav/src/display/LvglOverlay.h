@@ -55,6 +55,12 @@ static lv_obj_t *batteryLabel = nullptr;
 static lv_obj_t *stockTitleLabel = nullptr;
 static lv_obj_t *stockStatusLabel = nullptr;
 static lv_obj_t *stockList = nullptr;
+static lv_obj_t *stockBackCards[2] = {};
+static lv_obj_t *stockPrevButton = nullptr;
+static lv_obj_t *stockNextButton = nullptr;
+static lv_obj_t *stockCountLabel = nullptr;
+static lv_obj_t *stockEmptyCard = nullptr;
+static int stockFocused = 0;
 static lv_obj_t *stockRows[STOCK_MAX] = {};
 static lv_obj_t *stockCodeLabels[STOCK_MAX] = {};
 static lv_obj_t *stockPriceLabels[STOCK_MAX] = {};
@@ -204,11 +210,14 @@ static void configureTransparentLabel(lv_obj_t *label, int width, int height) {
   lv_obj_set_style_bg_opa(label, LV_OPA_TRANSP, 0);
 }
 
-#define STOCK_NAME_W 180
+// All stock content is intentionally bounded within the focused 320x218 card.
+// The previous 344px scrolling list let the chart and price escape at the
+// bottom of the physical circle; the new component never grows horizontally.
+#define STOCK_NAME_W 164
 #define STOCK_NAME_H 28
-#define STOCK_CHART_W 306
-#define STOCK_CHART_H 52
-#define STOCK_ROW_H 124
+#define STOCK_CHART_W 280
+#define STOCK_CHART_H 47
+#define STOCK_ROW_H 218
 #define STOCK_PANEL_COLOR 0x191B21
 
 static void stockCanvasRect(lv_color_t *buffer, int width, int x, int y,
@@ -303,6 +312,47 @@ static void updateStockChartCanvas(int index) {
                     centerX - bodyWidth / 2, top, bodyWidth, height, c);
   }
   lv_obj_invalidate(stockChartCanvases[index]);
+}
+
+static void stockShowFocused() {
+  const int count = constrain(stockCount, 0, STOCK_MAX);
+  if (count == 0) stockFocused = 0;
+  else stockFocused = constrain(stockFocused, 0, count - 1);
+  for (int i = 0; i < STOCK_MAX; ++i)
+    setLvglHidden(stockRows[i], i != stockFocused || i >= count);
+  if (stockCountLabel) {
+    char text[22];
+    snprintf(text, sizeof(text), count ? "%d / %d" : "0 / 0",
+             count ? stockFocused + 1 : 0, count);
+    lv_label_set_text(stockCountLabel, text);
+  }
+  if (stockEmptyCard) setLvglHidden(stockEmptyCard, count > 0);
+  if (stockPrevButton) {
+    if (count < 2) lv_obj_add_state(stockPrevButton, LV_STATE_DISABLED);
+    else lv_obj_clear_state(stockPrevButton, LV_STATE_DISABLED);
+  }
+  if (stockNextButton) {
+    if (count < 2) lv_obj_add_state(stockNextButton, LV_STATE_DISABLED);
+    else lv_obj_clear_state(stockNextButton, LV_STATE_DISABLED);
+  }
+}
+
+static void stockStepEvent(lv_event_t *event) {
+  const lv_event_code_t code = lv_event_get_code(event);
+  if (code == LV_EVENT_PRESSED) {
+    lvglCaptureTouch = true;
+    return;
+  }
+  if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+    lvglCaptureTouch = false;
+    return;
+  }
+  if (code != LV_EVENT_CLICKED || page != PAGE_STOCKS ||
+      sliding || pairOn || callOn || fxOn || stockCount < 2) return;
+  const int delta = (int)(intptr_t)lv_event_get_user_data(event);
+  stockFocused = (stockFocused + delta + stockCount) % stockCount;
+  stockShowFocused();
+  needFlush = true;
 }
 
 static void createLvglOverlay() {
