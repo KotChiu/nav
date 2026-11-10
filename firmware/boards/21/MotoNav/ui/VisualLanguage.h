@@ -1,20 +1,21 @@
 #pragma once
-// MotoNav visual language • Quiet Instrument / 480x480 circular display.
+// MotoNav visual language • Carbon Racing / 480x480 circular display.
 // All text uses the same LVGL Montserrat family (16/20/24/28/40/48).
-// Do not import bitmap "watch digits" or old pixel rider resources.
+// Graphite, warm white, racing orange and restrained ice blue.\n// Do not import bitmap "watch digits" or old pixel rider resources.
 #include <lvgl.h>
 
 namespace MotoNavUI {
-static constexpr uint32_t Background = 0x07141F;
-static constexpr uint32_t Surface = 0x122633;
-static constexpr uint32_t SurfaceRaised = 0x1A3340;
-static constexpr uint32_t Line = 0x2A4B5C;
-static constexpr uint32_t Text = 0xF2F8FB;
-static constexpr uint32_t Muted = 0x99B2C1;
-static constexpr uint32_t Faint = 0x627E8D;
-static constexpr uint32_t Mint = 0x4CE0C3;
-static constexpr uint32_t Warm = 0xFFB46E;
-static constexpr uint32_t Red = 0xFF6678;
+static constexpr uint32_t Background = 0x0B0C10;
+static constexpr uint32_t Surface = 0x191B21;
+static constexpr uint32_t SurfaceRaised = 0x242730;
+static constexpr uint32_t Line = 0x343740;
+static constexpr uint32_t Text = 0xF5F3EE;
+static constexpr uint32_t Muted = 0xB8BBC5;
+static constexpr uint32_t Faint = 0x858996;
+static constexpr uint32_t Accent = 0xFF895C;
+static constexpr uint32_t Cool = 0x8CCBFF;
+static constexpr uint32_t Warm = 0xF4BA72;
+static constexpr uint32_t Red = 0xFF657A;
 static constexpr int Width = 466;
 static constexpr int Center = 233;
 
