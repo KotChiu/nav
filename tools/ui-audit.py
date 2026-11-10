@@ -95,6 +95,8 @@ assert 'updated %02d:%02d' not in OVERLAY
 # Wallet-style stacked home and quote cards; prices/charts are never laid
 # out in the same horizontal row as an unconstrained CJK stock name.
 assert "MotoNavUI::panel(screen, 67, 115, 332, 245" in OVERLAY
+assert "MotoNavUI::panel(screen, 82, 345, 145, 64" in OVERLAY
+assert "MotoNavUI::panel(screen, 243, 345, 140, 64" in OVERLAY
 assert "stockBackCards[0]" in OVERLAY and "stockBackCards[1]" in OVERLAY
 assert "#define STOCK_NAME_W 164" in OVERLAY
 assert "#define STOCK_CHART_W 280" in OVERLAY
