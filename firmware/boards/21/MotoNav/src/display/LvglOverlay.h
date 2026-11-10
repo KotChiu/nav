@@ -809,7 +809,7 @@ static void lvglHybridTick() {
   const bool mapHasData = navMapHasFrame();
   const bool cameraHudVisible = navMapCameraHudVisible();
   const bool showStatusChips = MotoNavUI::navChromeShowStatus(
-      showLiveMap, cleanOn, laneN > 0 && ringActive, cameraHudVisible);
+      showLiveMap, cleanOn, navLanesHudVisible(), cameraHudVisible);
   MotoNavUI::mapOverlayUpdate(showStatusChips, mapHasData,
                                bleConnected && bleAuthed);
   MotoNavUI::navSpeedUpdate(liveNavHud && speedKmh >= 0, speedKmh,
