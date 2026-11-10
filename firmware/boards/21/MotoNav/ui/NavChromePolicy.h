@@ -9,6 +9,7 @@ struct NavChromeRect { int x, y, w, h; };
 static constexpr NavChromeRect NavSpeedCard{175,31,116,68};
 static constexpr NavChromeRect NavSpeedCardWithCamera{135,31,116,68};
 static constexpr NavChromeRect NavTurnCard{96,337,274,80};
+static constexpr NavChromeRect NavDistanceCard{243,341,124,72};
 static constexpr NavChromeRect NavMapChip{58,99,109,35};
 static constexpr NavChromeRect NavLinkChip{304,99,104,35};
 
