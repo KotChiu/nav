@@ -17,6 +17,7 @@ WEATHER = (BOARD / "ui/LvglWeatherDashboard.h").read_text()
 ICONS = (BOARD / "ui/LvglIcons.h").read_text()
 MAP = (BOARD / "ui/LvglMapOverlay.h").read_text()
 MAP_FRAME = (BOARD / "src/map/MapFrame.h").read_text()
+MARKET_COMMANDS = (BOARD / "src/protocol/CommandReceiver.h").read_text()
 
 def srgb(c):
     t = c / 255
@@ -70,6 +71,26 @@ assert "drawRouteRange(" in MAP_FRAME
 assert "drawMapLanes()" in MAP_FRAME
 assert "drawMapBadge()" in MAP_FRAME
 assert "lv_obj_move_foreground" in MAP
+# A fresh navigation screen must not claim map readiness or phone auth while
+# both flags are false; state-colored line icons must match the text.
+assert "justShown || !mapOverlay.statusInitialized" in MAP
+assert "mapOverlayTintIcon(mapOverlay.mapIcon" in MAP
+assert "mapOverlayTintIcon(mapOverlay.linkIcon" in MAP
+assert 'actualMapData ? "MAP" : "SYNC"' in MAP
+assert 'authenticatedPhone ? "LINK" : "OFF"' in MAP
+
+# Market data safety is part of the visual contract: never reuse a prior
+# symbol's CJK name/candles or mix chart periods during an asynchronous BLE
+# refresh; don't call the present wall-clock minute a quote update time.
+assert "PendingQuote pending[STOCK_MAX]" in MARKET_COMMANDS
+assert "if (parsed != incoming) return;" in MARKET_COMMANDS
+assert "if (!q.code.equalsIgnoreCase(pending[i].code))" in MARKET_COMMANDS
+assert "name.showW = 0; name.showH = 0;" in MARKET_COMMANDS
+assert "if (stockChartPeriod != newPeriod)" in MARKET_COMMANDS
+assert "if (!complete" in MARKET_COMMANDS
+assert "now - stockUpdatedAt" in OVERLAY
+assert 'From iPhone / just received' in OVERLAY
+assert 'updated %02d:%02d' not in OVERLAY
 
 # Wallet-style stacked home and quote cards; prices/charts are never laid
 # out in the same horizontal row as an unconstrained CJK stock name.
