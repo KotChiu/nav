@@ -68,6 +68,13 @@ uint32_t profAcc[PROF_N];
 uint32_t profT = 0;
 static inline void profMark(int i) { uint32_t n = micros(); profAcc[i] += n - profT; profT = n; }
 
+// Map state is owned by MapState.h, included later than the LVGL overlay.
+// Expose readiness through this narrow function rather than duplicating it.
+bool navMapHasFrame() {
+  return (mapValid && mapFrame == posFrame) ||
+         (rasterValid && rasterFrame == posFrame);
+}
+
 void drawMapFrame() {
   unsigned long t = millis();
   lastMapDraw = t;
