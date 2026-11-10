@@ -3,6 +3,7 @@
 #include <lvgl.h>
 #include "../../ui/VisualLanguage.h"
 #include "../../ui/LvglIcons.h"
+#include "../../ui/LvglMapOverlay.h"
 #include "../../ui/LvglSettingsPanel.h"
 #include "../../ui/LvglRideDashboard.h"
 #include "../../ui/LvglWeatherDashboard.h"
@@ -642,6 +643,7 @@ static void createLvglOverlay() {
   lv_obj_align(emptyDetail, LV_ALIGN_TOP_MID, 0, 134);
   lv_obj_add_flag(stockEmptyCard, LV_OBJ_FLAG_HIDDEN);
 
+  MotoNavUI::mapOverlayCreate(screen);
 }
 
 static void lvglHybridInit() {
@@ -740,6 +742,12 @@ static void lvglHybridTick() {
   bool showRobot = page == 4 && !sliding && !pairOn && !callOn && !fxOn;
   bool showStock = page == 5 && !sliding && !pairOn && !callOn && !fxOn;
   bool showHome = page == 0 && !inNav && !sliding && !pairOn && !callOn && !fxOn && !staleShown;
+  const bool showLiveMap = page == PAGE_HOME && inNav && !sliding &&
+        !pairOn && !callOn && !fxOn && !staleShown && !cleanOn;
+  const bool mapHasData = (mapValid && mapFrame == posFrame) ||
+                         (rasterValid && rasterFrame == posFrame);
+  MotoNavUI::mapOverlayUpdate(showLiveMap, mapHasData,
+                               bleConnected && bleAuthed);
   static bool lastShowHome = false;
   const bool homeJustShown = showHome && !lastShowHome;
   lastShowHome = showHome;
