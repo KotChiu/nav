@@ -454,25 +454,27 @@ static void createLvglOverlay() {
   }
   lv_obj_add_flag(musicPlaceholder, LV_OBJ_FLAG_HIDDEN);
 
-  // Apple Wallet-inspired stack: two peeking layers behind one focused card.
-  // Every corner stays within the 466 logical circular viewport.
-  homeOrbit[0] = MotoNavUI::panel(screen, 104, 360, 258, 57, 24,
+  // Apple Wallet-inspired focused card with two functional peeking tabs.
+  // The old vertical overlap exposed only 18px of Markets: too little for
+  // a gloved rider. Side-by-side back cards now each expose 49px of height
+  // below the front card; all outer corners remain in the 466px safe circle.
+  homeOrbit[0] = MotoNavUI::panel(screen, 243, 345, 140, 64, 23,
                                  MotoNavUI::SurfaceRaised);
-  MotoNavUI::icon(homeOrbit[0], MotoNavUI::Icon::Stocks, 19, 28,
+  MotoNavUI::icon(homeOrbit[0], MotoNavUI::Icon::Stocks, 13, 21,
                   MotoNavUI::Cool);
   lv_obj_t *peekMarkets = MotoNavUI::label(homeOrbit[0], "MARKETS",
                     &lv_font_montserrat_16, MotoNavUI::Muted);
-  lv_obj_set_pos(peekMarkets, 54, 36);
+  lv_obj_set_pos(peekMarkets, 47, 27);
   lv_obj_add_flag(homeOrbit[0], LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(homeOrbit[0], homeStackCardEvent,
                       LV_EVENT_CLICKED, (void *)(intptr_t)PAGE_STOCKS);
-  homeOrbit[1] = MotoNavUI::panel(screen, 88, 344, 290, 55, 23,
+  homeOrbit[1] = MotoNavUI::panel(screen, 82, 345, 145, 64, 23,
                                  MotoNavUI::Surface);
-  MotoNavUI::icon(homeOrbit[1], MotoNavUI::Icon::Ride, 19, 26,
+  MotoNavUI::icon(homeOrbit[1], MotoNavUI::Icon::Ride, 13, 21,
                   MotoNavUI::Accent);
-  lv_obj_t *peekRide = MotoNavUI::label(homeOrbit[1], "RIDE  /  READY",
+  lv_obj_t *peekRide = MotoNavUI::label(homeOrbit[1], "RIDE",
                     &lv_font_montserrat_16, MotoNavUI::Muted);
-  lv_obj_set_pos(peekRide, 55, 29);
+  lv_obj_set_pos(peekRide, 47, 27);
   lv_obj_add_flag(homeOrbit[1], LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(homeOrbit[1], homeStackCardEvent,
                       LV_EVENT_CLICKED, (void *)(intptr_t)PAGE_COMPANION);
