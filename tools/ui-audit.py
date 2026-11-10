@@ -20,6 +20,7 @@ MAP_FRAME = (BOARD / "src/map/MapFrame.h").read_text()
 MAP_HUD = (BOARD / "src/map/MapHud.h").read_text()
 MARKERS = (BOARD / "src/map/NavigationMarkers.h").read_text()
 NAV_SPEED = (BOARD / "ui/LvglNavSpeed.h").read_text()
+NAV_DISTANCE = (BOARD / "ui/LvglNavDistance.h").read_text()
 NAV_POLICY = (BOARD / "ui/NavChromePolicy.h").read_text()
 NAV_DECL = (BOARD / "src/core/FunctionDeclarations.h").read_text()
 MARKET_COMMANDS = (BOARD / "src/protocol/CommandReceiver.h").read_text()
@@ -84,6 +85,12 @@ assert "MotoNavUI::navSpeedUpdate" in OVERLAY
 assert "mapModeActive()" in OVERLAY and "navMapCameraHudVisible()" in OVERLAY
 assert "lv_font_montserrat_40" in NAV_SPEED
 assert "NavSpeedCardWithCamera" in NAV_SPEED
+assert "lv_font_montserrat_40" in NAV_DISTANCE
+assert "lv_font_montserrat_28" in NAV_DISTANCE
+assert "NavDistanceCard" in NAV_DISTANCE
+assert "MotoNavUI::navDistanceCreate(screen)" in OVERLAY
+assert "MotoNavUI::navDistanceUpdate" in OVERLAY
+assert "nativeDistanceText = distText(navDist)" in OVERLAY
 assert "if (speedKmh < 0) return;" in MAP_HUD
 assert 'printCentered(String(speedKmh)' in MAP_HUD
 assert "drawBigIconAt" in MARKERS and "printOutlined(dt" in MARKERS
