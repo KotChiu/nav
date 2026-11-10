@@ -31,7 +31,8 @@ colors = dict((k, int(v, 16)) for k, v in re.findall(
     r"static constexpr uint32_t (\w+) = 0x([0-9A-Fa-f]{6});", TOKENS))
 for a, b in (("Text", "Background"), ("Text", "Surface"),
              ("Muted", "Background"), ("Muted", "Surface"),
-             ("Accent", "Background")):
+             ("Accent", "Background"), ("Cool", "Surface"),
+             ("Faint", "Surface")):
     assert contrast(colors[a], colors[b]) >= 4.5, (a, b, contrast(colors[a], colors[b]))
 
 assert "WatchDigits.c" not in OVERLAY
