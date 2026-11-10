@@ -168,6 +168,10 @@ assert "homeStackGestureActive" in OVERLAY
 assert "&& !homeStackGestureActive" in OVERLAY
 assert "lvglCancelPendingPress();" in OVERLAY
 assert "homeStackTick(showHome);" in OVERLAY
+# The LVGL screen is transparent and shares GFX's live framebuffer.
+# Repositioning without restoring the backing creates persistent ghost cards.
+assert "if (!lvglSnapshotting) drawWaiting(waitSt);" in OVERLAY
+assert "now-homeStackRenderAt < 30" in OVERLAY
 assert "lv_obj_set_size(homeOrbit[i],r.w,r.h)" in OVERLAY
 assert "homeStackProgress > 0.08f" in OVERLAY
 assert "homeStackExpandedStyle" in OVERLAY
