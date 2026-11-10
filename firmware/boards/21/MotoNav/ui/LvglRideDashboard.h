@@ -24,7 +24,7 @@ static void rideCreate(lv_obj_t *parent) {
   lv_obj_add_flag(ride.root, LV_OBJ_FLAG_HIDDEN);
 
   lv_obj_t *eyebrow = label(ride.root, "MOTONAV  /  RIDE MODE",
-                            &lv_font_montserrat_16, Mint);
+                            &lv_font_montserrat_16, Accent);
   lv_obj_align(eyebrow, LV_ALIGN_TOP_MID, 0, 57);
   lv_obj_set_style_text_letter_space(eyebrow, 2, 0);
 
@@ -40,7 +40,7 @@ static void rideCreate(lv_obj_t *parent) {
   lv_obj_set_style_arc_width(ride.progress, 8, LV_PART_MAIN);
   lv_obj_set_style_arc_color(ride.progress, color(SurfaceRaised), LV_PART_MAIN);
   lv_obj_set_style_arc_width(ride.progress, 8, LV_PART_INDICATOR);
-  lv_obj_set_style_arc_color(ride.progress, color(Mint), LV_PART_INDICATOR);
+  lv_obj_set_style_arc_color(ride.progress, color(Accent), LV_PART_INDICATOR);
   lv_obj_set_style_bg_opa(ride.progress, LV_OPA_TRANSP, LV_PART_KNOB);
   lv_arc_set_value(ride.progress, 0);
   noInteraction(ride.progress);
@@ -106,7 +106,7 @@ static void rideUpdate(bool visible) {
     lv_label_set_text(ride.status, connected ?
                       "PHONE CONNECTED" : "WAITING FOR PHONE");
     lv_obj_set_style_text_color(ride.status,
-        color(connected ? Mint : Warm), 0);
+        color(connected ? Cool : Warm), 0);
   }
 }
 }
