@@ -3,6 +3,7 @@
 // card. Display / Ride / Link / About use persisted device state, not mocks.
 // Included from LvglOverlay.h after the firmware state declarations.
 #include "VisualLanguage.h"
+#include "LvglIcons.h"
 #include <cstring>
 
 namespace MotoNavUI {
@@ -10,6 +11,7 @@ struct SettingsView {
   lv_obj_t *root = nullptr;
   lv_obj_t *tabs[4] = {};
   lv_obj_t *tabText[4] = {};
+  lv_obj_t *depth[2] = {};
   lv_obj_t *sections[4] = {};
   lv_obj_t *brightness = nullptr;
   lv_obj_t *brightnessValue = nullptr;
@@ -131,9 +133,19 @@ static void settingsActionEvent(lv_event_t *event) {
 static lv_obj_t *settingsAction(lv_obj_t *parent, int y, const char *title,
                                  const char *sub, lv_obj_t **state,
                                  int code) {
-  settingsText(parent, title, 23, y, &lv_font_montserrat_20, Text);
-  settingsText(parent, sub, 23, y + 30, &lv_font_montserrat_16, Muted);
-  lv_obj_t *b = button(parent, 231, y - 2, 88, 50, " ");
+  const Icon glyph = code == 0 ? Icon::Screen :
+                     code == 1 ? Icon::Map :
+                     code == 2 ? Icon::Ride : Icon::Music;
+  icon(parent, glyph, 18, y + 10, Accent);
+  lv_obj_t *heading = label(parent, title, &lv_font_montserrat_20, Text);
+  lv_obj_set_pos(heading, 57, y);
+  lv_obj_set_size(heading, 162, 29);
+  lv_label_set_long_mode(heading, LV_LABEL_LONG_DOT);
+  lv_obj_t *detail = label(parent, sub, &lv_font_montserrat_16, Muted);
+  lv_obj_set_pos(detail, 57, y + 30);
+  lv_obj_set_size(detail, 167, 23);
+  lv_label_set_long_mode(detail, LV_LABEL_LONG_DOT);
+  lv_obj_t *b = button(parent, 235, y - 2, 83, 50, " ");
   lv_obj_t *value = lv_obj_get_child(b, 0);
   lv_obj_set_style_text_font(value, &lv_font_montserrat_16, 0);
   lv_obj_add_event_cb(b, settingsActionEvent, LV_EVENT_CLICKED, (void *)(intptr_t)code);
@@ -156,15 +168,25 @@ static void settingsCreate(lv_obj_t *screen) {
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 71);
 
   static const char *names[4] = {"DISPLAY", "RIDE", "LINK", "ABOUT"};
+  static const Icon sectionIcons[4] = {
+      Icon::Screen, Icon::Ride, Icon::Link, Icon::Settings};
   for (int i = 0; i < 4; ++i) {
-    settings.tabs[i] = button(settings.root, 55 + i * 91, 124, 83, 43, "");
+    settings.tabs[i] = button(settings.root, 55 + i * 91, 124, 83, 47, "");
     settings.tabText[i] = lv_obj_get_child(settings.tabs[i], 0);
     settingsSetText(settings.tabText[i], names[i]);
     lv_obj_set_style_text_font(settings.tabText[i], &lv_font_montserrat_16, 0);
+    lv_obj_align(settings.tabText[i], LV_ALIGN_BOTTOM_MID, 0, -1);
+    icon(settings.tabs[i], sectionIcons[i], 29, 0, Text);
     lv_obj_add_event_cb(settings.tabs[i], settingsTabEvent,
                         LV_EVENT_CLICKED, (void *)(intptr_t)i);
-    settings.sections[i] = panel(settings.root, 53, 178, 360, 199, 24);
   }
+  // Two peeking sheets frame the selected Settings card without nesting
+  // scrolling containers or extending beyond the circular safe area.
+  settings.depth[0] = panel(settings.root, 98, 194, 270, 216, 24,
+                            SurfaceRaised);
+  settings.depth[1] = panel(settings.root, 75, 184, 316, 213, 24, Surface);
+  for (int i = 0; i < 4; ++i)
+    settings.sections[i] = panel(settings.root, 53, 176, 360, 202, 24);
 
   lv_obj_t *display = settings.sections[0];
   settingsText(display, "BRIGHTNESS", 23, 17, &lv_font_montserrat_16, Muted);
