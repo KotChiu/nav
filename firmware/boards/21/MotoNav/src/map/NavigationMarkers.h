@@ -26,8 +26,10 @@ void drawMapLights(float cx, float cy, float sc, float cs, float sn) {
 
 // 转向箭头 + 距离（浮在底部）；离路口 150 米内变大，车道放在半透明深色底上
 void drawMapBadge() {
-  if (cruiseOn) {                                      // v4.8 巡航：底部只写个“巡航”标记
-    printOutlined("CRUISE", CX, 392, 2, C_CYAN);
+  if (cruiseOn) {                                      // 巡航无转向数据
+    gfx->fillRoundRect(CX - 70, 371, 140, 47, 22, C_UI_PANEL);
+    gfx->drawRoundRect(CX - 70, 371, 140, 47, 22, C_UI_LINE);
+    printCentered("CRUISE", CX, 389, 2, C_UI_INFO);
     return;
   }
   bool isS = navDir == "S";
@@ -36,10 +38,18 @@ void drawMapBadge() {
   bool veryNear = !isS && navDist <= STAGE_NEAR_M;
   uint16_t col = veryNear ? C_ORANGE : C_WHITE;
   String dt = distText(navDist);
+  // Shared Carbon surface grounds the existing proven maneuver arrows and
+  // distance text. It sits wholly within the 466px circular safe zone and
+  // only covers the bottom map area already reserved by addHudObstacles().
+  const MotoNavUI::NavChromeRect &turnCard = MotoNavUI::NavTurnCard;
+  gfx->fillRoundRect(turnCard.x, turnCard.y, turnCard.w, turnCard.h,
+                     26, C_UI_PANEL);
+  gfx->drawRoundRect(turnCard.x, turnCard.y, turnCard.w, turnCard.h,
+                     26, C_UI_LINE);
   iconHalo = true;
   if (!nearJ) {
     int up = tripOn ? 24 : 0;                          // v3.1 有行程信息时整体上移，下面留一行
-    drawBigIconAt((isS || far) ? String("S") : navDir, C_WHITE, 395 - up, 1.0f, CX - 48, 368 - up, 418 - up, 60);
+    drawBigIconAt((isS || far) ? String("S") : navDir, C_UI_TEXT, 395 - up, 1.0f, CX - 48, 368 - up, 418 - up, 60);
     int sz = dt.length() <= 4 ? 4 : 3;
     printOutlined(dt, CX + 46, (sz == 4 ? 378 : 382) - up, sz, C_WHITE);
     if (tripOn) drawTripLine(404);
