@@ -26,6 +26,18 @@ int main() {
   assert(homeBack1.y + homeBack1.height - homeFrontBottom >= 44);
   assert(homeBack2.y + homeBack2.height - homeFrontBottom >= 44);
   assert(homeBack1.x + homeBack1.width < homeBack2.x);
+  // The home primary card has a deliberate three-step hierarchy: quiet
+  // date/connection, one large 64px clock, one compact weather row. No
+  // inner widget may escape the focused card or cover the peeking tabs.
+  const MotoNavCardRect homeLocal{0,0,332,245};
+  assert(motonavWithinCard({25,28,177,25},homeLocal)); // date
+  assert(motonavWithinCard({19,60,295,90},homeLocal)); // large time
+  assert(motonavWithinCard({207,19,116,34},homeLocal)); // link dot
+  assert(motonavWithinCard({25,161,282,1},homeLocal)); // divider
+  assert(motonavWithinCard({18,174,296,62},homeLocal)); // weather
+  // Do not move weather onto the main time field on future iterations.
+  assert(60 + 90 < 161);
+  assert(161 < 174);
 
   // All quote content stays within one 320x218 focused card.
   const MotoNavCardRect stockLocal{0,0,320,218};
