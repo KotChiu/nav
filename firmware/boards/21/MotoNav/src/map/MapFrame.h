@@ -75,6 +75,14 @@ bool navMapHasFrame() {
          (rasterValid && rasterFrame == posFrame);
 }
 
+// Camera panels and the extra map status chips follow the map's real mode.
+// Clean map and Dragon Radar already suppress camera display in drawMapFrame;
+// the LVGL speed panel must use exactly the same choice.
+bool navMapChromeAllowed() { return styleIdx() != ST_DRAGON; }
+bool navMapCameraHudVisible() {
+  return hasCam && !cleanOn && navMapChromeAllowed();
+}
+
 void drawMapFrame() {
   unsigned long t = millis();
   lastMapDraw = t;
@@ -172,8 +180,9 @@ void drawMapFrame() {
   // Reserve the LVGL status chips from phone-supplied POI placement. This
   // uses the same priority predicate as the actual LVGL visibility policy:
   // lanes, speed limits, minimal map and radar modes take precedence.
-  if (!dragon && MotoNavUI::navChromeShowStatus(
-          true, cleanOn, laneN > 0 && ringActive, hasCam)) {
+  if (navMapChromeAllowed() && MotoNavUI::navChromeShowStatus(
+          true, cleanOn, laneN > 0 && ringActive,
+          navMapCameraHudVisible())) {
     obsAdd(MotoNavUI::NavMapChip.x, MotoNavUI::NavMapChip.y,
            MotoNavUI::NavMapChip.x + MotoNavUI::NavMapChip.w,
            MotoNavUI::NavMapChip.y + MotoNavUI::NavMapChip.h);
