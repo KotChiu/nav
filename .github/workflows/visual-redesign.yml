@@ -39,4 +39,6 @@ jobs:
         run: |
           g++ -std=c++17 -O2 firmware/tests/PageRoutesTest.cpp -o /tmp/motonav-page-routes
           /tmp/motonav-page-routes
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror firmware/tests/CircularCardGeometryTest.cpp -o /tmp/motonav-circular-layout
+          /tmp/motonav-circular-layout
           python3 tools/ui-audit.py
