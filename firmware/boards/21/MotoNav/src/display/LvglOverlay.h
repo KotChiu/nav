@@ -374,6 +374,23 @@ static void stockStepEvent(lv_event_t *event) {
   needFlush = true;
 }
 
+// A revealed card peeks out because it is actionable, not decorative.
+static void homeStackCardEvent(lv_event_t *event) {
+  if (lv_event_get_code(event) != LV_EVENT_CLICKED || page != PAGE_HOME ||
+      inNav || dragging || sliding || pairOn || callOn || fxOn) return;
+  int target = (int)(intptr_t)lv_event_get_user_data(event);
+  page = target;
+  pageAt = millis();
+  forceFullFlush = true;
+  if (target == PAGE_STOCKS) {
+    stockDirty = true;
+    drawStockPage();
+  } else if (target == PAGE_COMPANION) {
+    drawRobotPage();
+  }
+  needFlush = true;
+}
+
 static void createLvglOverlay() {
   lv_obj_t *screen = lv_scr_act();
   lv_obj_set_style_bg_opa(screen, LV_OPA_TRANSP, 0);
@@ -437,7 +454,10 @@ static void createLvglOverlay() {
                   MotoNavUI::Cool);
   lv_obj_t *peekMarkets = MotoNavUI::label(homeOrbit[0], "MARKETS",
                     &lv_font_montserrat_16, MotoNavUI::Muted);
-  lv_obj_set_pos(peekMarkets, 54, 32);
+  lv_obj_set_pos(peekMarkets, 54, 36);
+  lv_obj_add_flag(homeOrbit[0], LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(homeOrbit[0], homeStackCardEvent,
+                      LV_EVENT_CLICKED, (void *)(intptr_t)PAGE_STOCKS);
   homeOrbit[1] = MotoNavUI::panel(screen, 88, 344, 290, 55, 23,
                                  MotoNavUI::Surface);
   MotoNavUI::icon(homeOrbit[1], MotoNavUI::Icon::Ride, 19, 26,
@@ -445,6 +465,9 @@ static void createLvglOverlay() {
   lv_obj_t *peekRide = MotoNavUI::label(homeOrbit[1], "RIDE  /  READY",
                     &lv_font_montserrat_16, MotoNavUI::Muted);
   lv_obj_set_pos(peekRide, 55, 29);
+  lv_obj_add_flag(homeOrbit[1], LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(homeOrbit[1], homeStackCardEvent,
+                      LV_EVENT_CLICKED, (void *)(intptr_t)PAGE_COMPANION);
   homeOrbit[2] = MotoNavUI::panel(screen, 67, 115, 332, 245, 29,
                                  MotoNavUI::SurfaceRaised);
   MotoNavUI::icon(homeOrbit[2], MotoNavUI::Icon::Map, 279, 15,
