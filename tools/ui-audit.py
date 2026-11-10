@@ -53,7 +53,19 @@ assert "robotEyes" not in OVERLAY
 assert "MotoNavUI::rideCreate" in OVERLAY
 assert "MotoNavUI::weatherCreate" in OVERLAY
 assert "MotoNavUI::settingsCreate" in OVERLAY
-assert "lv_font_montserrat_48" in OVERLAY and "lv_font_montserrat_48" in RIDE
+assert "lv_font_montserrat_64" in OVERLAY and "lv_font_montserrat_48" in RIDE
+assert '#define LV_FONT_MONTSERRAT_64 1' in (BOARD / "lv_conf.h").read_text()
+# A connected device should feel like a product, not an engineering console.
+# Time/forecast are blank until actual phone data arrives; their source is
+# an implementation detail, not a homepage headline.
+for noisy in ("TIME FROM PHONE", "SYNC PHONE TO SET TIME",
+              "WEATHER FROM PHONE", "PHONE OFFLINE"):
+    assert noisy not in OVERLAY, noisy
+assert 'MotoNavUI::label(homeOrbit[2], ""' in OVERLAY
+assert '"--:--"' in OVERLAY
+assert 'homeStatusDot' in OVERLAY
+assert '"LINKED" : "OFFLINE"' in OVERLAY
+assert '"L %d°   H %d°"' in OVERLAY
 assert "lv_font_montserrat_48" in WEATHER
 for name in ("DISPLAY", "RIDE", "LINK", "ABOUT"):
     assert name in SETTINGS
