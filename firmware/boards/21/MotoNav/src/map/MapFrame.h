@@ -169,6 +169,18 @@ void drawMapFrame() {
     bool hudCam = hasCam; hasCam = false; // This style hides the camera badge.
     addHudObstacles(); hasCam = hudCam;
   } else addHudObstacles();
+  // Reserve the LVGL status chips from phone-supplied POI placement. This
+  // uses the same priority predicate as the actual LVGL visibility policy:
+  // lanes, speed limits, minimal map and radar modes take precedence.
+  if (!dragon && MotoNavUI::navChromeShowStatus(
+          true, cleanOn, laneN > 0 && ringActive, hasCam)) {
+    obsAdd(MotoNavUI::NavMapChip.x, MotoNavUI::NavMapChip.y,
+           MotoNavUI::NavMapChip.x + MotoNavUI::NavMapChip.w,
+           MotoNavUI::NavMapChip.y + MotoNavUI::NavMapChip.h);
+    obsAdd(MotoNavUI::NavLinkChip.x, MotoNavUI::NavLinkChip.y,
+           MotoNavUI::NavLinkChip.x + MotoNavUI::NavLinkChip.w,
+           MotoNavUI::NavLinkChip.y + MotoNavUI::NavLinkChip.h);
+  }
   if (!dragon && !cleanOn && !cruiseOn) drawMapLights(cx, cy, sc, cs, sn);   // v3.2 路线上的红绿灯（v4.9 清爽模式不画；v7.6 巡航不画）
   if (!dragon) drawMapCams(cx, cy, sc, cs, sn);                      // v3.5 电子眼
   if (!cruiseOn) drawDestBlip(cx, cy, sc, cs, sn);      // v2.9 目的地标记（v7.6 巡航没有目的地）
@@ -187,13 +199,27 @@ void drawMapFrame() {
   // and below the fixed speed/lane/turn HUD so those controls retain priority.
   if (!cruiseOn && !staleShown && imgs[0].show && imgs[0].showW > 0 && imgs[0].showH > 0) {
     const int roadLabelY = 154;
-    const int labelLeft = CX - imgs[0].showW / 2 - 10;
-    const int labelTop = roadLabelY - 5;
-    const int labelWidth = imgs[0].showW + 20;
-    const int labelHeight = imgs[0].showH + 10;
-    gfx->fillRoundRect(labelLeft, labelTop, labelWidth, labelHeight, 10, C_BLACK);
-    drawTextImg(0, roadLabelY, 255);
-    obsAdd(labelLeft, labelTop, labelLeft + labelWidth, labelTop + labelHeight);
+    const int labelTop = roadLabelY - 7;
+    const int labelHeight = imgs[0].showH + 14;
+    // Width is bounded by the actual circular chord at both vertical edges:
+    // a long phone-rendered road name cannot produce a rectangular plate
+    // outside the safe map circle. The existing bitmap sampler still owns
+    // glyph scaling and CJK handling; no font/protocol changes.
+    const int maxDy = max(abs(labelTop - CX),
+                          abs(labelTop + labelHeight - CX));
+    const int half = maxDy < TEXT_R
+        ? (int)sqrtf(float(TEXT_R * TEXT_R - maxDy * maxDy)) : 0;
+    const int labelWidth = min((int)imgs[0].showW + 30, 2 * half);
+    if (labelWidth >= 44) {
+      const int labelLeft = CX - labelWidth / 2;
+      gfx->fillRoundRect(labelLeft, labelTop, labelWidth, labelHeight, 13, C_UI_PANEL);
+      gfx->drawRoundRect(labelLeft, labelTop, labelWidth, labelHeight, 13, C_UI_LINE);
+      drawTextImg(0, roadLabelY, 255);
+      obsAdd(labelLeft, labelTop, labelLeft + labelWidth, labelTop + labelHeight);
+    } else {
+      // Extremely tall or malformed glyph sizes retain the original draw.
+      drawTextImg(0, roadLabelY, 255);
+    }
   }
   if (!cruiseOn && !staleShown) drawPlaceLabels(cx, cy, sc, cs, sn);
   profMark(5);
@@ -209,7 +235,7 @@ void drawMapFrame() {
     bool isNear = navDist <= STAGE_NEAR_M;
     // v7.4 平时外圈是行程环；出现转弯倒计时就换成倒计时环（盖掉行程环）
     float tp = ringActive ? -1 : tripFrac();
-    drawRingLayer(navDir != "S" && tp < 0, ringActive ? ringShown : 0, isNear ? 14 : 10, isNear ? C_ORANGE : C_YELLOW, over, tp);
+    drawRingLayer(navDir != "S" && tp < 0, ringActive ? ringShown : 0, isNear ? 14 : 10, isNear ? C_ORANGE : C_UI_ACCENT, over, tp);
   }
   profMark(6);
   drawMapSpeed(over);
